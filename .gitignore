@@ -18,3 +18,10 @@
 *~
 \#*\#
 .\#*
+
+# Host Python exchange tool bytecode
+__pycache__/
+*.pyc
+
+# Rust host backup build products
+/tools/carbon-backup/target/
