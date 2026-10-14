@@ -18,6 +18,43 @@ fn run()->Result<(),String>{
         }
         return Ok(());
     }
+    if args.get(1).map(String::as_str)==Some("restore-song") {
+        // Explicitly gated hardware test scope: selected spare slot30 only.
+        if args.len()!=10 || args[7]!="--stopped" || args[8]!="--firmware-0623fee" {
+            return Err("Usage: restore-song SOURCE TARGET_BACKUP 30 RECOVERY_FILE PORT_NAME --stopped --firmware-0623fee APPROVAL_TOKEN".into());
+        }
+        let (_,source)=verify_song_archive(File::open(&args[2]).map_err(|e|e.to_string())?)?;
+        let (target,base)=verify_song_archive(File::open(&args[3]).map_err(|e|e.to_string())?)?;
+        let slot=args[4].parse::<usize>().map_err(|_|"Invalid target slot")?;
+        if slot!=30 || target["slot"]!=30 {return Err("Initial write test restricted to backed-up slot30".into());}
+        let plan=restore::Plan::new(slot,base,source,restore::Mode::Replace)?;
+        println!("{}",serde_json::to_string_pretty(&plan.summary()).map_err(|e|e.to_string())?);
+        if args[9]!=plan.approval_token() {return Err("Exact replacement approval token required".into());}
+        if Path::new(&args[5]).exists(){return Err("Recovery output exists".into());}
+        let link=midi::MidiLink::open(&args[6],&args[6])?;
+        let mut device=transfer::Adapter{link,read_timeout:Duration::from_secs(3),stage_timeout:Duration::from_secs(3),commit_timeout:Duration::from_secs(30)};
+        restore::execute(&mut device,&plan,&args[9],true,true,|raw|{
+            let timestamp=SystemTime::now().duration_since(UNIX_EPOCH).map_err(|e|e.to_string())?.as_secs();
+            let m=song_manifest(raw,30,&args[6],&args[6],timestamp)?;
+            let mut file=OpenOptions::new().write(true).create_new(true).open(&args[5]).map_err(|e|e.to_string())?;
+            write_song_archive(&mut file,raw,&m)?;file.sync_all().map_err(|e|e.to_string())?;drop(file);
+            verify_song_archive(File::open(&args[5]).map_err(|e|e.to_string())?)?;
+            eprintln!("Fresh slot30 recovery backup saved and verified before writes");Ok(())
+        })?;
+        println!("Slot30 replacement and full readback match succeeded. Reload slot30 from panel.");
+        return Ok(());
+    }
+    if args.get(1).map(String::as_str)==Some("plan-restore") {
+        if args.len()!=6 {return Err("Usage: plan-restore SOURCE_SONG_ARCHIVE TARGET_BACKUP TARGET_SLOT replace|patch (offline only)".into());}
+        let (_,after)=verify_song_archive(File::open(&args[2]).map_err(|e|e.to_string())?)?;
+        let (base,before)=verify_song_archive(File::open(&args[3]).map_err(|e|e.to_string())?)?;
+        let slot=args[4].parse::<usize>().map_err(|_|"Invalid target slot")?;
+        if base["slot"]!=slot {return Err("Target backup belongs to a different slot".into());}
+        let mode=match args[5].as_str(){"replace"=>restore::Mode::Replace,"patch"=>restore::Mode::Patch,_=>return Err("Choose replace or patch".into())};
+        let plan=restore::Plan::new(slot,before,after,mode)?;
+        println!("{}",serde_json::to_string_pretty(&plan.summary()).map_err(|e|e.to_string())?);
+        return Ok(());
+    }
     let mut input=MidiInput::new("CARBON read-only backup").map_err(|e|e.to_string())?;
     input.ignore(Ignore::None);
     let output=MidiOutput::new("CARBON read requests only").map_err(|e|e.to_string())?;
