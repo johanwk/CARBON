@@ -37,7 +37,7 @@
 
 // SPI flash state
 struct spi_flash_state {
-    int state;  // the flash state
+    volatile int state;  // shared with DMA completion interrupt
     uint8_t rx_buf[SPI_FLASH_IF_BUFSIZE];  // internal RX buf
     uint8_t tx_buf[SPI_FLASH_IF_BUFSIZE];  // internal TX buf
     int xfer_len;  // length of transfer

@@ -195,7 +195,7 @@ void song_timer_task(void) {
         return;
     }
     // check the flash to see if we're done
-    switch(ext_flash_get_state()) {
+    switch(ext_flash_get_state_for((uint8_t *)&song)) {
         case EXT_FLASH_STATE_LOAD:
             // load in progress
             break;

@@ -21,6 +21,7 @@
  *
  */
 #include "seq_ctrl.h"
+#include "../ext_flash.h"
 #include "seq_engine.h"
 #include "arp.h"
 #include "clock_out.h"
@@ -267,6 +268,8 @@ int seq_ctrl_get_current_song(void) {
 
 // load a song - returns -1 on error
 int seq_ctrl_load_song(int song) {
+    // Do not disturb a SysEx operation (or consume its completion state).
+    if(ext_flash_peek_state() != EXT_FLASH_STATE_IDLE) return -1;
     if(song < 0 || song >= SEQ_NUM_SONGS) {
         log_error("scls - song invalid: %d", song);
         return -1;
@@ -283,6 +286,7 @@ int seq_ctrl_load_song(int song) {
 
 // save a song - returns -1 on error
 int seq_ctrl_save_song(int song) {
+    if(ext_flash_peek_state() != EXT_FLASH_STATE_IDLE) return -1;
     if(song < 0 || song >= SEQ_NUM_SONGS) {
         log_error("scss - song invalid: %d", song);
         return -1;

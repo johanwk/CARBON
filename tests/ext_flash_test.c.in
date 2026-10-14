@@ -1,0 +1,107 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later */
+#include <assert.h>
+#include <stdio.h>
+#include "../src/config.h"
+#include "../src/ext_flash.c"
+// CCM linker section is ARM-only; suppress placement for the host fixture.
+#define __attribute__(x)
+#include "../src/config_store.c"
+#undef __attribute__
+static uint8_t buffer[4096];
+static uint8_t memory[EXT_FLASH_MEMORY_SIZE], result[256];
+static int spi_state, result_len, commands, fail_next;
+void spi_flash_init(void) {spi_state=0;}
+int spi_flash_get_state(void) {return spi_state;}
+int spi_flash_start_cmd(int cmd, uint32_t addr, uint8_t *data, int len) {
+    assert(spi_state==0); commands++;
+    if(fail_next) {fail_next=0; return -1;}
+    result_len=0;
+    switch(cmd) {
+        case SPI_FLASH_CMD_READ_MEM:
+            memcpy(result,memory+addr,len); result_len=len; spi_state=SPI_FLASH_STATE_READ_MEM_DONE; break;
+        case SPI_FLASH_CMD_WRITE_ENABLE: spi_state=SPI_FLASH_STATE_WRITE_ENABLE_DONE; break;
+        case SPI_FLASH_CMD_ERASE_MEM:
+            memset(memory+addr,255,4096); spi_state=SPI_FLASH_STATE_ERASE_MEM_DONE; break;
+        case SPI_FLASH_CMD_WRITE_MEM:
+            assert(len<=256 && addr%256==0);
+            memcpy(memory+addr,data,len); spi_state=SPI_FLASH_STATE_WRITE_MEM_DONE; break;
+        case SPI_FLASH_CMD_READ_STATUS_REG:
+            result[0]=0; result_len=1; spi_state=SPI_FLASH_STATE_READ_STATUS_REG_DONE; break;
+        default: assert(0);
+    }
+    return 0;
+}
+int spi_flash_get_result(uint8_t *data) {
+    memcpy(data,result,result_len); spi_state=0; return result_len;
+}
+void log_error(char *fmt, ...) {}
+void log_debug(char *fmt, ...) {}
+static void finish(int expected) {
+    uint8_t stranger;
+    for(int i=0;i<1000;i++) {
+        assert(ext_flash_get_state_for(&stranger)==EXT_FLASH_STATE_BUSY);
+        ext_flash_timer_task();
+        if(ext_flash_peek_state()==expected) {
+            assert(ext_flash_get_state_for(&stranger)==EXT_FLASH_STATE_BUSY);
+            assert(ext_flash_peek_state()==expected);
+            assert(ext_flash_get_state_for(buffer)==expected); return;
+        }
+    }
+    assert(!"state machine did not complete");
+}
+
+int main(void) {
+    extfs.state=EXT_FLASH_STATE_IDLE;
+    assert(ext_flash_load(-1,1,buffer)==-1);
+    assert(ext_flash_load(0,0,buffer)==-1);
+    assert(ext_flash_load(0,1,NULL)==-1);
+    assert(ext_flash_load(EXT_FLASH_MEMORY_SIZE,1,buffer)==-1);
+    assert(ext_flash_load(EXT_FLASH_MEMORY_SIZE-64,64,buffer)==0);
+    assert(ext_flash_peek_state()==EXT_FLASH_STATE_LOAD);
+    assert(ext_flash_save(0,4096,buffer)==-1);
+    extfs.state=EXT_FLASH_STATE_LOAD_DONE;
+    assert(ext_flash_peek_state()==EXT_FLASH_STATE_LOAD_DONE);
+    assert(ext_flash_peek_state()==EXT_FLASH_STATE_LOAD_DONE);
+    assert(ext_flash_get_state_for(buffer)==EXT_FLASH_STATE_LOAD_DONE);
+    assert(ext_flash_peek_state()==0);
+    assert(ext_flash_save(1,4096,buffer)==-1);
+    assert(ext_flash_save(0,0,buffer)==-1);
+    // Existing config store erases a sector then writes a512-byte record.
+    assert(ext_flash_save(EXT_FLASH_CONFIG_OFFSET,512,buffer)==0);
+    extfs.state=0;
+    assert(ext_flash_save_noerase(EXT_FLASH_CONFIG_OFFSET+512,512,buffer)==0);
+    extfs.state=0;
+    assert(ext_flash_save_noerase(1,256,buffer)==-1);
+    assert(ext_flash_save(EXT_FLASH_MEMORY_SIZE-4096,4096,buffer)==0);
+    // Execute the production erase/page-program/poll/load state machine.
+    ext_flash_init();
+    for(int i=0;i<4096;i++) buffer[i]=(uint8_t)i;
+    assert(ext_flash_save(0,4096,buffer)==0); finish(EXT_FLASH_STATE_SAVE_DONE);
+    for(int i=0;i<4096;i++) assert(memory[i]==(uint8_t)i);
+    memset(buffer,0,4096);
+    assert(ext_flash_load(0,4096,buffer)==0); finish(EXT_FLASH_STATE_LOAD_DONE);
+    for(int i=0;i<4096;i++) assert(buffer[i]==(uint8_t)i);
+    fail_next=1; assert(ext_flash_load(0,64,buffer)==0); finish(EXT_FLASH_STATE_LOAD_ERROR);
+    fail_next=1; assert(ext_flash_save(0,4096,buffer)==0); finish(EXT_FLASH_STATE_SAVE_ERROR);
+    assert(commands>40);
+    // Config startup/wipe/writeback must not steal SysEx/song completion
+    // or advance its wear-level offset while another operation owns flash.
+    assert(ext_flash_load(0,64,buffer)==0);
+    while(ext_flash_peek_state()!=EXT_FLASH_STATE_LOAD_DONE) ext_flash_timer_task();
+    cfgss.config_offset=512;
+    assert(config_store_load_start()==-1);
+    assert(config_store_wipe_flash()==-1);
+    assert(config_store_writeback_start()==-1);
+    assert(cfgss.config_offset==512 && ext_flash_peek_state()==EXT_FLASH_STATE_LOAD_DONE);
+    assert(ext_flash_get_state_for(cfgss.io_buf)==EXT_FLASH_STATE_BUSY);
+    assert(ext_flash_get_state_for(buffer)==EXT_FLASH_STATE_LOAD_DONE);
+    // Actual config writeback now starts, owns completion, and writes its record.
+    assert(config_store_writeback_start()==0);
+    assert(ext_flash_get_state_for(buffer)==EXT_FLASH_STATE_BUSY);
+    for(int i=0;i<1000 && ext_flash_peek_state()!=EXT_FLASH_STATE_SAVE_DONE;i++) ext_flash_timer_task();
+    assert(ext_flash_get_state_for(cfgss.io_buf)==EXT_FLASH_STATE_SAVE_DONE);
+    assert(cfgss.config_offset==1024);
+
+    puts("external flash range/peek/config compatibility tests passed");
+    return 0;
+}

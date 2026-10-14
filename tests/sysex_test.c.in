@@ -1,0 +1,120 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later */
+#include <assert.h>
+#include <stdio.h>
+#include <string.h>
+#define __STM32F4xx_HAL_H
+static void HAL_NVIC_SystemReset(void) {}
+#include "../src/seq/sysex.c"
+static int flash_state, running, loads, saves, replies;
+static uint8_t reply[200], flash[EXT_FLASH_SECTOR_SIZE];
+static uint8_t *pending;
+static int pending_len;
+int ext_flash_peek_state(void) { return flash_state; }
+int ext_flash_get_state_for(uint8_t *owner) {
+    int s = flash_state;
+    if(s == EXT_FLASH_STATE_LOAD_DONE || s == EXT_FLASH_STATE_LOAD_ERROR ||
+       s == EXT_FLASH_STATE_SAVE_DONE || s == EXT_FLASH_STATE_SAVE_ERROR)
+        flash_state = EXT_FLASH_STATE_IDLE;
+    return s;
+}
+int32_t ext_flash_get_mem_size(void) { return EXT_FLASH_MEMORY_SIZE; }
+int ext_flash_load(int32_t a, int n, uint8_t *p) {
+    assert(flash_state == 0 && n > 0 && n <= 64);
+    loads++; pending = p; pending_len = n; flash_state = EXT_FLASH_STATE_LOAD; return 0;
+}
+int ext_flash_save(int32_t a, int n, uint8_t *p) {
+    assert(flash_state == 0 && a % 4096 == 0 && n == 4096);
+    saves++; pending = p; pending_len = n; flash_state = EXT_FLASH_STATE_SAVE; return 0;
+}
+int seq_ctrl_get_run_state(void) { return running; }
+int midi_stream_send_sysex_msg(int port, uint8_t *p, int n) {
+    assert(n <= sizeof(reply)); memcpy(reply, p, n); replies++; return 0;
+}
+void config_store_set_val(int addr, int32_t val) {}
+int config_store_wipe_flash(void) { return 0; }
+static uint8_t packet[300];
+static void send(int n) {
+    for(int i = 0; i < n; i++) {
+        struct midi_msg m = {.len = 1, .status = packet[i]};
+        sysex_handle_msg(&m);
+    }
+}
+static void header(int cmd, int addr) {
+    uint8_t h[] = {0xf0,0,1,0x72,0x49,0};
+    memcpy(packet,h,6); packet[5] = cmd;
+    for(int i = 0; i < 6; i++) packet[6+i] = (addr >> (20-4*i)) & 15;
+}
+static void read_request(int addr, int len) {header(0x70,addr); packet[12]=len; packet[13]=0xf7; send(14);}
+static void stage(int offset, int len) {
+    header(0x72,offset); packet[12]=len;
+    for(int i=0;i<len;i++) {int v=(offset+i)&255; packet[13+2*i]=v>>4; packet[14+2*i]=v&15;}
+    packet[13+2*len]=0xf7; send(14+2*len);
+}
+static void commit(int addr, int len) {
+    header(0x73,addr);
+    for(int i=0;i<4;i++) packet[12+i]=(len>>(12-4*i))&15;
+    packet[16]=0xf7; send(17);
+}
+static void error(int cmd, int code) {assert(reply[5]==1 && reply[6]==cmd && reply[7]==code);}
+int main(void) {
+    sysex_init();
+    for(int n=1;n<=64;n++) {stage(0,n); error(0x72,1); for(int i=0;i<n;i++) assert(syxs.io_buf[i]==i);}
+    stage(4095,1); error(0x72,1); assert(syxs.io_buf[4095]==255);
+    stage(4095,2); error(0x72,3); stage(0,0); error(0x72,4);
+    stage(0,65); error(0x72,3);
+    header(0x72,0); packet[12]=2; packet[13]=0; packet[14]=0; packet[15]=0xf7; send(16); error(0x72,4);
+    stage(0,2); packet[13]=16; send(18); error(0x72,4);
+    read_request(0,0); error(0x70,3); read_request(0,65); error(0x70,3);
+    read_request(EXT_FLASH_MEMORY_SIZE,1); error(0x70,2);
+    header(0x70,0); packet[6]=16; packet[12]=1; packet[13]=0xf7; send(14); error(0x70,4);
+    read_request(EXT_FLASH_MEMORY_SIZE-64,64); int original_addr=syxs.addr;
+    read_request(0,1); error(0x70,6); assert(syxs.addr==original_addr && syxs.io_len==64);
+    stage(0,1); error(0x72,6); commit(0,4096); error(0x73,6);
+    memset(pending,0xab,pending_len); flash_state=EXT_FLASH_STATE_LOAD_DONE; sysex_timer_task();
+    assert(reply[5]==0x71 && reply[12]==64 && reply[13]==10 && reply[14]==11);
+    read_request(0,1); flash_state=EXT_FLASH_STATE_LOAD_ERROR; sysex_timer_task(); error(0x71,5);
+    flash_state=EXT_FLASH_STATE_SAVE_DONE; read_request(0,1); error(0x70,6);
+    assert(flash_state==EXT_FLASH_STATE_SAVE_DONE); flash_state=0;
+    running=1; stage(0,1); error(0x72,6); running=0;
+    commit(0,4096); error(0x73,7); commit(0,1); error(0x73,3);
+    commit(1,4096); error(0x73,2); commit(SEQ_NUM_SONGS*EXT_FLASH_SONG_SIZE,4096); error(0x73,2);
+    for(int o=0;o<4096;o+=64) stage(o,64);
+    // A read never modifies staging data or coverage.
+    read_request(0,64); memset(pending,0xaa,64); flash_state=EXT_FLASH_STATE_LOAD_DONE; sysex_timer_task();
+    for(int i=0;i<4096;i++) assert(syxs.io_buf[i]==(i&255));
+    int old_replies=replies; commit(SEQ_NUM_SONGS*EXT_FLASH_SONG_SIZE-4096,4096);
+    assert(saves==1 && replies==old_replies);
+    stage(0,1); error(0x72,6); read_request(0,1); error(0x70,6);
+    for(int i=0;i<4096;i++) assert(pending[i]==(i&255));
+    memcpy(flash,pending,pending_len); flash_state=EXT_FLASH_STATE_SAVE_DONE; sysex_timer_task(); error(0x73,1);
+    commit(0,4096); error(0x73,7);
+    for(int o=0;o<4096;o+=64) stage(o,64);
+    stage(0,1); commit(0,4096); error(0x73,7); // new offset0 invalidates old coverage
+    for(int o=0;o<4096;o+=64) stage(o,64);
+    commit(0,4096); flash_state=EXT_FLASH_STATE_SAVE_ERROR; sysex_timer_task(); error(0x73,5);
+    commit(0,4096); error(0x73,7);
+    memset(packet,0, sizeof(packet)); packet[0]=0xf0; packet[299]=0xf7; send(300);
+    read_request(0,1); flash_state=EXT_FLASH_STATE_LOAD_DONE; sysex_timer_task(); assert(reply[5]==0x71);
+    // Exercise normal three-byte MIDI fragments, including F7 in data1.
+    header(0x70,64); packet[12]=1; packet[13]=0xf7;
+    for(int i=0;i<14;i+=3) {
+        int n=14-i < 3 ? 14-i : 3;
+        struct midi_msg m={.len=n,.status=packet[i],
+            .data0=n>1?packet[i+1]:0,.data1=n>2?packet[i+2]:0};
+        sysex_handle_msg(&m);
+    }
+    assert(syxs.addr==64 && flash_state==EXT_FLASH_STATE_LOAD);
+    flash_state=EXT_FLASH_STATE_LOAD_DONE; sysex_timer_task();
+    // Malformed frames never produce unbounded flash I/O (sanitizer regression).
+    unsigned seed=42;
+    for(int j=0;j<10000;j++) {
+        int before_saves=saves, before_loads=loads;
+        int n=7+j%190; header(j%2?0x72:0x73,0);
+        for(int i=6;i<n-1;i++) {seed=seed*1664525u+1013904223u; packet[i]=(seed>>24)&127;}
+        packet[n-1]=0xf7; send(n);
+        assert(saves==before_saves);
+        assert(loads==before_loads);
+    }
+    puts("SysEx validation/staging/async ownership tests passed");
+    return 0;
+}

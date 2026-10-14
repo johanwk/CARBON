@@ -168,12 +168,30 @@
  *   - 0x4c	- 0x4c = 'L'
  *   - 0xf7	- sysex end
  *
+ * Hardened flash protocol (host must follow these rules):
+ * - One request outstanding; BUSY=0x06 does not alter pending I/O metadata.
+ * - 0x70 accepts 1..64 bytes within external flash; success is response0x71.
+ * - 0x72 accepts exactly 1..64 data bytes as canonical high/low nibbles.
+ *   Offset0 begins a fresh sector; send it FIRST, then fill all4096 bytes.
+ *   Stage OK acknowledges RAM only; reads do not alter the staging buffer.
+ * - 0x73 accepts exactly4096 bytes at a sector-aligned song-storage address.
+ *   All bytes must be staged; INCOMPLETE=0x07 rejects missing coverage.
+ *   Transport must be stopped for staging/commit. Successful commit has NO
+ *   immediate ACK: cmd01/cmd73/OK follows SAVE_DONE; error05 follows failure.
+ *   SAVE_DONE is flash-service completion, not readback verification. Host
+ *   must read back and compare. Coverage is consumed on success or failure.
+ * - Packet sizes including F0/F7: read14, stage14+2*N, commit17.
+ * - Host must serialize all panel/config flash I/O and avoid restart/power-off.
+ *   Five sector commits replace one0x5000 song; replacement is NOT atomic.
+ * - 0x74 is not implemented. This tightens unsafe legacy write behavior.
+ *
  * SYSEX Error Response Codes:
  * - ERROR_OK                   - 0x01
  * - ERROR_BAD_ADDRESS          - 0x02
  * - ERROR_BAD_LENGTH           - 0x03
  */
 #include "sysex.h"
+#include "seq_ctrl.h"
 #include "../config.h"
 #include "../config_store.h"
 #include "../ext_flash.h"
@@ -182,6 +200,7 @@
 #include "../util/log.h"
 #include "stm32f4xx_hal.h"
 #include <inttypes.h>
+#include <string.h>
 
 //
 // SYSEX commands / protocol
@@ -206,6 +225,8 @@
 #define SYSEX_ERROR_BAD_LENGTH 0x03
 #define SYSEX_ERROR_MALFORMED_MSG 0x04
 #define SYSEX_ERROR_EXT_FLASH_ERROR 0x05
+#define SYSEX_ERROR_BUSY 0x06
+#define SYSEX_ERROR_INCOMPLETE 0x07
 
 // settings
 #define SYSEX_MAX_LEN 200
@@ -224,6 +245,8 @@ struct sysex_state {
     int32_t addr;  // the address of the thing we are reading or writing
     uint8_t io_buf[EXT_FLASH_SECTOR_SIZE];  // buffer for I/O to other modules
     int io_len;  // length of I/O
+    uint8_t read_buf[SYSEX_MAX_READ_LEN];
+    uint8_t staged[EXT_FLASH_SECTOR_SIZE / 8];  // byte coverage bitmap
 };
 struct sysex_state syxs;
 
@@ -237,69 +260,51 @@ void sysex_nibbles_to_bytes(uint8_t *inbuf, uint8_t *outbuf, int in_len);
 // init the sysex handler
 void sysex_init(void) {
     syxs.rx_len = 0;
+    memset(syxs.staged, 0, sizeof(syxs.staged));
     syxs.state = SYSEX_STATE_IDLE;
 }
 
-// handle processing of requests that can take time
+// Only the owner of an active operation consumes flash completion state.
 void sysex_timer_task(void) {
-    if(syxs.state == SYSEX_STATE_IDLE) {
-        return;
+    if(syxs.state == SYSEX_STATE_IDLE) return;
+    int state = ext_flash_get_state_for(syxs.state == SYSEX_STATE_READ_EXT_FLASH ? syxs.read_buf : syxs.io_buf);
+    if(syxs.state == SYSEX_STATE_READ_EXT_FLASH) {
+        if(state == EXT_FLASH_STATE_LOAD_DONE) {
+            syxs.state = SYSEX_STATE_IDLE;
+            sysex_send_read_ext_mem_result();
+        }
+        else if(state == EXT_FLASH_STATE_LOAD_ERROR) {
+            syxs.state = SYSEX_STATE_IDLE;
+            sysex_send_error_response(SYSEX_CMD_READBACK_EXT_FLASH,
+                SYSEX_ERROR_EXT_FLASH_ERROR);
+        }
     }
-    switch(syxs.state) {
-        case SYSEX_STATE_READ_EXT_FLASH:
-            switch(ext_flash_get_state()) {
-                case EXT_FLASH_STATE_LOAD:
-                    // load in progress
-                    break;
-                case EXT_FLASH_STATE_LOAD_ERROR:
-                    syxs.state = SYSEX_STATE_IDLE;
-                    sysex_send_error_response(SYSEX_CMD_READBACK_EXT_FLASH,
-                        SYSEX_ERROR_EXT_FLASH_ERROR);
-                    break;
-                case EXT_FLASH_STATE_LOAD_DONE:
-                    syxs.state = SYSEX_STATE_IDLE;
-                    sysex_send_read_ext_mem_result();
-                    break;
-                default:
-                    break;
-            }
-            break;
+    else if(state == EXT_FLASH_STATE_SAVE_DONE || state == EXT_FLASH_STATE_SAVE_ERROR) {
+        syxs.state = SYSEX_STATE_IDLE;
+        // The buffer is consumed even on failure: a retry must stage anew.
+        memset(syxs.staged, 0, sizeof(syxs.staged));
+        sysex_send_error_response(SYSEX_CMD_WRITE_EXT_FLASH_COMMIT,
+            state == EXT_FLASH_STATE_SAVE_DONE ? SYSEX_ERROR_OK : SYSEX_ERROR_EXT_FLASH_ERROR);
     }
 }
 
-// handle a portion of SYSEX message received
+// Assemble bounded frames; discard overflow until a fresh F0.
 void sysex_handle_msg(struct midi_msg *msg) {
-    // receiving this message would make buffer overrun
-    if((syxs.rx_len + msg->len) > SYSEX_MAX_LEN) {
-        syxs.rx_len = 0;
-        return;
-    }
-
-    // 1 byte
-    if(msg->len > 0) {
-        syxs.rx_buf[syxs.rx_len++] = msg->status;
-        if(msg->status == MIDI_SYSEX_END) {
-            sysex_process();
+    uint8_t bytes[3] = {msg->status, msg->data0, msg->data1};
+    if(msg->len < 1 || msg->len > 3) return;
+    for(int i = 0; i < msg->len; i++) {
+        uint8_t byte = bytes[i];
+        if(byte >= 0xf8) continue;  // interleaved realtime bytes
+        if(byte == MIDI_SYSEX_START) syxs.rx_len = 0;
+        else if(syxs.rx_len == 0) continue;
+        if(syxs.rx_len == SYSEX_MAX_LEN) {
             syxs.rx_len = 0;
-            return;
+            continue;
         }
-    }
-    // 2 bytes
-    if(msg->len > 1) {
-        syxs.rx_buf[syxs.rx_len++] = msg->data0;
-        if(msg->data0 == MIDI_SYSEX_END) {
+        syxs.rx_buf[syxs.rx_len++] = byte;
+        if(byte == MIDI_SYSEX_END) {
             sysex_process();
             syxs.rx_len = 0;
-            return;
-        }
-    }
-    // 3 bytes
-    if(msg->len > 2) {
-        syxs.rx_buf[syxs.rx_len++] = msg->data1;
-        if(msg->data1 == MIDI_SYSEX_END) {
-            sysex_process();
-            syxs.rx_len = 0;
-            return;
         }
     }
 }
@@ -307,10 +312,111 @@ void sysex_handle_msg(struct midi_msg *msg) {
 //
 // local functions
 //
+// Decode only canonical nibbles, not silently masked malformed data.
+static int sysex_decode_nibbles(int offset, int count) {
+    int value = 0;
+    for(int i = 0; i < count; i++) {
+        if(syxs.rx_buf[offset + i] > 15) return -1;
+        value = (value << 4) | syxs.rx_buf[offset + i];
+    }
+    return value;
+}
+
+static void sysex_process_flash(int cmd) {
+    int addr, len;
+    if(syxs.state != SYSEX_STATE_IDLE || ext_flash_peek_state() != EXT_FLASH_STATE_IDLE) {
+        sysex_send_error_response(cmd, SYSEX_ERROR_BUSY);
+        return;
+    }
+    if((cmd == SYSEX_CMD_READ_EXT_FLASH && syxs.rx_len != 14) ||
+       (cmd == SYSEX_CMD_WRITE_EXT_FLASH_COMMIT && syxs.rx_len != 17) ||
+       (cmd == SYSEX_CMD_WRITE_EXT_FLASH_BUF && syxs.rx_len < 16)) {
+        sysex_send_error_response(cmd, SYSEX_ERROR_MALFORMED_MSG);
+        return;
+    }
+    addr = sysex_decode_nibbles(6, 6);
+    len = cmd == SYSEX_CMD_WRITE_EXT_FLASH_COMMIT ?
+        sysex_decode_nibbles(12, 4) : syxs.rx_buf[12];
+    if(addr < 0 || len < 0) {
+        sysex_send_error_response(cmd, SYSEX_ERROR_MALFORMED_MSG);
+        return;
+    }
+    if(cmd == SYSEX_CMD_READ_EXT_FLASH) {
+        if(len < 1 || len > SYSEX_MAX_READ_LEN) {
+            sysex_send_error_response(cmd, SYSEX_ERROR_BAD_LENGTH);
+            return;
+        }
+        if(addr > ext_flash_get_mem_size() - len) {
+            sysex_send_error_response(cmd, SYSEX_ERROR_BAD_ADDRESS);
+            return;
+        }
+        if(ext_flash_load(addr, len, syxs.read_buf) == -1) {
+            sysex_send_error_response(cmd, SYSEX_ERROR_EXT_FLASH_ERROR);
+            return;
+        }
+        syxs.addr = addr;
+        syxs.io_len = len;
+        syxs.state = SYSEX_STATE_READ_EXT_FLASH;
+        return;
+    }
+    // Write commands require stopped transport; never change it implicitly.
+    if(seq_ctrl_get_run_state()) {
+        sysex_send_error_response(cmd, SYSEX_ERROR_BUSY);
+        return;
+    }
+    if(cmd == SYSEX_CMD_WRITE_EXT_FLASH_BUF) {
+        if(len < 1 || len > SYSEX_MAX_READ_LEN || addr > EXT_FLASH_SECTOR_SIZE - len) {
+            sysex_send_error_response(cmd, SYSEX_ERROR_BAD_LENGTH);
+            return;
+        }
+        if(syxs.rx_len != 14 + 2 * len) {
+            sysex_send_error_response(cmd, SYSEX_ERROR_MALFORMED_MSG);
+            return;
+        }
+        for(int i = 13; i < 13 + 2 * len; i++) {
+            if(syxs.rx_buf[i] > 15) {
+                sysex_send_error_response(cmd, SYSEX_ERROR_MALFORMED_MSG);
+                return;
+            }
+        }
+        // Offset zero explicitly starts a fresh sector; send it first.
+        if(addr == 0) memset(syxs.staged, 0, sizeof(syxs.staged));
+        sysex_nibbles_to_bytes(syxs.rx_buf + 13, syxs.io_buf + addr, len);
+        for(int i = addr; i < addr + len; i++)
+            syxs.staged[i / 8] |= (uint8_t)(1u << (i % 8));
+        sysex_send_error_response(cmd, SYSEX_ERROR_OK);
+        return;
+    }
+    if(len != EXT_FLASH_SECTOR_SIZE) {
+        sysex_send_error_response(cmd, SYSEX_ERROR_BAD_LENGTH);
+        return;
+    }
+    if(addr < EXT_FLASH_SONG_OFFSET ||
+       addr % EXT_FLASH_SECTOR_SIZE != 0 ||
+       addr > EXT_FLASH_SONG_OFFSET + SEQ_NUM_SONGS * EXT_FLASH_SONG_SIZE - len ||
+       addr > ext_flash_get_mem_size() - len) {
+        sysex_send_error_response(cmd, SYSEX_ERROR_BAD_ADDRESS);
+        return;
+    }
+    for(unsigned i = 0; i < sizeof(syxs.staged); i++) {
+        if(syxs.staged[i] != 0xff) {
+            sysex_send_error_response(cmd, SYSEX_ERROR_INCOMPLETE);
+            return;
+        }
+    }
+    if(ext_flash_save(addr, len, syxs.io_buf) == -1) {
+        sysex_send_error_response(cmd, SYSEX_ERROR_EXT_FLASH_ERROR);
+        return;
+    }
+    syxs.state = SYSEX_STATE_WRITE_EXT_FLASH;
+    // No immediate OK: cmd73 response follows flash-service completion/error.
+}
+
 // process a SYSEX message that has been completely received
 void sysex_process(void) {
     int32_t addr, val;
-    if(syxs.rx_len < 6) {
+    if(syxs.rx_len < 6 || syxs.rx_buf[0] != MIDI_SYSEX_START ||
+       syxs.rx_buf[syxs.rx_len - 1] != MIDI_SYSEX_END) {
         return;
     }
     // check MMA ID
@@ -335,6 +441,10 @@ void sysex_process(void) {
             sysex_send_devtype_response();
             break;
         case SYSEX_CMD_RESTART:
+            if(syxs.state != SYSEX_STATE_IDLE) {
+                sysex_send_error_response(SYSEX_CMD_RESTART, SYSEX_ERROR_BUSY);
+                return;
+            }
             if(syxs.rx_len != 11) {
                 sysex_send_error_response(syxs.rx_buf[4],
                     SYSEX_ERROR_MALFORMED_MSG);
@@ -394,93 +504,9 @@ void sysex_process(void) {
                         SYSEX_ERROR_OK);
                     break;
                 case SYSEX_CMD_READ_EXT_FLASH:
-                    if(syxs.rx_len != 14) {
-                        sysex_send_error_response(syxs.rx_buf[5],
-                            SYSEX_ERROR_MALFORMED_MSG);
-                        return;
-                    }
-                    syxs.addr = (syxs.rx_buf[6] & 0x0f) << 20;
-                    syxs.addr |= (syxs.rx_buf[7] & 0x0f) << 16;
-                    syxs.addr |= (syxs.rx_buf[8] & 0x0f) << 12;
-                    syxs.addr |= (syxs.rx_buf[9] & 0x0f) << 8;
-                    syxs.addr |= (syxs.rx_buf[10] & 0x0f) << 4;
-                    syxs.addr |= syxs.rx_buf[11] & 0x0f;
-                    syxs.io_len = syxs.rx_buf[12];
-                    if(syxs.io_len > SYSEX_MAX_READ_LEN) {
-                        sysex_send_error_response(syxs.rx_buf[5],
-                            SYSEX_ERROR_BAD_LENGTH);
-                        return;
-                    }
-                    if(syxs.addr + syxs.io_len > ext_flash_get_mem_size()) {
-                        sysex_send_error_response(syxs.rx_buf[5],
-                            SYSEX_ERROR_BAD_ADDRESS);
-                        return;
-                    }
-                    // start the read process
-//                    log_debug("sp - read ext flash - addr: 0x%06x - len: %d",
-//                        syxs.addr, syxs.io_len);
-                    if(ext_flash_load(syxs.addr, syxs.io_len, (uint8_t *)&syxs.io_buf) == -1) {
-                        sysex_send_error_response(syxs.rx_buf[5],
-                            SYSEX_ERROR_EXT_FLASH_ERROR);
-                        return;
-                    }
-                    syxs.state = SYSEX_STATE_READ_EXT_FLASH;
-                    break;
                 case SYSEX_CMD_WRITE_EXT_FLASH_BUF:
-                    if(syxs.rx_len < 16) {
-                        sysex_send_error_response(syxs.rx_buf[5],
-                            SYSEX_ERROR_MALFORMED_MSG);
-                        return;
-                    }
-                    {
-                        int offset, len;
-                        offset = (syxs.rx_buf[6] & 0x0f) << 20;
-                        offset |= (syxs.rx_buf[7] & 0x0f) << 16;
-                        offset |= (syxs.rx_buf[8] & 0x0f) << 12;
-                        offset |= (syxs.rx_buf[9] & 0x0f) << 8;
-                        offset |= (syxs.rx_buf[10] & 0x0f) << 4;
-                        offset |= syxs.rx_buf[11] & 0x0f;
-                        len = syxs.rx_buf[12];
-                        if(offset + len > EXT_FLASH_SECTOR_SIZE) {
-                            sysex_send_error_response(syxs.rx_buf[5],
-                                SYSEX_ERROR_BAD_LENGTH);
-                            return;
-                        }
-                        // convert nibbles to bytes / copy to io_buf
-                        sysex_nibbles_to_bytes(syxs.rx_buf + 13,
-                            syxs.io_buf + offset, len);
-                        sysex_send_error_response(syxs.rx_buf[5],
-                            SYSEX_ERROR_OK);
-                    }
-                    break;
                 case SYSEX_CMD_WRITE_EXT_FLASH_COMMIT:
-                    if(syxs.rx_len < 17) {
-                        sysex_send_error_response(syxs.rx_buf[5],
-                            SYSEX_ERROR_MALFORMED_MSG);
-                        return;
-                    }
-                    {
-                        int addr, len;
-                        addr = (syxs.rx_buf[6] & 0x0f) << 20;
-                        addr |= (syxs.rx_buf[7] & 0x0f) << 16;
-                        addr |= (syxs.rx_buf[8] & 0x0f) << 12;
-                        addr |= (syxs.rx_buf[9] & 0x0f) << 8;
-                        addr |= (syxs.rx_buf[10] & 0x0f) << 4;
-                        addr |= syxs.rx_buf[11] & 0x0f;
-                        len = (syxs.rx_buf[12] & 0x0f) << 12;
-                        len |= (syxs.rx_buf[13] & 0x0f) << 8;
-                        len |= (syxs.rx_buf[14] & 0x0f) << 4;
-                        len |= syxs.rx_buf[15] & 0x0f;
-                        // start the write process
-//                        log_debug("save addr: 0x%06x len: %d", addr, len);
-                        if(ext_flash_save(addr, len, (uint8_t *)&syxs.io_buf) == -1) {
-                            sysex_send_error_response(syxs.rx_buf[5],
-                                SYSEX_ERROR_EXT_FLASH_ERROR);
-                            return;
-                        }
-                        sysex_send_error_response(syxs.rx_buf[5],
-                            SYSEX_ERROR_OK);
-                    }
+                    sysex_process_flash(syxs.rx_buf[5]);
                     break;
             }
             break;
@@ -506,8 +532,8 @@ void sysex_send_read_ext_mem_result(void) {
     tx_buf[tx_count++] = (syxs.addr & 0x00000f);
     tx_buf[tx_count++] = syxs.io_len & 0x7f;
     for(i = 0; i < syxs.io_len; i ++) {
-        tx_buf[tx_count++] = (syxs.io_buf[i] & 0xf0) >> 4;
-        tx_buf[tx_count++] = syxs.io_buf[i] & 0x0f;
+        tx_buf[tx_count++] = (syxs.read_buf[i] & 0xf0) >> 4;
+        tx_buf[tx_count++] = syxs.read_buf[i] & 0x0f;
     }
     tx_buf[tx_count++] = MIDI_SYSEX_END;
     midi_stream_send_sysex_msg(MIDI_PORT_SYSEX_OUT, tx_buf, tx_count);
@@ -544,16 +570,8 @@ void sysex_send_error_response(int cmd, int errorcode) {
     midi_stream_send_sysex_msg(MIDI_PORT_SYSEX_OUT, tx_buf, tx_count);
 }
 
-// convert a buffer off 4-bit nibbles to a buffer of 8-bit bytes
-void sysex_nibbles_to_bytes(uint8_t *inbuf, uint8_t *outbuf, int in_len) {
-    int i, out_count;
-    if(in_len < 2) {
-        log_error("sntb - in_len must be >= 2: %d", in_len);
-        return;
-    }
-    out_count = 0;
-    for(i = 0; i < in_len; i += 2) {
-        outbuf[out_count] = ((inbuf[i] & 0x0f) << 4) |
-            (inbuf[i+1] & 0x0f);
-    }
+// Decode byte_count bytes from an already validated high/low nibble payload.
+void sysex_nibbles_to_bytes(uint8_t *inbuf, uint8_t *outbuf, int byte_count) {
+    for(int i = 0; i < byte_count; i++)
+        outbuf[i] = (uint8_t)((inbuf[2 * i] << 4) | inbuf[2 * i + 1]);
 }

@@ -40,6 +40,7 @@
 #define EXT_FLASH_STATE_SAVE_NOERASE 5
 #define EXT_FLASH_STATE_SAVE_ERROR 6
 #define EXT_FLASH_STATE_SAVE_DONE 7
+#define EXT_FLASH_STATE_BUSY 8  // operation belongs to another caller
 
 // init external flash
 void ext_flash_init(void);
@@ -47,9 +48,12 @@ void ext_flash_init(void);
 // run the external flash timer task to handle data transfer
 void ext_flash_timer_task(void);
 
-// get the state of the external flash
-// if we are in an error or done state reading will reset to idle
-int ext_flash_get_state(void);
+// Query/consume completion only for the original I/O buffer (caller identity).
+// Non-owners get BUSY and cannot clear DONE/ERROR.
+int ext_flash_get_state_for(uint8_t *owner);
+
+// Inspect without consuming another caller's completion/error state.
+int ext_flash_peek_state(void);
 
 // start load from external flash - return -1 in case of error
 int ext_flash_load(int32_t addr, int len, uint8_t *loadp);

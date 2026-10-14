@@ -42,12 +42,17 @@
 #define EXT_FLASH_SUBSTATE_SAVE_WRITE_BUSY_CHECK_DONE 8
 
 struct ext_flash_state {
+    // All service entry points/progress run in the TIM3 realtime task. DMA
+    // interrupts only update spi_flash state, never this operation/owner.
+    // Future main-loop/other-interrupt callers require serialized admission.
+
     int state;  // I/O state - are we loading, saving, etc.?
     int substate;  // sub I/O state
     int32_t flash_addr;  // the start address in the flash to read or write
     int32_t rw_len;  // the length in bytes to read or write    
     int32_t addrp;  // address counter
     int32_t last_io_len;  // length of the last I/O
+    uint8_t *owner;  // original buffer identifies the caller until completion is consumed
     uint8_t *iop;  // pointer to the buffer to load or save
 };
 struct ext_flash_state extfs;
@@ -59,6 +64,7 @@ int32_t ext_flash_get_remain_io_bytes(void);
 void ext_flash_init(void) {
     spi_flash_init();
     extfs.state = EXT_FLASH_STATE_IDLE;
+    extfs.owner = NULL;
 }
 
 // run the external flash timer task to handle data transfer
@@ -335,26 +341,42 @@ void ext_flash_timer_task(void) {
     }
 }
 
+// Non-consuming inspection for callers that do not own the active operation.
+int ext_flash_peek_state(void) {
+    return extfs.state;
+}
+
 // get the state of the external flash
 // if we are in an error state the error will be cleared to IDLE after read
-int ext_flash_get_state(void) {
+// Only the caller holding the original I/O buffer may consume completion.
+// Buffer pointers remain stable throughout each module's asynchronous operation.
+int ext_flash_get_state_for(uint8_t *owner) {
+    if(owner == NULL || owner != extfs.owner) return extfs.state == EXT_FLASH_STATE_IDLE ?
+        EXT_FLASH_STATE_IDLE : EXT_FLASH_STATE_BUSY;
     int state = extfs.state;
-    switch(extfs.state) {
+    switch(state) {
         case EXT_FLASH_STATE_LOAD_ERROR:
         case EXT_FLASH_STATE_LOAD_DONE:
         case EXT_FLASH_STATE_SAVE_ERROR:
         case EXT_FLASH_STATE_SAVE_DONE:
+            extfs.owner = NULL;
             extfs.state = EXT_FLASH_STATE_IDLE;
             break;
         default:
-            // no action
             break;
     }
     return state;
 }
 
+// Validate before starting I/O: no zero-length erase, wraparound or page wrap.
+static int ext_flash_valid_range(int32_t addr, int len, uint8_t *buffer) {
+    return buffer != NULL && addr >= 0 && len > 0 &&
+        len <= EXT_FLASH_MEMORY_SIZE && addr <= EXT_FLASH_MEMORY_SIZE - len;
+}
+
 // start load from external flash - return -1 in case of error
 int ext_flash_load(int32_t addr, int len, uint8_t *loadp) {
+    if(!ext_flash_valid_range(addr, len, loadp)) return -1;
     // can't load if we're busy
     if(extfs.state != EXT_FLASH_STATE_IDLE) {
         return -1;
@@ -363,6 +385,7 @@ int ext_flash_load(int32_t addr, int len, uint8_t *loadp) {
     extfs.addrp = addr;
     extfs.rw_len = len;
     extfs.iop = loadp;
+    extfs.owner = loadp;
     extfs.state = EXT_FLASH_STATE_LOAD;
     extfs.substate = EXT_FLASH_SUBSTATE_LOAD_IDLE;
     return 0;
@@ -370,6 +393,9 @@ int ext_flash_load(int32_t addr, int len, uint8_t *loadp) {
 
 // start save to external flash - return -1 in case of error
 int ext_flash_save(int32_t addr, int len, uint8_t *savep) {
+    if(!ext_flash_valid_range(addr, len, savep) ||
+       addr % EXT_FLASH_SECTOR_SIZE != 0)
+        return -1;
     // can't save if we're busy
     if(extfs.state != EXT_FLASH_STATE_IDLE) {
         return -1;
@@ -378,6 +404,7 @@ int ext_flash_save(int32_t addr, int len, uint8_t *savep) {
     extfs.addrp = addr;
     extfs.rw_len = len;
     extfs.iop = savep;
+    extfs.owner = savep;
     extfs.state = EXT_FLASH_STATE_SAVE;
     extfs.substate = EXT_FLASH_SUBSTATE_SAVE_IDLE;
     return 0;
@@ -386,6 +413,8 @@ int ext_flash_save(int32_t addr, int len, uint8_t *savep) {
 // start save to external flash without performing a sector erase first
 // returns -1 in case of error
 int ext_flash_save_noerase(int32_t addr, int len, uint8_t *savep) {
+    if(!ext_flash_valid_range(addr, len, savep) || addr % EXT_FLASH_PAGE_SIZE != 0)
+        return -1;
     // can't save if we're busy
     if(extfs.state != EXT_FLASH_STATE_IDLE) {
         return -1;
@@ -394,6 +423,7 @@ int ext_flash_save_noerase(int32_t addr, int len, uint8_t *savep) {
     extfs.addrp = addr;
     extfs.rw_len = len;
     extfs.iop = savep;
+    extfs.owner = savep;
     extfs.state = EXT_FLASH_STATE_SAVE_NOERASE;
     extfs.substate = EXT_FLASH_SUBSTATE_SAVE_IDLE;
     return 0;

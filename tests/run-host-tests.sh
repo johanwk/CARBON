@@ -91,3 +91,15 @@ trap 'rm -rf "$TMP"' EXIT HUP INT TERM
     -Wno-tautological-constant-out-of-range-compare \
     tests/gui_status_test.c.in src/util/seq_utils.c src/seq/scale.c "$LINK_GC" -o "$TMP/gui-status"
 "$TMP/gui-status"
+
+"$CC" -x c -std=c11 -Wall -Wextra -Werror \
+    -Wno-unused-parameter -Wno-sign-compare \
+    -IDrivers/STM32F4xx_HAL_Driver/Inc -fsanitize=address,undefined \
+    tests/sysex_test.c.in -o "$TMP/sysex"
+"$TMP/sysex"
+
+"$CC" -x c -std=c11 -Wall -Wextra -Werror \
+    -Wno-unused-parameter -Wno-sign-compare \
+    -ffunction-sections -fdata-sections -fsanitize=address,undefined \
+    tests/ext_flash_test.c.in "$LINK_GC" -o "$TMP/ext-flash"
+"$TMP/ext-flash"

@@ -89,7 +89,7 @@ void config_store_timer_task(void) {
             break;
         case CONFIG_STORE_IO_STATE_LOADING:
             // check the flash to see if we're done
-            switch(ext_flash_get_state()) {
+            switch(ext_flash_get_state_for(cfgss.io_buf)) {
                 case EXT_FLASH_STATE_LOAD_ERROR:
                     config_store_clear();  // clear the store
                     cfgss.dirty = 0;  // make sure we don't write back
@@ -115,7 +115,7 @@ void config_store_timer_task(void) {
             break;
         case CONFIG_STORE_IO_STATE_SAVING:
             // check the flash to see if we're done
-            switch(ext_flash_get_state()) {
+            switch(ext_flash_get_state_for(cfgss.io_buf)) {
                 case EXT_FLASH_STATE_SAVE_ERROR:
                     cfgss.io_state = CONFIG_STORE_IO_STATE_LOADED;  // try saving again
                     break;
@@ -127,7 +127,7 @@ void config_store_timer_task(void) {
             break;
         case CONFIG_STORE_IO_STATE_ERASING:
             // check the flash to see if we're done
-            switch(ext_flash_get_state()) {
+            switch(ext_flash_get_state_for(cfgss.io_buf)) {
                 case EXT_FLASH_STATE_SAVE_ERROR:
                 case EXT_FLASH_STATE_SAVE_DONE:
 //                    log_debug("cstt - config store wiped");
@@ -165,7 +165,7 @@ void config_store_set_val(int32_t addr, int32_t val) {
 // returns -1 on error
 int config_store_wipe_flash(void) {
     int i;
-    if(ext_flash_get_state() != EXT_FLASH_STATE_IDLE) {
+    if(ext_flash_peek_state() != EXT_FLASH_STATE_IDLE) {
         return -1;
     }
     for(i = 0; i < (CONFIG_STORE_NUM_ITEMS * CONFIG_STORE_ITEM_SIZE); i ++) {
@@ -186,7 +186,7 @@ int config_store_wipe_flash(void) {
 //
 // start the load process
 int config_store_load_start(void) {
-    if(ext_flash_get_state() != EXT_FLASH_STATE_IDLE) {
+    if(ext_flash_peek_state() != EXT_FLASH_STATE_IDLE) {
         return -1;
     }
     // start load - bring entire sector into RAM
@@ -233,6 +233,7 @@ int config_store_load_done(void) {
 
 // start the writeback process
 int config_store_writeback_start(void) {
+    if(ext_flash_peek_state() != EXT_FLASH_STATE_IDLE) return -1;
     int32_t i, outpos;
     // make sure the token appears
     cfgss.config_ram[CONFIG_STORE_TOKEN] = CONFIG_STORE_MAGIC_TOKEN;

@@ -5,7 +5,7 @@
 #include "../src/seq/song.c"
 static uint8_t flash[EXT_FLASH_SONG_SIZE];
 static int flash_state, loaded;
-int ext_flash_get_state(void) { return flash_state; }
+int ext_flash_get_state_for(uint8_t *owner) { return flash_state; }
 int ext_flash_save(int32_t address, int length, uint8_t *data) {
     assert(length == sizeof(flash)); memcpy(flash, data, length);
     flash_state = EXT_FLASH_STATE_SAVE_DONE; return 0;
