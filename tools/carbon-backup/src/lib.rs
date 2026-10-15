@@ -1,3 +1,6 @@
+pub mod view;
+pub mod json;
+pub mod document;
 pub mod midi;
 pub mod song;
 pub mod transfer;
@@ -102,7 +105,8 @@ pub fn verify_song_archive<R:Read>(mut r:R)->Result<(Value,Vec<u8>),String>{
     let mut data=vec![0;SONG_SIZE];r.read_exact(&mut data).map_err(|e|e.to_string())?;
     let mut extra=[0];if r.read(&mut extra).map_err(|e|e.to_string())?!=0 {return Err("Trailing archive data".into());}
     if m["format"]!="CARBNSG1" || m["schema"]!=1 || m["address"]!=range.start
-      || m["song_bytes"]!=SONG_SIZE || m["matching_capture_passes"]!=2
+      || m["song_bytes"]!=SONG_SIZE
+      || !(m["matching_capture_passes"]==2 || (m["matching_capture_passes"]==0 && m["origin"]=="json_compilation"))
       || m["song_sha256"]!=hash(&data)
       || m["song_magic_valid"]!=(data[SONG_SIZE-4..]==[0x47,0x4e,0x4f,0x53]) {return Err("Song manifest/data mismatch".into());}
     Ok((m,data))

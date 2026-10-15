@@ -5,6 +5,22 @@ use std::{env,fs::{File,OpenOptions},path::Path,sync::mpsc,time::{Duration,Insta
 
 fn run()->Result<(),String>{
     let args:Vec<String>=env::args().collect();
+    if args.get(1).map(String::as_str)==Some("view") {
+        if args.len()<3{return Err("Usage: view FILE [--track 1..6] [--steps N|A-B] (JSON or single-song archive; offline)".into());}
+        let opts=view::Options::parse(&args[3..])?;
+        let bytes=std::fs::read(&args[2]).map_err(|e|e.to_string())?;
+        let text=if bytes.starts_with(b"CARBNSG1"){
+            let(_,raw)=verify_song_archive(&bytes[..])?;view::render(&raw,&opts)?
+        }else{
+            let text=std::str::from_utf8(&bytes).map_err(|_|"Expected JSON or single-song archive")?;
+            view::render_json(&json::parse(text)?,&opts)?
+        };
+        // Broken pipe (e.g. view | head) is normal termination, not a panic.
+        match std::io::Write::write_all(&mut std::io::stdout().lock(),text.as_bytes()){
+            Ok(())=>{},Err(e) if e.kind()==std::io::ErrorKind::BrokenPipe=>{},Err(e)=>return Err(e.to_string())
+        }
+        return Ok(());
+    }
     if args.get(1).map(String::as_str)==Some("verify") && args.len()==3 {
         let mut file=File::open(&args[2]).map_err(|e|e.to_string())?;
         let mut magic=[0u8;8];
@@ -17,6 +33,25 @@ fn run()->Result<(),String>{
             let (m,_)=verify_archive(file)?;println!("Verified64 slots: {}",m["bank_sha256"]);
         }
         return Ok(());
+    }
+    if args.get(1).map(String::as_str)==Some("export-json") && args.len()==4 {
+        let (m,data)=verify_song_archive(File::open(&args[2]).map_err(|e|e.to_string())?)?;
+        let slot=m["slot"].as_u64().ok_or("Missing slot")? as usize;
+        let doc=document::export_archive(&m,&data,slot)?;
+        let mut file=OpenOptions::new().write(true).create_new(true).open(&args[3]).map_err(|e|e.to_string())?;
+        std::io::Write::write_all(&mut file,serde_json::to_string_pretty(&doc).map_err(|e|e.to_string())?.as_bytes()).map_err(|e|e.to_string())?;
+        file.sync_all().map_err(|e|e.to_string())?;println!("Exported JSON offline; no device access");return Ok(());
+    }
+    if args.get(1).map(String::as_str)==Some("import-json") && args.len()==4 {
+        let text=std::fs::read_to_string(&args[2]).map_err(|e|e.to_string())?;
+        let doc=json::parse(&text)?;
+        let(slot,data)=document::import(&doc)?;
+        let manifest=serde_json::json!({"format":"CARBNSG1","schema":1,"slot":slot,"address":song_range(slot)?.start,
+            "song_bytes":SONG_SIZE,"song_sha256":hash(&data),"matching_capture_passes":0,"origin":"json_compilation","song_magic_valid":true,"document_metadata":doc["metadata"]});
+        let mut file=OpenOptions::new().write(true).create_new(true).open(&args[3]).map_err(|e|e.to_string())?;
+        write_song_archive(&mut file,&data,&manifest)?;file.sync_all().map_err(|e|e.to_string())?;drop(file);
+        verify_song_archive(File::open(&args[3]).map_err(|e|e.to_string())?)?;
+        println!("Compiled offline song image SHA256 {}",hash(&data));return Ok(());
     }
     if args.get(1).map(String::as_str)==Some("restore-song") {
         // Explicitly gated hardware test scope: selected spare slot30 only.
@@ -68,7 +103,7 @@ fn run()->Result<(),String>{
     if !(args.len()==stop_index+1 || args.len()==stop_index+3)
         || (!single && args.get(1).map(String::as_str)!=Some("backup-bank"))
         || args[stop_index]!="--stopped" {
-        return Err("Usage: carbon-backup ports | verify FILE | backup-bank FILE INPUT OUTPUT --stopped [--pause-ms N] | backup-song SLOT FILE INPUT OUTPUT --stopped [--pause-ms N]\nStop transport and avoid panel edits/save/load. No restore command.".into());
+        return Err("Usage: carbon-backup ports | verify FILE | backup-bank FILE INPUT OUTPUT --stopped [--pause-ms N] | backup-song SLOT FILE INPUT OUTPUT --stopped [--pause-ms N]\nStop transport and avoid panel edits/save/load. See README for explicit restore and JSON commands.".into());
     }
     let slot=if single {Some(args[2].parse::<usize>().map_err(|_|"Invalid panel slot")?)} else {None};
     let range=if let Some(slot)=slot {song_range(slot)?} else {0..BANK_SIZE};
@@ -100,7 +135,7 @@ fn run()->Result<(),String>{
         let mut data=Vec::with_capacity(range.len());
         let started=Instant::now();
         for address in range.clone().step_by(64){
-            // The ONLY outbound command anywhere in this executable is0x70.
+            // Backup path sends only read command0x70; restore is separately gated.
             connection.send(&request(address)?).map_err(|e|e.to_string())?;
             let deadline=Instant::now()+Duration::from_secs(3);
             loop {
