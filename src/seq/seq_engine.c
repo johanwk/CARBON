@@ -142,9 +142,10 @@ void seq_engine_track_play_step(int track, int step,
 static void seq_engine_prepare_visits(struct seq_engine_step_visit *visits);
 static void seq_engine_resolve_harmony(const struct seq_engine_step_visit *visits);
 static void seq_engine_set_direction(int track, int reverse);
-void seq_engine_track_start_note(int track, int step, int length, struct midi_msg *on_msg);
+void seq_engine_track_start_note(int track, int step, int length, int delay, struct midi_msg *on_msg);
 void seq_engine_track_manage_notes(int track);
 void seq_engine_track_stop_all_notes(int track);
+static void seq_engine_track_cancel_pending(int track);
 void seq_engine_track_set_bias_output(int track, int bias_note);
 int seq_engine_get_internal_cc(int track, int controller, int fallback);
 void seq_engine_apply_internal_cc(int source_track, int controller, int value);
@@ -544,6 +545,7 @@ void seq_engine_reset_track(int track) {
         return;
     }
     seq_engine_cancel_pending_scene_change();
+    seq_engine_track_cancel_pending(track);
     conditional_reset(&sestate.conditions[track], track);
     sestate.clock_div_count[track] = 0;
     sestate.bar_div_remainder[track] = 0;
@@ -1213,7 +1215,10 @@ void seq_engine_track_play_step(int track, int step,
                         }
                         midi_utils_enc_note_on(&msg, 0, 0, temp, event.data1);
                     }
-                    seq_engine_track_start_note(track, step, event.length, &msg);
+                    seq_engine_track_start_note(track, step, event.length,
+                        seq_utils_delay_ticks(event.delay == SEQ_START_DELAY_INHERIT
+                            ? song_get_start_delay(sestate.scene_current, track, step)
+                            : event.delay, sestate.step_size[track]), &msg);
                     break;
                 case SONG_EVENT_CC:
                     // send event directly
@@ -1244,7 +1249,7 @@ void seq_engine_track_play_step(int track, int step,
 }
 
 // start a note on a track playback - also figures out ratcheting and start delay
-void seq_engine_track_start_note(int track, int step, int length, struct midi_msg *on_msg) {
+void seq_engine_track_start_note(int track, int step, int length, int delay, struct midi_msg *on_msg) {
     int i, free_slot = -1, total_len;
     struct midi_msg stolen;
     int min_time_remain = 0xffff;
@@ -1266,15 +1271,20 @@ void seq_engine_track_start_note(int track, int step, int length, struct midi_ms
         // Release the stolen voice, never resend its note-on.
         stolen = sestate.track_active_notes[track][min_time_remain_slot].note.msg;
         midi_utils_note_on_to_off(&stolen);
-        // arp input
-        if(sestate.arp_enable[track]) {
-            arp_handle_input(track, &stolen);
-        }
-        // normal playback
-        else {
-            outproc_deliver_msg(sestate.scene_current, track,
-                &stolen,
-                OUTPROC_DELIVER_BOTH, OUTPROC_OUTPUT_PROCESSED);
+        // A pending attack has no corresponding output voice to release.
+        if(sestate.track_active_notes[track][min_time_remain_slot].start_delay_countdown == 0 &&
+                !(sestate.track_active_notes[track][min_time_remain_slot].ratchet_note_count > 1 &&
+                  sestate.track_active_notes[track][min_time_remain_slot].ratchet_gate_length_countdown < 0)) {
+            // arp input
+            if(sestate.arp_enable[track]) {
+                arp_handle_input(track, &stolen);
+            }
+            // normal playback
+            else {
+                outproc_deliver_msg(sestate.scene_current, track,
+                    &stolen,
+                    OUTPROC_DELIVER_BOTH, OUTPROC_OUTPUT_PROCESSED);
+            }
         }
         free_slot = min_time_remain_slot;
     }
@@ -1292,7 +1302,7 @@ void seq_engine_track_start_note(int track, int step, int length, struct midi_ms
     }
     // get the track params for the step
     sestate.track_active_notes[track][free_slot].start_delay_countdown =
-        song_get_start_delay(sestate.scene_current, track, step);
+        delay;
     sestate.track_active_notes[track][free_slot].ratchet_note_count =
         song_get_ratchet_mode(sestate.scene_current, track, step);
 
@@ -1304,6 +1314,8 @@ void seq_engine_track_start_note(int track, int step, int length, struct midi_ms
         // note length - based on step len not including gate time override
         sestate.track_active_notes[track][free_slot].ratchet_note_length =
             length / sestate.track_active_notes[track][free_slot].ratchet_note_count;
+        if(sestate.track_active_notes[track][free_slot].ratchet_note_length < 1)
+            sestate.track_active_notes[track][free_slot].ratchet_note_length = 1;
         sestate.track_active_notes[track][free_slot].ratchet_note_length_countdown =
             sestate.track_active_notes[track][free_slot].ratchet_note_length;
         // gate length - based on the note length scaled by the gate time
@@ -1311,6 +1323,8 @@ void seq_engine_track_start_note(int track, int step, int length, struct midi_ms
         sestate.track_active_notes[track][free_slot].ratchet_gate_length =
             (sestate.track_active_notes[track][free_slot].ratchet_note_length *
             sestate.gate_time[track]) >> 8;
+        if(sestate.track_active_notes[track][free_slot].ratchet_gate_length < 1)
+            sestate.track_active_notes[track][free_slot].ratchet_gate_length = 1;
         // make sure gate length is not longer than note length
         if(sestate.track_active_notes[track][free_slot].ratchet_gate_length >
                 sestate.track_active_notes[track][free_slot].ratchet_note_length) {
@@ -1356,9 +1370,12 @@ void seq_engine_track_manage_notes(int track) {
             }
             // ratcheting is enabled so let's deal with that
             else if(sestate.track_active_notes[track][note].ratchet_note_count > 1) {
-                sestate.track_active_notes[track][note].ratchet_gate_length_countdown --;
+                if(sestate.track_active_notes[track][note].ratchet_gate_length_countdown > 0)
+                    sestate.track_active_notes[track][note].ratchet_gate_length_countdown --;
                 // gate timed out
-                if(sestate.track_active_notes[track][note].ratchet_gate_length_countdown <= 0) {
+                if(sestate.track_active_notes[track][note].ratchet_gate_length_countdown == 0) {
+                    // Send exactly one release per attack, including repeated pitches.
+                    sestate.track_active_notes[track][note].ratchet_gate_length_countdown = -1;
                     // make a copy and convert to note off
                     midi_utils_copy_msg(&msg, &sestate.track_active_notes[track][note].note.msg);
                     midi_utils_note_on_to_off(&msg);
@@ -1411,12 +1428,26 @@ void seq_engine_track_manage_notes(int track) {
 }
 
 // stop all playing notes
+// Pending attacks have no output voice; cancellation must not send note-off.
+static void seq_engine_track_cancel_pending(int track) {
+    for(int note = 0; note < SEQ_ENGINE_MAX_NOTES; note++) {
+        if(sestate.track_active_notes[track][note].start_delay_countdown > 0)
+            sestate.track_active_notes[track][note].note.msg.status = 0;
+    }
+}
+
 void seq_engine_track_stop_all_notes(int track) {
     struct midi_msg msg;
     int note;
     for(note = 0; note < SEQ_ENGINE_MAX_NOTES; note ++) {
         // note is active
         if(sestate.track_active_notes[track][note].note.msg.status != 0) {
+            if(sestate.track_active_notes[track][note].start_delay_countdown > 0 ||
+                    (sestate.track_active_notes[track][note].ratchet_note_count > 1 &&
+                     sestate.track_active_notes[track][note].ratchet_gate_length_countdown < 0)) {
+                sestate.track_active_notes[track][note].note.msg.status = 0;
+                continue;
+            }
             // make a copy and convert to note off
             midi_utils_copy_msg(&msg,
                 &sestate.track_active_notes[track][note].note.msg);
@@ -1755,7 +1786,7 @@ void seq_engine_live_passthrough(int track, struct midi_msg *msg) {
 // record the event
 void seq_engine_record_event(struct midi_msg *msg) {
     int i;
-    struct track_event trkevent;
+    struct track_event trkevent = {.delay = SEQ_START_DELAY_INHERIT};
 
     // see if we need to start recording mode
     // this might be the first event that enables recording
@@ -1921,7 +1952,7 @@ void seq_engine_record_write_tracks(void) {
     int i, j, rn, step, temp;
     int damper_held;
     int used_notes[128];  // note numbers
-    struct track_event trkevent;
+    struct track_event trkevent = {.delay = SEQ_START_DELAY_INHERIT};
 
     // ignore blank recording
     if(sestate.record_event_count == 0) {
@@ -1995,6 +2026,7 @@ void seq_engine_record_write_tracks(void) {
                     break;
                 }
                 trkevent.type = SONG_EVENT_NOTE;
+                trkevent.delay = SEQ_START_DELAY_INHERIT;
                 trkevent.data0 = sestate.record_events[rn].msg.data0;
                 trkevent.data1 = sestate.record_events[rn].msg.data1;
                 // note was held down past loop end (tick_len is 0)
@@ -2153,6 +2185,7 @@ void seq_engine_mute_select_changed(int scene, int track, int newval) {
     }
     if(newval) {
         sestate.track_mute[track] = 1;
+        seq_engine_track_cancel_pending(track);
         // stop notes on track that is now muted
         seq_engine_live_stop_all_notes(track);
     }
@@ -2256,6 +2289,7 @@ void seq_engine_arp_enable_changed(int scene, int track, int enable) {
 void seq_engine_song_loaded(int song) {
     int track, mapnum;
     for(track = 0; track < SEQ_NUM_TRACKS; track ++) {
+        seq_engine_track_stop_all_notes(track);
         conditional_reset(&sestate.conditions[track], track);
     }
     seq_engine_clear_internal_cc();
@@ -2483,6 +2517,7 @@ void seq_engine_cancel_pending_scene_change(void) {
 void seq_engine_reset_all_tracks_pos(void) {
     int track;
     for(track = 0; track < SEQ_NUM_TRACKS; track ++) {
+        seq_engine_track_cancel_pending(track);
         sestate.clock_div_count[track] = 0;
         sestate.bar_div_remainder[track] = 0;
         seq_engine_schedule_bar_div_step(track);

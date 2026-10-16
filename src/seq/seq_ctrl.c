@@ -1403,7 +1403,7 @@ void seq_ctrl_flip_arp_enable(void) {
 // make magic on tracks - affects the current active tracks / region
 void seq_ctrl_make_magic(void) {
     int track, i, start, len, step, temp;
-    struct track_event event;
+    struct track_event event = {.delay = SEQ_START_DELAY_INHERIT};
     seq_ctrl_set_record_mode(SEQ_CTRL_RECORD_IDLE);  // stop recording
     // process currently selected tracks
     for(track = 0; track < SEQ_NUM_TRACKS; track ++) {

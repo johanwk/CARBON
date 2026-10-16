@@ -103,3 +103,19 @@ Scales apply to source and Bias targets in source/slot order (last wins).
 Integration tests cover gated/clashing requests, rescan priority, transient
 reset/scene lifecycle, held/live/arp/drum output, editor preview and persistence.
 No per-track roots or CCi30. Older firmware cannot interpret Hrm songs.
+
+## Note-delay regression coverage (local 1.35)
+
+The engine/editor/song fixtures cover inherited versus explicit Off, relative
+choices, triplet onsets, delayed durations, all-onset inversion, old padding
+migration and stale-slot creation. Clock integration drives full engine passes
+through 54/55-tick bar intervals and the 0/32/64 triplet example. Known ticks
+are injected through the production callback; this does not measure clock jitter.
+
+Ratchet tests check a delayed whole train, one release per attack, minimum
+one-tick subdivisions/gates, pending cancellation and repeated-pitch output
+integration. Scene/reset cancels pending attacks but keeps legacy sounding
+tails; route stop and song load clear sequenced voices. GUI tests check shared
+status-buffer boundaries/dirty suppression, not physical LCD pixels. Hardware
+audition, stack high-water, external-clock jitter and timing-preserving live
+recording are not claimed verified by these host tests.

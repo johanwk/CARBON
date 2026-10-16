@@ -36,5 +36,18 @@ int main(void) {
     assert(strlen(label) == 28 && !strstr(label, "64:63:63"));
     density = 0; length = 1; rotation = 63; gui_update_song_mode();
     assert(!strcmp(label + 23, "1:0:0"));
+    // Delay labels survive the production status buffers, including slot6.
+    // Both LCD layouts consume these same 28-character labels.
+    static const char *choices[]={"OFF","Step","s1/8","s1/4","s1/3","s1/2","s2/3","s3/4","s7/8"};
+    for(unsigned c=0;c<sizeof(choices)/sizeof(choices[0]);c++) {
+        gui_clear_status_text_all();
+        for(int slot=0;slot<6;slot++) gui_set_status_text_part(3,3+4*slot,4,(char *)choices[c]);
+        char *delay=gstate.glabels[GUI_LABEL_STATUS_L4].text;
+        assert(strlen(delay)==GUI_STATUS_LINE_LEN);
+        for(int slot=0;slot<6;slot++) assert(!memcmp(delay+3+4*slot,choices[c],strlen(choices[c])));
+        gstate.glabels[GUI_LABEL_STATUS_L4].dirty=0;
+        for(int slot=0;slot<6;slot++) gui_set_status_text_part(3,3+4*slot,4,(char *)choices[c]);
+        assert(!gstate.glabels[GUI_LABEL_STATUS_L4].dirty);
+    }
     puts("GUI status tests passed"); return 0;
 }

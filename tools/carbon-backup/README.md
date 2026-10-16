@@ -179,3 +179,24 @@ blanking excluded cells. Default detail view unchanged. All active event
 types count as material. Stored scene settings printed; no pattern/Euclidean
 mask, gate/mute or transient runtime simulation. Global editable preset masks
 are absent; no default-ROM assumption is silently applied.
+
+## Local 1.35 note-delay development (not hardware verified)
+
+Offline export/import/view and planning also accept 1.35 images, using
+`schema_version: 2` and profile `carbon-1.35-note-delay`. Schema1/1.34
+remains supported without interpreting its event padding as delay. The
+profile must match the raw provenance version; import does not migrate it.
+
+Schema2 steps use `delay` instead of `delay_ticks`; Note parameters also
+require `delay`. Choices are tagged objects: `{"kind":"ticks","ticks":0}`
+(explicit Off), `{"kind":"relative","fraction":"1/3"}`, or
+`{"kind":"inherit"}` (Notes only). Absolute ticks remain 0..96; relative
+fractions are 1/8, 1/4, 1/3, 1/2, 2/3, 3/4 and 7/8 of the actual step.
+The Note choice replaces rather than adds to shared delay. Relative delays
+round to the nearest tick (ties upward), including on variable intervals.
+
+Hardware restore of 1.35 sources is deliberately rejected before opening
+MIDI: `--firmware-0623fee` asserts the older 1.34 candidate, not compatible
+1.35 playback. No new firmware assertion or device write is enabled here.
+The earlier 1.34-only descriptions above describe the hardware-tested path.
+MIDI import and timing-preserving live recording remain separate future work.

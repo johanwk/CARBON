@@ -92,7 +92,7 @@ struct track_event {
     uint8_t type;
     uint8_t data0;  // note number or CC
     uint8_t data1;  // velocity or value
-    uint8_t dummy;  // padding to make an even number of bytes
+    uint8_t delay;  // 0..96 absolute ticks, 97..103 relative, 255 inherit (Notes)
     uint16_t length;  // note length (ticks)
 };
 
@@ -117,6 +117,7 @@ _Static_assert(sizeof(struct track_event) == 6, "event storage size changed");
 _Static_assert(offsetof(struct track_event, type) == 0 &&
     offsetof(struct track_event, data0) == 1 &&
     offsetof(struct track_event, data1) == 2 &&
+    offsetof(struct track_event, delay) == 3 &&
     offsetof(struct track_event, length) == 4, "event storage offsets changed");
 #define SONG_EVENT_NOTE MIDI_NOTE_ON
 #define SONG_EVENT_CC MIDI_CONTROL_CHANGE

@@ -156,7 +156,7 @@ void step_edit_handle_state_change(int event_type, int *data, int data_len) {
 // handle a input from the keyboard
 void step_edit_handle_input(struct midi_msg *msg) {
     int i;
-    struct track_event event;
+    struct track_event event = {.delay = SEQ_START_DELAY_INHERIT};
     // we only care about MIDI if we're enabled
     if(!sedits.enable) {
         return;
@@ -183,6 +183,7 @@ void step_edit_handle_input(struct midi_msg *msg) {
                 }
             }
             // add / edit the new note
+            event.delay = SEQ_START_DELAY_INHERIT;
             event.type = SONG_EVENT_NOTE;
             event.data0 = msg->data0;
             event.data1 = msg->data1;
@@ -287,7 +288,7 @@ void step_edit_adjust_cursor(int change, int shift) {
 
 // adjust the step note
 void step_edit_adjust_note(int change, int shift) {
-    struct track_event event;
+    struct track_event event = {.delay = SEQ_START_DELAY_INHERIT};
     sedits.edit_timeout = panel_menu_get_timeout();
 
     // shift + transpose cycles the selected event type
@@ -303,6 +304,7 @@ void step_edit_adjust_note(int change, int shift) {
         }
         index = (index + (change > 0 ? 1 : 9)) % 10;
         event.type = types[index];
+        event.delay = SEQ_START_DELAY_INHERIT;
         event.data0 = 0;
         event.data1 = 0;
         event.length = 0;
@@ -373,7 +375,22 @@ void step_edit_adjust_gate_time(int change, int shift) {
 // adjust the start delay
 void step_edit_adjust_start_delay(int change, int shift) {
     sedits.edit_timeout = panel_menu_get_timeout();
-    step_edit_adjust_step(change, STEP_EDIT_ADJUST_START_DELAY, 0, shift);
+    step_edit_stop_notes();
+    if(sedits.event_pos == STEP_EDIT_EVENT_POS_ALL) {
+        int old = song_get_start_delay(sedits.scene, sedits.track, sedits.step_pos);
+        song_set_start_delay(sedits.scene, sedits.track, sedits.step_pos,
+            seq_utils_delay_adjust(old, change, 0));
+    } else {
+        struct track_event event;
+        if(song_get_step_event(sedits.scene, sedits.track, sedits.step_pos,
+                sedits.event_pos, &event) == 0 && event.type == SONG_EVENT_NOTE) {
+            event.delay = seq_utils_delay_adjust(event.delay, change, 1);
+            song_set_step_event(sedits.scene, sedits.track, sedits.step_pos,
+                sedits.event_pos, &event);
+        }
+    }
+    sedits.last_adjust_type = STEP_EDIT_ADJUST_START_DELAY;
+    step_edit_update_display();
 }
 
 // adjust the ratchet mode
@@ -443,7 +460,7 @@ static int step_edit_adjust_cci_value(int controller, int raw, int change) {
 // adjust all events on a step
 void step_edit_adjust_step(int change, int mode, int single, int shift) {
     int inhibit_preview = 0;
-    struct track_event event;
+    struct track_event event = {.delay = SEQ_START_DELAY_INHERIT};
     int i, start, num, temp;
 
     // stop playing before editing
@@ -455,6 +472,8 @@ void step_edit_adjust_step(int change, int mode, int single, int shift) {
             (sedits.event_pos != STEP_EDIT_EVENT_POS_ALL &&
             song_get_step_event(sedits.scene, sedits.track, sedits.step_pos,
             sedits.event_pos, &event) == -1)) {
+        // A blank slot may retain payload from a deleted Note.
+        event.delay = SEQ_START_DELAY_INHERIT;
         // figure out single slot position
         if(single && sedits.event_pos != STEP_EDIT_EVENT_POS_ALL) {
             start = sedits.event_pos;
@@ -686,7 +705,7 @@ static const char *step_edit_cci_name(int controller) {
 }
 
 static void step_edit_show_cci_hint(void) {
-    struct track_event event;
+    struct track_event event = {.delay = SEQ_START_DELAY_INHERIT};
     if(sedits.event_pos < 0) return;
     if(song_get_step_event(sedits.scene, sedits.track, sedits.step_pos,
             sedits.event_pos, &event) == -1 || event.type != SONG_EVENT_INTERNAL_CC ||
@@ -791,7 +810,7 @@ static void step_edit_cci_value_title(char *title, int controller, int raw) {
 static void step_edit_update_title(void) {
     char title[GFX_LABEL_LEN];
     const char *name = step_edit_cci_name(sedits.cci_hint_controller);
-    struct track_event event;
+    struct track_event event = {.delay = SEQ_START_DELAY_INHERIT};
     if(sedits.event_pos >= 0 && song_get_step_event(sedits.scene, sedits.track,
             sedits.step_pos, sedits.event_pos, &event) != -1 && event.type == SONG_EVENT_INVERSION) {
         snprintf(title, sizeof(title), "Inv: %d Compact %s", event.data0, event.data1 ? "On" : "Off");
@@ -823,7 +842,7 @@ static void step_edit_update_title(void) {
 void step_edit_update_display(void) {
     int i, xpos, temp;
     char tempstr[GFX_LABEL_LEN];
-    struct track_event event;
+    struct track_event event = {.delay = SEQ_START_DELAY_INHERIT};
     gui_clear_status_text_all();
     step_edit_update_title();
 
@@ -899,9 +918,16 @@ void step_edit_update_display(void) {
                         break;
                     case STEP_EDIT_ADJUST_START_DELAY:
                         // display time
-                        temp = song_get_start_delay(sedits.scene, sedits.track,
-                                sedits.step_pos);
-                        if(temp == 0) {
+                        temp = sedits.event_pos == STEP_EDIT_EVENT_POS_ALL
+                            ? song_get_start_delay(sedits.scene, sedits.track, sedits.step_pos)
+                            : event.delay;
+                        if(temp == SEQ_START_DELAY_INHERIT) {
+                            sprintf(tempstr, "Step");
+                        }
+                        else if(seq_utils_delay_relative_label(temp)) {
+                            sprintf(tempstr, "%s", seq_utils_delay_relative_label(temp));
+                        }
+                        else if(temp == 0) {
                             sprintf(tempstr, "OFF");
                         }
                         else {
@@ -980,7 +1006,7 @@ void step_edit_update_display(void) {
 
 // play events on the current step
 void step_edit_play_step(void) {
-    struct track_event event;
+    struct track_event event = {.delay = SEQ_START_DELAY_INHERIT};
     int i;
 
     // don't play the step if we are running
@@ -1113,7 +1139,7 @@ int step_edit_get_num_recording_notes(void) {
 // checks whether the step contains an event
 // returns -1 if the event is not found, or the slot number if found
 int step_edit_does_step_contain_event(int type, int data0) {
-    struct track_event event;
+    struct track_event event = {.delay = SEQ_START_DELAY_INHERIT};
     int i;
     // see if the event is already there
     for(i = 0; i < SEQ_TRACK_POLY; i ++) {

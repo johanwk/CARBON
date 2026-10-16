@@ -62,6 +62,7 @@ fn run()->Result<(),String>{
         let (target,base)=verify_song_archive(File::open(&args[3]).map_err(|e|e.to_string())?)?;
         let slot=args[4].parse::<usize>().map_err(|_|"Invalid target slot")?;
         if slot!=30 || target["slot"]!=30 {return Err("Initial write test restricted to backed-up slot30".into());}
+        if source[0]==35{return Err("1.35 note-delay restore requires separately verified 1.35 firmware; existing --firmware-0623fee assertion is insufficient".into());}
         let plan=restore::Plan::new(slot,base,source,restore::Mode::Replace)?;
         println!("{}",serde_json::to_string_pretty(&plan.summary()).map_err(|e|e.to_string())?);
         if args[9]!=plan.approval_token() {return Err("Exact replacement approval token required".into());}

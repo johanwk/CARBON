@@ -24,6 +24,7 @@ impl Options {
  }
 }
 fn pitch(n:u8)->String{let names=["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];format!("{}{} ({n})",names[(n%12) as usize],i16::from(n)/12-1)}
+fn delay_label(code:u8)->String{let v=document::delay_json(code);match v["kind"].as_str(){Some("inherit")=>"Step/inherit".into(),Some("relative")=>format!("{} step",v["fraction"].as_str().unwrap()),_=>format!("{code} ticks")}}
 fn detail(e:&[u8])->(&'static str,String){let a=e[1];let b=e[2];let len=u16::from_le_bytes([e[4],e[5]]);match e[0]{
  0=>("Empty",String::new()),0x90=>("Note",format!("{:<11} velocity {b:3}  length {len} ticks",pitch(a))),
  0xb0=>("CC",format!("controller {a}  value {b}")),0xc0=>("PC",format!("program {a}")),
@@ -34,15 +35,15 @@ fn detail(e:&[u8])->(&'static str,String){let a=e[1];let b=e[2];let len=u16::fro
 pub fn render(data:&[u8],opts:&Options)->Result<String,String>{
  if data.len()!=SONG_SIZE{return Err("Wrong song size".into());}
  let version=u32::from_le_bytes(data[..4].try_into().unwrap());
- if version!=0x10022{return Err("View currently requires1.34 image; no implicit legacy migration".into());}
+ if version!=0x10022 && version!=0x10023{return Err("View currently requires1.34 image; no implicit legacy migration".into());}
  crate::restore::validate_source(data)?;crate::song::validate(data)?;
  if opts.first_step<1||opts.last_step>64||opts.first_step>opts.last_step||opts.track.is_some_and(|t|!(1..=6).contains(&t)){return Err("Invalid view selection".into());}
  if opts.grid{return render_grid(data,opts);}
- let mut out=String::from("CARBON 1.34 — shared events across scenes\nMIDI 60=C4; lengths/delays in96-PPQ ticks. All six slots retained.\nScene motion, pattern and routing settings are not applied in this event view.\n\n");
+ let mut out=String::from("CARBON — shared events across scenes\nMIDI 60=C4; lengths/delays in96-PPQ ticks. All six slots retained.\nScene motion, pattern and routing settings are not applied in this event view.\n\n");
  for t in 1..=6{if opts.track.is_some_and(|selected|selected!=t){continue;}
   for s in opts.first_step..=opts.last_step{let o=1056+2*((t-1)*64+s-1);
-   writeln!(out,"Track {t} / Step {s}  [shared delay {} ticks; ratchet {}]",data[o],data[o+1]).unwrap();
-   for p in 1..=6{let o=1824+(((t-1)*64+s-1)*6+p-1)*6;let(kind,text)=detail(&data[o..o+6]);writeln!(out,"  {p}  {kind:<7} {text}").unwrap();}out.push('\n');
+   writeln!(out,"Track {t} / Step {s}  [shared delay {}; ratchet {}]",delay_label(data[o]),data[o+1]).unwrap();
+   for p in 1..=6{let o=1824+(((t-1)*64+s-1)*6+p-1)*6;let(kind,mut text)=detail(&data[o..o+6]);if version==0x10023 && data[o]==0x90{text.push_str(&format!("  delay {}",delay_label(data[o+3])));}writeln!(out,"  {p}  {kind:<7} {text}").unwrap();}out.push('\n');
   }
  }Ok(out)
 }

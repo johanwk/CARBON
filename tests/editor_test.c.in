@@ -25,8 +25,9 @@ void gui_set_status_override(int enable) {}
 int panel_menu_get_timeout(void) { return 100; }
 int song_get_step_length(int scene, int track) { return 0; }
 int song_get_ratchet_mode(int scene, int track, int step) { return 1; }
-int song_get_start_delay(int scene, int track, int step) { return 0; }
-void song_set_start_delay(int scene, int track, int step, int delay) {}
+static int shared_delay, delay_writes;
+int song_get_start_delay(int scene, int track, int step) { return shared_delay; }
+void song_set_start_delay(int scene, int track, int step, int delay) { shared_delay=delay; delay_writes++; }
 int song_get_num_step_events(int scene, int track, int step) {
     int i, n = 0; for(i = 0; i < SEQ_TRACK_POLY; i ++) n += !!events[i].type;
     return n;
@@ -37,6 +38,12 @@ int song_get_step_event(int scene, int track, int step, int slot, struct track_e
 int song_set_step_event(int scene, int track, int step, int slot, struct track_event *e) {
     events[slot] = *e; return 0;
 }
+int song_add_step_event(int scene, int track, int step, struct track_event *e) {
+    for(int i=0;i<SEQ_TRACK_POLY;i++) if(!events[i].type) {events[i]=*e; return 0;}
+    return -1;
+}
+void song_clear_step_event(int scene, int track, int step, int slot) {events[slot].type=0;}
+int song_get_track_type(int track) {return SONG_TRACK_TYPE_VOICE;}
 void gui_clear_status_text_all(void) { memset(rows, ' ', sizeof(rows)); }
 void gui_set_status_text(int row, char *s) {
     assert(strlen(s) <= 28); snprintf(rows[row], sizeof(rows[row]), "%s", s);
@@ -263,5 +270,32 @@ int main(void) {
     step_edit_adjust_note(-100, 0); step_edit_adjust_velocity(-1, 0);
     assert(!strcmp(rows[0], "Inv: 0 Compact Off"));
     step_edit_play_step(); assert(!count);
+    setup(); sedits.event_pos = STEP_EDIT_EVENT_POS_ALL;
+    shared_delay = 96; delay_writes = 0;
+    for(i=0;i<6;i++) events[i]=(struct track_event){.type=SONG_EVENT_NOTE,.delay=255};
+    step_edit_adjust_start_delay(1,0);
+    assert(shared_delay==97 && delay_writes==1);
+    assert(!memcmp(rows[3]+3,"s1/8",4));
+    sedits.event_pos=2; step_edit_adjust_start_delay(1,0);
+    assert(events[2].delay==0 && shared_delay==97 && delay_writes==1);
+    step_edit_adjust_start_delay(-1,0); assert(events[2].delay==255);
+    assert(!memcmp(rows[3]+11,"Step",4));
+    events[2].delay=96; step_edit_adjust_start_delay(3,0);
+    assert(events[2].delay==99 && events[1].delay==255);
+    assert(!memcmp(rows[3]+11,"s1/3",4));
+    // All relative labels and inherit fit every four-character slot.
+    for(int code=97;code<=103;code++) {
+        for(i=0;i<6;i++) events[i].delay=code;
+        sedits.event_pos=0; step_edit_update_display();
+        for(i=0;i<6;i++) assert(!memcmp(rows[3]+3+4*i,seq_utils_delay_relative_label(code),4));
+    }
+    // Deleted-slot payload must not become a new Note override.
+    setup(); sedits.event_pos=0; events[0].delay=99;
+    step_edit_adjust_note(1,0); assert(events[0].type==SONG_EVENT_NOTE && events[0].delay==255);
+    setup(); step_edit_clear_recording_notes(); sedits.enable=1; events[0]=(struct track_event){.type=SONG_EVENT_NOTE,.delay=103};
+    struct midi_msg input={.status=MIDI_NOTE_ON,.data0=64,.data1=90};
+    step_edit_handle_input(&input); assert(events[0].type==SONG_EVENT_NOTE && events[0].delay==255);
+    events[0].type=SONG_EVENT_INVERSION; events[0].delay=99; sedits.event_pos=0;
+    step_edit_adjust_note(1,1); assert(events[0].type==SONG_EVENT_NOTE && events[0].delay==255);
     puts("editor tests passed"); return 0;
 }

@@ -222,6 +222,14 @@ void song_timer_task(void) {
                     song_init_euclidean();
                 }
                 if(song.song_version < SONG_VERSION_ROOT) song_init_roots();
+                if(song.song_version < SONG_VERSION_NOTE_DELAY) {
+                    // Padding in old images is arbitrary, never musical timing.
+                    for(int track = 0; track < SEQ_NUM_TRACKS; track++)
+                        for(int step = 0; step < SEQ_NUM_STEPS; step++)
+                            for(int slot = 0; slot < SEQ_TRACK_POLY; slot++)
+                                song.trkevents[track][step][slot].delay =
+                                    SEQ_START_DELAY_INHERIT;
+                }
                 if(song.song_version < CARBON_VERSION_MAJMIN) {
                     song_set_version_to_current();
                 }
@@ -249,7 +257,7 @@ void song_timer_task(void) {
 // clear the song in RAM back to defaults
 void song_clear(void) {
     int scene, track, step, mapnum, port, i;
-    struct track_event event;
+    struct track_event event = {.delay = SEQ_START_DELAY_INHERIT};
 
     //
     // reset global stuff
@@ -1799,6 +1807,8 @@ int song_add_step_event(int scene, int track, int step,
         log_error("sase - step invalid: %d", step);
         return -1;
     }
+    if(event->type == SONG_EVENT_NOTE && event->delay > SEQ_START_DELAY_MAX &&
+            event->delay != SEQ_START_DELAY_INHERIT) return -1;
     // search for a blank slot or a slot with the same event type
     existing_slot = -1;
     blank_slot = -1;
@@ -1842,11 +1852,13 @@ int song_add_step_event(int scene, int track, int step,
     song.trkevents[scene][track][step][slot].data0 = event->data0;
     song.trkevents[scene][track][step][slot].data1 = event->data1;
     song.trkevents[scene][track][step][slot].length = event->length;
+    song.trkevents[scene][track][step][slot].delay = event->type == SONG_EVENT_NOTE ? event->delay : SEQ_START_DELAY_INHERIT;
 #else
     song.trkevents[track][step][slot].type = event->type;
     song.trkevents[track][step][slot].data0 = event->data0;
     song.trkevents[track][step][slot].data1 = event->data1;
     song.trkevents[track][step][slot].length = event->length;
+    song.trkevents[track][step][slot].delay = event->type == SONG_EVENT_NOTE ? event->delay : SEQ_START_DELAY_INHERIT;
 #endif
     // fire event
     state_change_fire3(SCE_SONG_ADD_STEP_EVENT, scene, track, step);
@@ -1872,16 +1884,20 @@ int song_set_step_event(int scene, int track, int step,
         log_error("ssse - slot invalid: %d", slot);
         return -1;
     }
+    if(event->type == SONG_EVENT_NOTE && event->delay > SEQ_START_DELAY_MAX &&
+            event->delay != SEQ_START_DELAY_INHERIT) return -1;
 #ifdef SONG_NOTES_PER_SCENE
     song.trkevents[scene][track][step][slot].type = event->type;
     song.trkevents[scene][track][step][slot].data0 = event->data0;
     song.trkevents[scene][track][step][slot].data1 = event->data1;
     song.trkevents[scene][track][step][slot].length = event->length;
+    song.trkevents[scene][track][step][slot].delay = event->type == SONG_EVENT_NOTE ? event->delay : SEQ_START_DELAY_INHERIT;
 #else
     song.trkevents[track][step][slot].type = event->type;
     song.trkevents[track][step][slot].data0 = event->data0;
     song.trkevents[track][step][slot].data1 = event->data1;
     song.trkevents[track][step][slot].length = event->length;
+    song.trkevents[track][step][slot].delay = event->type == SONG_EVENT_NOTE ? event->delay : SEQ_START_DELAY_INHERIT;
 #endif
     // fire event
     state_change_fire3(SCE_SONG_SET_STEP_EVENT, scene, track, step);
@@ -1914,11 +1930,13 @@ int song_get_step_event(int scene, int track, int step, int slot,
     event->data0 = song.trkevents[scene][track][step][slot].data0;
     event->data1 = song.trkevents[scene][track][step][slot].data1;
     event->length = song.trkevents[scene][track][step][slot].length;
+    event->delay = song.trkevents[scene][track][step][slot].delay;
 #else
     event->type = song.trkevents[track][step][slot].type;
     event->data0 = song.trkevents[track][step][slot].data0;
     event->data1 = song.trkevents[track][step][slot].data1;
     event->length = song.trkevents[track][step][slot].length;
+    event->delay = song.trkevents[track][step][slot].delay;
 #endif
     // blank slot
     if(event->type == SONG_EVENT_NULL) {

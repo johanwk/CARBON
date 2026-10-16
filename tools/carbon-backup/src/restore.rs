@@ -30,14 +30,15 @@ pub fn diff(before:&[u8],after:&[u8])->Result<Value,String>{
 }
 /// Validate implemented event encodings. Unused bytes remain opaque.
 pub fn validate_source(data:&[u8])->Result<(),String>{
-    if data.len()!=SONG_SIZE || data[..4]!=[34,0,1,0] || data[SONG_SIZE-4..]!=[0x47,0x4e,0x4f,0x53]{return Err("Source must be complete1.34 SONG image".into());}
+    if data.len()!=SONG_SIZE || !([34,35].contains(&data[0]) && data[1..4]==[0,1,0]) || data[SONG_SIZE-4..]!=[0x47,0x4e,0x4f,0x53]{return Err("Source must be complete1.34/1.35 SONG image".into());}
     for (i,e) in data[1824..15648].chunks_exact(6).enumerate(){
         let valid=match e[0] {
             0|4|5=>true,
             1=>(16..=29).contains(&e[1]) && e[2]<=127,
             2=>e[1]<=100,3=>e[1]<=27 && e[2]<=7,
             6=>e[1]<=16 && e[2]<=13,7=>e[1]<=5 && e[2]<=1,
-            0x90|0xb0=>e[1]<=127 && e[2]<=127,0xc0=>e[1]<=127,_=>false
+            0x90=>e[1]<=127 && e[2]<=127 && (data[0]==34 || e[3]<=103 || e[3]==255),
+            0xb0=>e[1]<=127 && e[2]<=127,0xc0=>e[1]<=127,_=>false
         };
         if !valid{return Err(format!("Invalid event: track{} step{} slot{}",i/384+1,(i/6)%64+1,i%6+1));}
     }

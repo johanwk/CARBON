@@ -3,4 +3,6 @@
 #include <assert.h>
 #include "../src/seq/song.c"
 #define P(x) printf("%s=%zu\n",#x,offsetof(struct song_data,x))
+_Static_assert(offsetof(struct track_event, delay) == 3, "note delay offset");
+_Static_assert(sizeof(struct track_event) == 6, "event size");
 int main(void){assert(offsetof(struct song_data,snglist)==48);assert(offsetof(struct song_data,trkparam)==432);assert(offsetof(struct song_data,trkscene)==480);assert(offsetof(struct song_data,trkstepparam)==1056);assert(offsetof(struct song_data,trkevents)==1824);assert(offsetof(struct song_data,midi_remote_ctrl)==15648);assert(offsetof(struct song_data,scene_midi_program)==15666);assert(offsetof(struct song_data,euclidean_density)==15738);assert(offsetof(struct song_data,root)==15810);assert(sizeof(struct track_scene)==16);assert(sizeof(struct song_list_entry)==6);P(snglist);P(trkparam);P(trkscene);P(trkstepparam);P(trkevents);P(midi_remote_ctrl);P(metronome_sound_len);P(midi_clock_source);P(cvoffset);P(midi_autolive);P(scene_sync);P(magic_range);P(magic_chance);P(scene_midi_program);P(euclidean_density);P(euclidean_rotation);P(root);P(scene_root);printf("arp_types=%d\n",ARP_NUM_TYPES);return 0;}

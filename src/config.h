@@ -25,10 +25,10 @@
 
 // global
 #define CARBON_VERSION_MAJOR 1
-#define CARBON_VERSION_MINOR 34
+#define CARBON_VERSION_MINOR 35
 #define CARBON_VERSION_MAJMIN ((CARBON_VERSION_MAJOR << 16) | CARBON_VERSION_MINOR)
 // Display-only community identity; numeric versions remain authoritative for storage.
-#define CARBON_VERSION_VARIANT "johanwk-sx1"
+#define CARBON_VERSION_VARIANT "jwk-dly1"
 
 // memory mapping
 // - while not actual config data this is a nice place to mention it
@@ -213,7 +213,11 @@
 #define SEQ_RATCHET_MIN 1  // min ratchet setting
 #define SEQ_RATCHET_MAX 8  // max ratchet setting
 #define SEQ_START_DELAY_MIN 0  // min start delay
-#define SEQ_START_DELAY_MAX (MIDI_CLOCK_PPQ)  // 1 beat
+#define SEQ_START_DELAY_FIXED_MAX (MIDI_CLOCK_PPQ)  // existing absolute ticks
+#define SEQ_START_DELAY_REL_FIRST (SEQ_START_DELAY_FIXED_MAX + 1)
+#define SEQ_START_DELAY_MAX (SEQ_START_DELAY_FIXED_MAX + 7)
+#define SEQ_START_DELAY_INHERIT 255
+#define SONG_VERSION_NOTE_DELAY 0x00010023
 #define STEP_EDIT_NEW_NOTE_VELOCITY 100
 #define STEP_EDIT_LOWEST_NOTE (SEQ_MIN_NOTE)
 #define STEP_EDIT_HIGHEST_NOTE (SEQ_MAX_NOTE)

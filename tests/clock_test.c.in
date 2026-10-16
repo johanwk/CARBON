@@ -5,13 +5,47 @@
 #define main engine_fixture_tests
 #include "engine_test.c.in"
 #undef main
-void midi_clock_ticked_swing(uint32_t tick) { seq_engine_run(tick); }
+void midi_clock_ticked_swing(uint32_t tick) { engine_tick=tick; seq_engine_run(tick); }
 void midi_clock_beat_crossed(void) { sestate.beat_cross = 1; }
 void midi_clock_run_state_changed(int run) { running = run; }
 static void pump(int milliseconds) {
     int i; for(i = 0; i < milliseconds; i ++) midi_clock_timer_task();
 }
+static void test_variable_delay_intervals(void) {
+    // Production clock callback + engine: 7 divisions of 384 yield 54/55 ticks.
+    setup(); midi_clock_init(); midi_clock_midi_rx_start(); pump(8);
+    setup(); enabled[0]=1;
+    put(0,0,SONG_EVENT_NOTE,60,100); fixture[0][0].delay=100;
+    sestate.bar_divisions[0]=7; sestate.bar_div_remainder[0]=0;
+    seq_engine_schedule_bar_div_step(0); sestate.clock_div_count[0]=0;
+    int boundary=1;
+    for(int step=0;step<7;step++) {
+        int interval=sestate.step_size[0];
+        int attack=boundary+(interval+1)/2; int before=output_count;
+        for(int tick=boundary;tick<boundary+interval;tick++) {
+            midi_clock_ticked_swing(tick);
+        }
+        assert(output_count==before+2);
+        assert(output_ticks[before]==(uint32_t)attack && output[before].status==MIDI_NOTE_ON);
+        assert(output_ticks[before+1]==(uint32_t)(attack+1) && output[before+1].status==MIDI_NOTE_OFF);
+        boundary+=interval;
+    }
+    assert(boundary==385);
+    // Full engine passes, not direct note management, for 0/32/64 triplets.
+    setup(); enabled[0]=1; sestate.step_size[0]=96;
+    sestate.clock_div_count[0]=0;
+    for(int i=0;i<3;i++) {put(0,i,SONG_EVENT_NOTE,60+i,100);
+        fixture[0][i].delay=i==0?0:i==1?99:101; fixture[0][i].length=32;}
+    for(int tick=1;tick<=96;tick++) midi_clock_ticked_swing(tick);
+    int attacks=0;
+    for(int i=0;i<output_count;i++) if(output[i].status==MIDI_NOTE_ON)
+        assert(output_ticks[i]==(uint32_t)(1+32*attacks++));
+    assert(attacks==3);
+    midi_clock_ticked_swing(97);
+    assert(output[output_count-1].status==MIDI_NOTE_ON && output_ticks[output_count-1]==97);
+}
 int main(void) {
+    test_variable_delay_intervals();
     struct conditional_state expected;
     setup(); midi_clock_init();
     // Keep events masked so transport tests cannot overwrite gate history.

@@ -64,6 +64,8 @@ int main(void) {
     assert(actual.type == SONG_EVENT_PROBABILITY); // notes shared per song
     // Old songs migrate added parameters, without altering existing event codes.
     song.song_version = 0x0001001e;
+    for(int t=0;t<6;t++) for(int s=0;s<64;s++) for(int p=0;p<6;p++)
+        song.trkevents[t][s][p].delay=(t+s+p)%255;
     song.root = 11; memset(song.scene_root, 11, sizeof(song.scene_root));
     song_init_scene_midi_programs(); song_init_euclidean();
     assert(!song_save(0)); song_timer_task();
@@ -74,6 +76,20 @@ int main(void) {
     for(i = 0; i < SEQ_NUM_SCENES; i ++) assert(song_get_scene_root(i) == SONG_ROOT_INHERIT);
     assert(!song_get_step_event(0, 0, 0, 4, &actual));
     assert(actual.type == SONG_EVENT_NOTE && actual.data0 == 60);
+    assert(actual.delay==SEQ_START_DELAY_INHERIT);
+    for(int t=0;t<6;t++) for(int s=0;s<64;s++) for(int p=0;p<6;p++)
+        assert(song.trkevents[t][s][p].delay==SEQ_START_DELAY_INHERIT);
+    actual.delay=104; assert(song_set_step_event(0,0,0,4,&actual)==-1);
+    assert(song_add_step_event(0,0,0,&actual)==-1);
+    assert(song.trkevents[0][0][4].delay==SEQ_START_DELAY_INHERIT);
+    actual.delay=99; assert(!song_set_step_event(0,0,0,4,&actual));
+    assert(!song_save(0));song_timer_task();assert(!song_load(0));song_timer_task();
+    assert(!song_get_step_event(0,0,0,4,&actual) && actual.delay==99);
+    assert(!song_set_step_event(0,2,10,1,&actual));
+    assert(!song_get_step_event(5,2,10,1,&actual) && actual.delay==99);
+    actual.type=SONG_EVENT_CC; actual.delay=42;
+    assert(!song_set_step_event(0,2,10,1,&actual));
+    assert(!song_get_step_event(0,2,10,1,&actual) && actual.delay==255);
     for(int version = 27; version <= 30; version++) {
         song.song_version = (1u << 16) | version;
         song.root = 11; memset(song.scene_root, 11, sizeof(song.scene_root));

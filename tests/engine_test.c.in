@@ -10,6 +10,9 @@ static struct track_event fixture[SEQ_NUM_TRACKS][SEQ_TRACK_POLY];
 static int reads[SEQ_NUM_TRACKS], enabled[SEQ_NUM_TRACKS];
 static struct midi_msg output[64];
 static int output_count;
+#ifdef CARBON_TEST_CLOCK
+static uint32_t output_ticks[64], engine_tick;
+#endif
 static int running = 1, live_mode, selected;
 
 #ifndef CARBON_TEST_CLOCK
@@ -111,22 +114,13 @@ int song_get_transpose(int scene, int track) {
     return 0;
 #endif
 }
-#ifdef CARBON_TEST_PITCH
-static int test_delay, test_ratchet = 1;
-#endif
+static int test_delay;
+static int test_ratchet = 1;
 int song_get_start_delay(int scene, int track, int step) {
-#ifdef CARBON_TEST_PITCH
     return test_delay;
-#else
-    return 0;
-#endif
 }
 int song_get_ratchet_mode(int scene, int track, int step) {
-#ifdef CARBON_TEST_PITCH
     return test_ratchet;
-#else
-    return 1;
-#endif
 }
 int pattern_get_step_enable(int scene, int track, int pattern, int step) {
     return pattern != 0;
@@ -137,6 +131,9 @@ void log_warn(char *fmt, ...) { assert(!"unexpected log_warn"); }
 void outproc_deliver_msg(int scene, int track, struct midi_msg *msg,
         int deliver, int mode) {
     assert(output_count < 64);
+#ifdef CARBON_TEST_CLOCK
+    output_ticks[output_count] = engine_tick;
+#endif
     output[output_count ++] = *msg;
 }
 void outproc_stop_all_notes(int track) {}
@@ -159,6 +156,7 @@ static void setup(void) {
     memset(reads, 0, sizeof(reads));
     memset(enabled, 0, sizeof(enabled));
     output_count = 0;
+    test_delay = 0; test_ratchet = 1;
     running = 1;
     test_root = SONG_ROOT_OFF;
     live_mode = SEQ_CTRL_LIVE_OFF;
@@ -560,7 +558,93 @@ static void test_harmony(void) {
     assert(!sestate.harmony_active);
 }
 
+static void test_note_delays(void) {
+    struct seq_engine_step_visit visit={0};
+    setup(); sestate.step_size[0]=96; visit.slots=7;
+    for(int i=0;i<3;i++) visit.events[i]=(struct track_event){
+        .type=SONG_EVENT_NOTE,.data0=60+i,.data1=100,.length=32,
+        .delay=i==0?0:i==1?99:101};
+    seq_engine_track_play_step(0,0,&visit);
+    assert(output_count==1 && output[0].data0==60);
+    for(int tick=1;tick<=96;tick++) {
+        int before=output_count; seq_engine_track_manage_notes(0);
+        if(tick==32) assert(output_count==before+2 && ((output[before].data0==61 && output[before].status==MIDI_NOTE_ON)||(output[before+1].data0==61 && output[before+1].status==MIDI_NOTE_ON)));
+        else if(tick==64) assert(output_count==before+2 && ((output[before].data0==62 && output[before].status==MIDI_NOTE_ON)||(output[before+1].data0==62 && output[before+1].status==MIDI_NOTE_ON)));
+        else if(tick==96) assert(output_count==before+1 && output[before].status==MIDI_NOTE_OFF);
+        else assert(output_count==before);
+    }
+    for(int size=1;size<=384;size++) {
+        assert(seq_utils_delay_ticks(99,size)==(size+1)/3);
+        assert(seq_utils_delay_ticks(101,size)==(size*2+1)/3);
+        assert(seq_utils_delay_ticks(96,size)==96);
+    }
+    setup(); visit.slots=1; visit.events[0].delay=99;
+    sestate.step_size[0]=48;seq_engine_track_play_step(0,0,&visit);
+    assert(!output_count && sestate.track_active_notes[0][15].start_delay_countdown==16);
+    // Stealing an attack that has not sounded must not release another voice.
+    for(int i=0;i<SEQ_ENGINE_MAX_NOTES;i++) seq_engine_track_play_step(0,0,&visit);
+    assert(!output_count);
+    seq_engine_track_stop_all_notes(0); assert(!output_count);
+    for(int i=0;i<SEQ_ENGINE_MAX_NOTES;i++)
+        assert(!sestate.track_active_notes[0][i].note.msg.status);
+    // Shared relative delay is replaced, not added, by explicit Off.
+    setup(); test_delay=99; sestate.step_size[0]=96; visit.slots=3;
+    visit.events[0].delay=255; visit.events[1]=visit.events[0];
+    visit.events[1].data0=72; visit.events[1].delay=0;
+    seq_engine_track_play_step(0,0,&visit);
+    assert(output_count==1 && output[0].data0==72);
+    for(int tick=1;tick<=32;tick++) seq_engine_track_manage_notes(0);
+    assert(output_count>=2);
+    test_delay=0;
+    // Inversion spans all onsets but keeps each slot's timing and velocity.
+    setup(); sestate.step_size[0]=96; sestate.inversion[0]=1; visit.slots=7;
+    for(int i=0;i<3;i++) visit.events[i]=(struct track_event){
+        .type=SONG_EVENT_NOTE,.data0=60+4*i,.data1=80+i,.length=10+i,
+        .delay=i==0?0:i==1?99:101};
+    seq_engine_track_play_step(0,0,&visit);
+    assert(output_count==1 && output[0].data0==72 && output[0].data1==80);
+    for(int tick=1;tick<=32;tick++) seq_engine_track_manage_notes(0);
+    assert(output[output_count-1].data0==64 && output[output_count-1].data1==81);
+    for(int tick=33;tick<=64;tick++) seq_engine_track_manage_notes(0);
+    assert(output[output_count-1].data0==68 && output[output_count-1].data1==82);
+}
+static void test_delayed_ratchets(void) {
+    struct seq_engine_step_visit visit={.slots=1};
+    setup(); test_ratchet=2; sestate.step_size[0]=96;
+    visit.events[0]=(struct track_event){.type=SONG_EVENT_NOTE,.data0=60,
+        .data1=100,.length=8,.delay=99};
+    seq_engine_track_play_step(0,0,&visit); assert(!output_count);
+    for(int tick=1;tick<=40;tick++) {
+        int before=output_count; seq_engine_track_manage_notes(0);
+        if(tick==32 || tick==36)
+            assert(output_count==before+1 && output[before].status==MIDI_NOTE_ON);
+        else if(tick==34 || tick==38)
+            assert(output_count==before+1 && output[before].status==MIDI_NOTE_OFF);
+        else assert(output_count==before);
+    }
+    // Zero/short stored lengths still produce balanced one-tick attacks.
+    for(int len=0;len<=2;len++) {
+        setup(); test_ratchet=8; sestate.gate_time[0]=0;
+        visit.events[0].length=len; visit.events[0].delay=1;
+        seq_engine_track_play_step(0,0,&visit);
+        for(int tick=1;tick<=9;tick++) seq_engine_track_manage_notes(0);
+        assert(output_count==16);
+        for(int i=0;i<16;i++) assert(output[i].status==(i%2?MIDI_NOTE_OFF:MIDI_NOTE_ON));
+    }
+    // Muting or resetting cancels unheard attacks without releases.
+    setup(); visit.events[0].delay=96;
+    seq_engine_track_play_step(0,0,&visit);
+    seq_engine_mute_select_changed(0,0,1);
+    for(int i=0;i<100;i++) seq_engine_track_manage_notes(0);
+    assert(!output_count);
+    setup(); seq_engine_track_play_step(0,0,&visit);
+    seq_engine_reset_all_tracks_pos();
+    for(int i=0;i<100;i++) seq_engine_track_manage_notes(0);
+    assert(!output_count);
+}
 int main(void) {
+    test_delayed_ratchets();
+    test_note_delays();
     test_harmony();
     test_root_offsets();
     test_mixed_and_cleanup();

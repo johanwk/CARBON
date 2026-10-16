@@ -223,3 +223,39 @@ int seq_utils_check_note_range(int note) {
     return 1;
 }
 
+
+// Relative choices are deliberately after the legacy absolute tick range.
+static const int delay_num[] = {1,1,1,1,2,3,7};
+static const int delay_den[] = {8,4,3,2,3,4,8};
+const char *seq_utils_delay_relative_label(int choice) {
+    static const char *const labels[] = {"s1/8","s1/4","s1/3","s1/2","s2/3","s3/4","s7/8"};
+    int i = choice - SEQ_START_DELAY_REL_FIRST;
+    return i >= 0 && i < 7 ? labels[i] : 0;
+}
+int seq_utils_delay_ticks(int choice, int step_ticks) {
+    int i = choice - SEQ_START_DELAY_REL_FIRST;
+    if(choice >= 0 && choice <= SEQ_START_DELAY_FIXED_MAX) return choice;
+    if(i < 0 || i >= 7 || step_ticks < 1) return 0;
+    return (step_ticks * delay_num[i] + delay_den[i] / 2) / delay_den[i];
+}
+int seq_utils_delay_adjust(int choice, int change, int inherit) {
+    int direction = change > 0 ? 1 : -1;
+    int count = seq_utils_clamp(change > 0 ? change : -change, 0, 128);
+    int value = choice == SEQ_START_DELAY_INHERIT && inherit ? -1 : choice;
+    while(count-- > 0) {
+        if(direction > 0) {
+            if(value < 0) value = 0;
+            else if(value < SEQ_START_DELAY_FIXED_MAX)
+                value = seq_utils_clamp(value + seq_utils_warp_change(value, 1, 10),
+                    0, SEQ_START_DELAY_FIXED_MAX);
+            else if(value < SEQ_START_DELAY_MAX) value++;
+        } else {
+            if(value > SEQ_START_DELAY_FIXED_MAX) value--;
+            else if(value > 0)
+                value = seq_utils_clamp(value + seq_utils_warp_change(value, -1, 10),
+                    0, SEQ_START_DELAY_FIXED_MAX);
+            else if(inherit) value = -1;
+        }
+    }
+    return value < 0 ? SEQ_START_DELAY_INHERIT : value;
+}

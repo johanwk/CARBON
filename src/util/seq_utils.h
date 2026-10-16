@@ -107,4 +107,9 @@ int seq_utils_get_wrapped_range(int pos, int start, int length, int total_len);
 // check if a note is within the supported range - returns 1 on success, 0 on error
 int seq_utils_check_note_range(int note);
 
+// Delay codes 0..96 retain absolute ticks; 97..103 are step fractions.
+int seq_utils_delay_ticks(int choice, int step_ticks);
+int seq_utils_delay_adjust(int choice, int change, int inherit);
+const char *seq_utils_delay_relative_label(int choice);
+
 #endif
