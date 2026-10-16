@@ -5,6 +5,50 @@ use std::{env,fs::{File,OpenOptions},path::Path,sync::mpsc,time::{Duration,Insta
 
 fn run()->Result<(),String>{
     let args:Vec<String>=env::args().collect();
+    if args.get(1).map(String::as_str)==Some("validate-json") {
+        if args.len()!=3{return Err("Usage: validate-json FILE (offline; no output file or device access)".into());}
+        let text=std::fs::read_to_string(&args[2]).map_err(|e|e.to_string())?;
+        println!("{}",document::validate_text(&text)?);
+        return Ok(());
+    }
+
+    if args.get(1).map(String::as_str)==Some("import-midi") {
+        if args.len()<7{return Err("Usage: import-midi MIDI TEMPLATE_JSON OUTPUT_JSON --output-port 0|1|3|4 [plan-midi options]; REPLACES all shared tracks/scenes offline".into());}
+        let mut port=None;let mut planning=vec![];
+        if (args.len()-5)%2!=0{return Err("Options require values".into());}
+        for pair in args[5..].chunks_exact(2){if pair[0]=="--output-port"{if port.is_some(){return Err("Repeated output port".into());}port=Some(pair[1].parse::<u8>().map_err(|_|"Invalid output port")?);}else{planning.extend_from_slice(pair);}}
+        let port=port.ok_or("Explicit --output-port required")?;
+        let options=midi_plan::Options::parse(&planning)?;let source=smf::read_file(Path::new(&args[2]))?;
+        let template=json::parse(&std::fs::read_to_string(&args[3]).map_err(|e|e.to_string())?)?;
+        let doc=midi_compile::compile(&source,&options,&template,port)?;
+        let text=serde_json::to_vec_pretty(&doc).map_err(|e|e.to_string())?;
+        let mut file=OpenOptions::new().write(true).create_new(true).open(&args[4]).map_err(|e|e.to_string())?;
+        std::io::Write::write_all(&mut file,&text).map_err(|e|e.to_string())?;file.sync_all().map_err(|e|e.to_string())?;
+        println!("Compiled MIDI to schema2 JSON offline; {} notes. See metadata.extensions.midi_import for full losses/policies. No upload.",doc["metadata"]["extensions"]["midi_import"]["compiled_notes"]);return Ok(());
+    }
+
+    if args.get(1).map(String::as_str)==Some("plan-midi") {
+        if args.len()<3{return Err("Usage: plan-midi FILE [--start-bar N] [--bars N] [--tracks NUMBERS_OR_NAMES] [--step-length auto|TICKS] (offline JSON plan only)".into());}
+        let options=midi_plan::Options::parse(&args[3..])?;
+        let source=smf::read_file(Path::new(&args[2]))?;
+        let text=serde_json::to_string_pretty(&midi_plan::plan(&source,&options)?).map_err(|e|e.to_string())?;
+        match std::io::Write::write_all(&mut std::io::stdout().lock(),text.as_bytes()){
+            Ok(())=>{},Err(e) if e.kind()==std::io::ErrorKind::BrokenPipe=>{},Err(e)=>return Err(e.to_string())
+        }
+        return Ok(());
+    }
+
+    if args.get(1).map(String::as_str)==Some("analyse-midi") {
+        if !(args.len()==3 || (args.len()==4 && args[3]=="--json")) {return Err("Usage: analyse-midi FILE [--json] (offline)".into());}
+        let source=smf::read_file(Path::new(&args[2]))?;
+        let report=source.report();
+        let text=if args.len()==4 {serde_json::to_string_pretty(&report).map_err(|e|e.to_string())?}else{smf::render(&report)};
+        match std::io::Write::write_all(&mut std::io::stdout().lock(),text.as_bytes()){
+            Ok(())=>{},Err(e) if e.kind()==std::io::ErrorKind::BrokenPipe=>{},Err(e)=>return Err(e.to_string())
+        }
+        return Ok(());
+    }
+
     if args.get(1).map(String::as_str)==Some("view") {
         if args.len()<3{return Err("Usage: view FILE [--track 1..6] [--steps N|A-B] (JSON or single-song archive; offline)".into());}
         let opts=view::Options::parse(&args[3..])?;
@@ -55,14 +99,14 @@ fn run()->Result<(),String>{
     }
     if args.get(1).map(String::as_str)==Some("restore-song") {
         // Explicitly gated hardware test scope: selected spare slot30 only.
-        if args.len()!=10 || args[7]!="--stopped" || args[8]!="--firmware-0623fee" {
-            return Err("Usage: restore-song SOURCE TARGET_BACKUP 30 RECOVERY_FILE PORT_NAME --stopped --firmware-0623fee APPROVAL_TOKEN".into());
+        if args.len()!=10 || args[7]!="--stopped" || args[8]!="--firmware-9c91ab0" {
+            return Err("Usage: restore-song SOURCE TARGET_BACKUP 30 RECOVERY_FILE PORT_NAME --stopped --firmware-9c91ab0 APPROVAL_TOKEN".into());
         }
         let (_,source)=verify_song_archive(File::open(&args[2]).map_err(|e|e.to_string())?)?;
         let (target,base)=verify_song_archive(File::open(&args[3]).map_err(|e|e.to_string())?)?;
         let slot=args[4].parse::<usize>().map_err(|_|"Invalid target slot")?;
         if slot!=30 || target["slot"]!=30 {return Err("Initial write test restricted to backed-up slot30".into());}
-        if source[0]==35{return Err("1.35 note-delay restore requires separately verified 1.35 firmware; existing --firmware-0623fee assertion is insufficient".into());}
+        restore::validate_hardware_source(&source, &args[8])?;
         let plan=restore::Plan::new(slot,base,source,restore::Mode::Replace)?;
         println!("{}",serde_json::to_string_pretty(&plan.summary()).map_err(|e|e.to_string())?);
         if args[9]!=plan.approval_token() {return Err("Exact replacement approval token required".into());}

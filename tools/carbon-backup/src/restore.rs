@@ -1,8 +1,16 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! Restore core only: not connected to a hardware CLI. Every write awaits ACK.
+//! Validated restore planning/execution. Every hardware write awaits ACK.
 use crate::{hash, song_range, SONG_SIZE};
 use serde_json::{json, Value};
 const SECTOR: usize = 4096;
+/// User assertion, not a device capability query. Checked before opening MIDI.
+pub fn validate_hardware_source(data:&[u8],firmware:&str)->Result<(),String>{
+    if firmware!="--firmware-9c91ab0"{return Err("Require installed 1.35 note-delay checkpoint assertion --firmware-9c91ab0".into());}
+    validate_source(data)?;
+    if data[..4]!=[35,0,1,0]{return Err("Hardware restore targets 1.35 note-delay songs only; legacy sources are not migrated".into());}
+    crate::song::validate(data)
+}
+
 fn nibble(value: usize,count:usize)->Vec<u8>{(0..count).rev().map(|i|((value>>(i*4))&15) as u8).collect()}
 pub fn stage(offset:usize,data:&[u8])->Result<Vec<u8>,String>{
     if data.is_empty() || data.len()>64 || offset>SECTOR-data.len(){return Err("Invalid staging range".into());}
@@ -96,6 +104,23 @@ pub fn execute<D:Device,F:FnMut(&[u8])->Result<(),String>>(device:&mut D,plan:&P
  for i in 0..64{d[48+6*i]=255;}for s in 0..36{let o=480+16*s;d[o+3]=255;d[o+5]=64;d[o+6]=128;d[o+12]=12;}
  for s in 0..384{d[1056+2*s+1]=1;}d[15649]=100;d[15650]=255;d[15665]=100;d[15810]=255;for i in 0..6{d[15811+i]=254;}d}
  fn setup()->(Plan,Fake){let mut before=fixture();before[..4].copy_from_slice(&[34,0,1,0]);before[SONG_SIZE-4..].copy_from_slice(&[0x47,0x4e,0x4f,0x53]);let mut after=before.clone();after[1830]=0x90;after[1831]=48;after[1832]=97;let plan=Plan::new(20,before.clone(),after,Mode::Patch).unwrap();(plan,Fake{data:before,buf:vec![0;SECTOR],writes:0,fail:false})}
+ #[test] fn note_delay_hardware_guard(){
+  let(p,_)=setup();
+  assert!(validate_hardware_source(&p.after,"--firmware-9c91ab0").is_err());
+  let mut modern=p.after.clone();modern[..4].copy_from_slice(&[35,0,1,0]);modern[1833]=99;modern[1056]=101;
+  assert!(validate_hardware_source(&modern,"--firmware-9c91ab0").is_ok());
+  assert!(validate_hardware_source(&modern,"--firmware-0623fee").is_err());
+  assert!(validate_hardware_source(&[],"--firmware-9c91ab0").is_err());
+  modern[1833]=104;assert!(validate_hardware_source(&modern,"--firmware-9c91ab0").is_err());
+ }
+ #[test] fn modern_replacement_preserves_delays(){
+  let(p,mut device)=setup();let mut modern=p.after.clone();modern[..4].copy_from_slice(&[35,0,1,0]);
+  modern[1833]=99;modern[1056]=101;
+  validate_hardware_source(&modern,"--firmware-9c91ab0").unwrap();
+  let plan=Plan::new(30,p.before,modern.clone(),Mode::Replace).unwrap();
+  execute(&mut device,&plan,&plan.approval_token(),true,true,|_|Ok(())).unwrap();
+  assert_eq!(device.writes,325);assert_eq!(device.data,modern);
+ }
  #[test] fn patch_and_replace(){let(p,mut d)=setup();let mut backed=false;execute(&mut d,&p,&p.approval_token(),true,true,|_|{backed=true;Ok(())}).unwrap();assert!(backed);assert_eq!(d.writes,65);assert_eq!(d.data,p.after);let(p,mut d)=setup();let p=Plan::new(20,p.before,p.after,Mode::Replace).unwrap();execute(&mut d,&p,&p.approval_token(),true,true,|_|Ok(())).unwrap();assert_eq!(d.writes,325);}
  #[test] fn rejects_before_write(){let(p,mut d)=setup();assert!(execute(&mut d,&p,"wrong",true,true,|_|Ok(())).is_err());assert_eq!(d.writes,0);d.data[100]=1;assert!(execute(&mut d,&p,&p.approval_token(),true,true,|_|Ok(())).is_err());assert_eq!(d.writes,0);let(p,mut d)=setup();assert!(execute(&mut d,&p,&p.approval_token(),true,true,|_|Err("disk full".into())).is_err());assert_eq!(d.writes,0);}
  #[test] fn abort_no_retry(){let(p,mut d)=setup();d.fail=true;assert!(execute(&mut d,&p,&p.approval_token(),true,true,|_|Ok(())).is_err());assert_eq!(d.writes,1);assert!(commit(1).is_err());assert!(stage(4095,&[0,1]).is_err());assert!(ack(&[0;9],0x73).is_err());}

@@ -1,3 +1,6 @@
+pub mod midi_compile;
+pub mod midi_plan;
+pub mod smf;
 pub mod view;
 pub mod json;
 pub mod document;

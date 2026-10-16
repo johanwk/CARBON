@@ -2,6 +2,15 @@
 //! Canonical JSON v1 prototype: complete image document, not a sparse patch.
 use crate::{hash,song,song_range,restore,SONG_SIZE};
 use serde_json::{json,Value};
+/// Parse strictly and compile in memory using the same checks as import-json.
+/// Validity is not firmware detection, target approval or playback simulation.
+pub fn validate_text(text:&str)->Result<String,String>{
+ let doc=crate::json::parse(text)?;
+ let (_,data)=import(&doc)?;
+ Ok(format!("Valid CARBON schema{} / firmware profile {}\nBinary compilation validated: {} bytes\nBinary SHA256 {}\nNo files written or device access. Upload still requires a compatible firmware assertion, target backup and exact-plan approval.",
+  doc["schema_version"],doc["firmware_profile"].as_str().ok_or("Missing firmware profile")?,data.len(),hash(&data)))
+}
+
 const TYPES:[(u8,&str);11]=[(0,"Empty"),(1,"CCi"),(2,"Prb"),(3,"Euc"),(4,"Pre"),(5,"NotPre"),(6,"Hrm"),(7,"Inv"),(0x90,"Note"),(0xb0,"CC"),(0xc0,"PC")];
 fn keys(v:&Value,expected:&[&str])->Result<(),String>{let m=v.as_object().ok_or("Expected object")?;if m.len()!=expected.len()||m.keys().any(|k|!expected.contains(&k.as_str())){return Err(format!("Missing/unknown fields; expected{expected:?}"));}Ok(())}
 fn num(v:&Value,max:u64)->Result<u64,String>{let n=v.as_u64().ok_or("Unsigned integer required")?;if n>max{return Err("Integer out of range".into());}Ok(n)}
@@ -71,14 +80,21 @@ pub fn import(doc:&Value)->Result<(usize,Vec<u8>),String>{
  }}}
  restore::validate_source(&data)?;song::validate(&data)?;Ok((slot,data))
 }
-#[cfg(test)]mod tests{use super::*;
- fn fixture()->Vec<u8>{let mut d=vec![255;SONG_SIZE];d[..4].copy_from_slice(&[34,0,1,0]);d[SONG_SIZE-4..].copy_from_slice(&[0x47,0x4e,0x4f,0x53]);
+#[cfg(test)]pub(crate) mod tests{use super::*;
+ pub(crate) fn fixture()->Vec<u8>{let mut d=vec![255;SONG_SIZE];d[..4].copy_from_slice(&[34,0,1,0]);d[SONG_SIZE-4..].copy_from_slice(&[0x47,0x4e,0x4f,0x53]);
  d[4..8].copy_from_slice(&120f32.to_le_bytes());d[8]=50;d[9]=1;d[10..12].fill(0);d[12]=2;d[13]=0;d[14..18].fill(255);d[18..26].fill(0);d[28..48].fill(0);
  for t in 0..6{let o=432+t*8;d[o..o+2].fill(255);d[o+2..o+8].fill(0);}
  for i in 0..36{let o=480+16*i;d[o..o+16].fill(0);d[o+3]=255;d[o+5]=64;d[o+6]=128;d[o+12]=12;}
  for i in 0..384{d[1056+2*i]=0;d[1057+2*i]=1;}for i in 0..2304{d[1824+6*i]=0;}
  d[15648]=0;d[15649]=100;d[15650]=255;d[15654..15662].fill(0);d[15662]=1;d[15663]=0;d[15664]=12;d[15665]=100;d[15738..15774].fill(100);d[15774..15810].fill(0);d[15810]=255;d[15811..15817].fill(254);
  d[1830..1836].copy_from_slice(&[0x90,48,96,255,106,0]);d}
+ #[test]fn validation_only(){
+  for version in [34,35]{let mut raw=fixture();raw[0]=version;let doc=export(&raw,19).unwrap();let text=serde_json::to_string(&doc).unwrap();let summary=validate_text(&text).unwrap();assert!(summary.contains("20480 bytes"));assert!(summary.contains(&hash(&raw)));assert!(summary.contains(if version==35{"schema2"}else{"schema1"}));
+   let mut bad=doc.clone();bad["provenance"]["raw_sha256"]=json!("wrong");assert!(validate_text(&bad.to_string()).is_err());
+   bad=doc;bad["shared_tracks"][0]["steps"][0]["events"][1]["parameters"]["pitch"]=json!(128);assert!(validate_text(&bad.to_string()).is_err());
+  }
+  assert!(validate_text("{").is_err());assert!(validate_text(r#"{"format":1,"format":2}"#).is_err());assert!(validate_text("{}").is_err());
+ }
  #[test]fn lossless_and_patch(){let data=fixture();let mut doc=export(&data,19).unwrap();assert_eq!(import(&doc).unwrap().1,data);doc["shared_tracks"][0]["steps"][0]["events"][1]["parameters"]["velocity"]=json!(97);let(_,after)=import(&doc).unwrap();let changes:Vec<_>=data.iter().zip(&after).enumerate().filter_map(|(i,(a,b))|(a!=b).then_some(i)).collect();assert_eq!(changes,vec![1832]);}
  #[test]fn delay_choices(){
  for code in (0u8..=103).chain(std::iter::once(255)){assert_eq!(delay_code(&delay_json(code),true).unwrap(),code);}
