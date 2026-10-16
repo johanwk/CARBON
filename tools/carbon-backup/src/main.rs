@@ -98,14 +98,14 @@ fn run()->Result<(),String>{
         println!("Compiled offline song image SHA256 {}",hash(&data));return Ok(());
     }
     if args.get(1).map(String::as_str)==Some("restore-song") {
-        // Explicitly gated hardware test scope: selected spare slot30 only.
+        // Explicitly selected hardware test slots; backup identity must match.
         if args.len()!=10 || args[7]!="--stopped" || args[8]!="--firmware-9c91ab0" {
-            return Err("Usage: restore-song SOURCE TARGET_BACKUP 30 RECOVERY_FILE PORT_NAME --stopped --firmware-9c91ab0 APPROVAL_TOKEN".into());
+            return Err("Usage: restore-song SOURCE TARGET_BACKUP TARGET_SLOT RECOVERY_FILE PORT_NAME --stopped --firmware-9c91ab0 APPROVAL_TOKEN".into());
         }
         let (_,source)=verify_song_archive(File::open(&args[2]).map_err(|e|e.to_string())?)?;
         let (target,base)=verify_song_archive(File::open(&args[3]).map_err(|e|e.to_string())?)?;
         let slot=args[4].parse::<usize>().map_err(|_|"Invalid target slot")?;
-        if slot!=30 || target["slot"]!=30 {return Err("Initial write test restricted to backed-up slot30".into());}
+        restore::validate_hardware_target(slot,&target)?;
         restore::validate_hardware_source(&source, &args[8])?;
         let plan=restore::Plan::new(slot,base,source,restore::Mode::Replace)?;
         println!("{}",serde_json::to_string_pretty(&plan.summary()).map_err(|e|e.to_string())?);
@@ -115,13 +115,13 @@ fn run()->Result<(),String>{
         let mut device=transfer::Adapter{link,read_timeout:Duration::from_secs(3),stage_timeout:Duration::from_secs(3),commit_timeout:Duration::from_secs(30)};
         restore::execute(&mut device,&plan,&args[9],true,true,|raw|{
             let timestamp=SystemTime::now().duration_since(UNIX_EPOCH).map_err(|e|e.to_string())?.as_secs();
-            let m=song_manifest(raw,30,&args[6],&args[6],timestamp)?;
+            let m=song_manifest(raw,slot,&args[6],&args[6],timestamp)?;
             let mut file=OpenOptions::new().write(true).create_new(true).open(&args[5]).map_err(|e|e.to_string())?;
             write_song_archive(&mut file,raw,&m)?;file.sync_all().map_err(|e|e.to_string())?;drop(file);
             verify_song_archive(File::open(&args[5]).map_err(|e|e.to_string())?)?;
-            eprintln!("Fresh slot30 recovery backup saved and verified before writes");Ok(())
+            eprintln!("Fresh slot{slot} recovery backup saved and verified before writes");Ok(())
         })?;
-        println!("Slot30 replacement and full readback match succeeded. Reload slot30 from panel.");
+        println!("Slot{slot} replacement and full readback match succeeded. Reload slot{slot} from panel.");
         return Ok(());
     }
     if args.get(1).map(String::as_str)==Some("plan-restore") {

@@ -373,3 +373,13 @@ tempo map, constant-tempo converted content seconds, padded loop seconds and
 loop-minus-source duration. This is duration reporting, not tempo-map playback
 or per-note wall-time error analysis. Synthetic tests plus local Bach tests
 pass; no device/template capture or upload is implied.
+
+### Approved second test slot:31
+
+Hardware restore target guard now permits slots30and31 only, with matching
+verified target-backup slot identity. Recovery manifest/messages use the actual
+chosen target. All existing firmware/stopped/token/fresh-backup/readback checks
+remain. User explicitly approved Aria->31; transfer/full readback succeeded,
+SHA2561655ebd4d084d1c200b3701ae6609041db92762d50df0942c3aa3bcb05cd2e3c.
+Earlier slot30-only descriptions describe the initial hardware scope. No other
+slots enabled. Musical playback confirmation of Aria still pending.
