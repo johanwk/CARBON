@@ -1,3 +1,4 @@
+pub mod song_transfer;
 pub mod midi_compile;
 pub mod midi_plan;
 pub mod smf;

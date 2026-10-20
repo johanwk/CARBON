@@ -77,6 +77,17 @@ impl Plan {
     pub fn summary(&self)->Value{json!({"target_slot":self.slot,"base_sha256":hash(&self.before),"result_sha256":hash(&self.after),
         "sector_indices":self.sectors,"approval_token":self.approval_token(),"diff":self.preview,
         "limitations":"Plan preview only; execution requires explicit approval. Reserved/padding bytes preserved; replacement is not atomic."})}
+    /// Short human preview; full semantic/raw changes remain in summary().
+    pub fn brief(&self)->String {
+        let event_count=self.preview["event_changes"].as_array().map_or(0,Vec::len);
+        let fields=self.preview["stored_fields"]["field_changes"].as_array().map_or(0,Vec::len);
+        let opaque=self.preview["stored_fields"]["opaque_changes"].as_array().map_or(0,Vec::len);
+        let notes=self.after[1824..15648].chunks_exact(6).filter(|e|e[0]==0x90).count();
+        format!("Target: song {} — {}\nResult: firmware song format 1.{}, {} stored Notes\nChanges: {} event slots, {} stored fields, {} opaque bytes\nWrites: {} complete sectors; other song slots untouched\nBase SHA256: {}\nResult SHA256: {}\nA fresh matching backup and a new recovery file are required before writing.\nReplacement is not atomic; keep CARBON stopped and connected.",
+            self.slot,if matches!(self.mode,Mode::Replace){"REPLACE entire song"}else{"patch changed sectors"},self.after[0],notes,event_count,fields,opaque,self.sectors.len(),hash(&self.before),hash(&self.after))
+    }
+    pub fn confirmation_phrase(&self)->String {format!("replace {}",self.slot)}
+    pub fn accepts_confirmation(&self,line:&str)->bool {line.trim_end_matches(&['\r','\n'][..])==self.confirmation_phrase()}
     pub fn approval_token(&self)->String {format!("slot{}:{}:{}:{}",self.slot,match self.mode{Mode::Replace=>"replace",Mode::Patch=>"patch"},hash(&self.before),hash(&self.after))}
 }
 /// Adapter must enforce finite response/read deadlines, stopped transport and
@@ -111,6 +122,12 @@ pub fn execute<D:Device,F:FnMut(&[u8])->Result<(),String>>(device:&mut D,plan:&P
  for i in 0..64{d[48+6*i]=255;}for s in 0..36{let o=480+16*s;d[o+3]=255;d[o+5]=64;d[o+6]=128;d[o+12]=12;}
  for s in 0..384{d[1056+2*s+1]=1;}d[15649]=100;d[15650]=255;d[15665]=100;d[15810]=255;for i in 0..6{d[15811+i]=254;}d}
  fn setup()->(Plan,Fake){let mut before=fixture();before[..4].copy_from_slice(&[34,0,1,0]);before[SONG_SIZE-4..].copy_from_slice(&[0x47,0x4e,0x4f,0x53]);let mut after=before.clone();after[1830]=0x90;after[1831]=48;after[1832]=97;let plan=Plan::new(20,before.clone(),after,Mode::Patch).unwrap();(plan,Fake{data:before,buf:vec![0;SECTOR],writes:0,fail:false})}
+ #[test] fn brief_and_confirmation(){
+  let (p,_)=setup();let p=Plan::new(37,p.before,p.after,Mode::Replace).unwrap();
+  assert!(p.brief().contains("song 37"));assert!(p.brief().contains("5 complete sectors"));assert!(p.brief().lines().count()<12);
+  assert!(p.accepts_confirmation("replace 37\n"));assert!(p.accepts_confirmation("replace 37\r\n"));
+  for s in ["yes","replace 30",""," replace 37","replace 37 extra"]{assert!(!p.accepts_confirmation(s));}
+ }
  #[test] fn hardware_target_identity(){
   for slot in 1..=64{assert!(validate_hardware_target(slot,&json!({"slot":slot})).is_ok());}
   for slot in [0,65,usize::MAX]{assert!(validate_hardware_target(slot,&json!({"slot":slot})).is_err());}

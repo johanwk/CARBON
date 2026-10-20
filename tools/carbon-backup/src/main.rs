@@ -5,6 +5,15 @@ use std::{env,fs::{File,OpenOptions},path::Path,sync::mpsc,time::{Duration,Insta
 
 const HELP:&str = "CARBON song tools — MIDI import, JSON editing and safe single-song transfer
 
+Everyday song transfers (JSON files):
+  backup song SLOT FILE.json             Save one song from CARBON
+  upload song SLOT FILE.json             Replace one song on CARBON
+  Example: backup song 37 song37.json
+           upload song 37 song37.json
+  CARBON Port 1 is automatic. One prompt covers stopped transport and, for
+  upload, supported firmware1.35. Recovery backup and readback are automatic.
+  After upload, LOAD the song from the panel. No token or flags needed.
+
 Offline commands:
   analyse-midi FILE [--json]              Inspect MIDI tracks, bars and timing
   plan-midi FILE [selection options]      Preview approximate note conversion
@@ -18,10 +27,15 @@ Offline commands:
   plan-restore SOURCE BASE SLOT replace  Preview single-song replacement
 
 Device commands (explicit invocation only):
+  download SLOT FILE.json               Read a saved song as JSON
+  upload FILE.json SLOT                 Replace one song; automatic recovery backup
+    Default CARBON Port 1; interactive stopped/firmware confirmation. No flags needed.
+
+Advanced device commands:
   ports
   backup-song SLOT FILE INPUT OUTPUT --stopped [--pause-ms N]
   backup-bank FILE INPUT OUTPUT --stopped [--pause-ms N]
-  restore-song SOURCE BASE SLOT RECOVERY PORT --stopped --firmware-9c91ab0 TOKEN
+  restore-song SOURCE BASE SLOT RECOVERY PORT --stopped --firmware-9c91ab0 --confirm|TOKEN
     WRITES one song slot1..64. Requires reviewed plan and fresh recovery backup.
 
 MIDI selection: --start-bar N --bars N --tracks 2,3|NAME --step-length auto|96
@@ -32,11 +46,78 @@ Template must be schema2/1.35. Source programs/expression are not reproduced.
 See tools/carbon-backup/README.md for policies and transfer precautions.
 ";
 
+fn confirm_transfer(action:&str,slot:usize)->Result<(),String>{
+    use std::io::{IsTerminal,Write};
+    if !std::io::stdin().is_terminal(){return Err("Confirmation requires an interactive terminal; no device accessed".into());}
+    println!("Keep CARBON stopped and do not edit, save or load songs until completion.");
+    if action=="replace"{
+        println!("Requires installed 1.35-jwk-dly1 / checkpoint9c91ab0 firmware.\nFirmware is NOT detected automatically. 1.36 and older stock firmware are not supported here.\nThe entire saved song will be overwritten. A recovery backup will be saved first.\nKeep power connected; an interrupted write may leave the target damaged.");
+    }else{println!("Reads saved flash only, not unsaved edits. This does not change CARBON.");}
+    print!("\nTo confirm these conditions, type '{action} {slot}' (anything else cancels): ");
+    std::io::stdout().flush().map_err(|e|e.to_string())?;
+    let mut line=String::new();std::io::stdin().read_line(&mut line).map_err(|e|e.to_string())?;
+    if !song_transfer::confirmation(action,slot,&line){return Err("Cancelled; no device accessed".into());}
+    Ok(())
+}
+fn simple_transfer(args:&[String])->Result<(),String>{
+    use std::io::Write;
+    let (upload,slot,filename)=song_transfer::arguments(&args[1..])?;
+    let path=Path::new(&filename);
+    let raw=if upload{
+        let text=std::fs::read_to_string(path).map_err(|e|e.to_string())?;
+        let data=song_transfer::validate_upload(&text)?;
+        let notes=data[1824..15648].chunks_exact(6).filter(|e|e[0]==0x90).count();
+        println!("Upload {} -> song{slot} via {}\nValidated1.35 song: {notes} stored Notes; SHA256 {}",path.display(),song_transfer::PORT,hash(&data));
+        Some(data)
+    }else{
+        if path.exists(){return Err("Output exists; choose a new JSON filename".into());}
+        println!("Download song{slot} -> {} via {}",path.display(),song_transfer::PORT);None
+    };
+    confirm_transfer(if upload{"replace"}else{"download"},slot)?;
+    // Reserve local output/recovery paths before opening the device.
+    let mut output=if upload{None}else{Some(OpenOptions::new().write(true).create_new(true).open(path).map_err(|e|e.to_string())?)};
+    let recovery=if upload{
+        let root=env::current_dir().map_err(|e|e.to_string())?.join("carbon-recovery");
+        std::fs::create_dir_all(&root).map_err(|e|e.to_string())?;
+        let stamp=SystemTime::now().duration_since(UNIX_EPOCH).map_err(|e|e.to_string())?.as_nanos();
+        let session=root.join(format!("song{slot}-{stamp}-{}",std::process::id()));
+        std::fs::create_dir(&session).map_err(|e|e.to_string())?;
+        let backup=session.join("before.backup");
+        println!("Recovery backup: {}",backup.display());Some(backup)
+    }else{None};
+    let link=midi::MidiLink::open(song_transfer::PORT,song_transfer::PORT)?;
+    let mut device=transfer::Adapter{link,read_timeout:Duration::from_secs(3),stage_timeout:Duration::from_secs(3),commit_timeout:Duration::from_secs(30)};
+    if let Some(raw)=raw{
+        let backup=recovery.ok_or("Missing recovery path")?;
+        let result=song_transfer::upload(&mut device,slot,raw,true,|before|{
+            let timestamp=SystemTime::now().duration_since(UNIX_EPOCH).map_err(|e|e.to_string())?.as_secs();
+            let manifest=song_manifest(before,slot,song_transfer::PORT,song_transfer::PORT,timestamp)?;
+            let mut file=OpenOptions::new().write(true).create_new(true).open(&backup).map_err(|e|e.to_string())?;
+            write_song_archive(&mut file,before,&manifest)?;file.sync_all().map_err(|e|e.to_string())?;drop(file);
+            let (_,saved)=verify_song_archive(File::open(&backup).map_err(|e|e.to_string())?)?;
+            if saved!=before{return Err("Recovery file differs from fresh target; no write permitted".into());}
+            eprintln!("Recovery backup verified. Writing song{slot}...");Ok(())
+        })?;
+        println!("Song{slot} uploaded and full readback verified. SHA256 {result}\nLOAD song{slot} from the panel; do not save stale RAM over it.");
+    }else{
+        let doc=song_transfer::download(&mut device,slot,true)?;
+        let bytes=serde_json::to_vec_pretty(&doc).map_err(|e|e.to_string())?;
+        let file=output.as_mut().ok_or("Missing output file")?;
+        file.write_all(&bytes).map_err(|e|e.to_string())?;file.sync_all().map_err(|e|e.to_string())?;
+        let saved=std::fs::read_to_string(path).map_err(|e|e.to_string())?;
+        document::validate_text(&saved)?;
+        if saved.as_bytes()!=bytes{return Err("Downloaded JSON failed disk readback comparison".into());}
+        println!("Saved and validated {} (two matching reads). CARBON unchanged.",path.display());
+    }
+    Ok(())
+}
+
 fn run()->Result<(),String>{
     let args:Vec<String>=env::args().collect();
     if args.len()==1 || matches!(args.get(1).map(String::as_str),Some("--help"|"-h"|"help")) || args.get(2).is_some_and(|a|a=="--help" || a=="-h") {
         println!("{HELP}"); return Ok(());
     }
+    if matches!(args[1].as_str(),"backup"|"download"|"upload"){return simple_transfer(&args);}
     if !["import-midi","plan-midi","analyse-midi","validate-json","view","verify","export-json","import-json","restore-song","plan-restore","ports","backup-song","backup-bank"].contains(&args[1].as_str()){
         return Err(format!("Unknown command {:?}; use --help",args[1]));
     }
@@ -136,7 +217,7 @@ fn run()->Result<(),String>{
     if args.get(1).map(String::as_str)==Some("restore-song") {
         // Explicitly selected hardware test slots; backup identity must match.
         if args.len()!=10 || args[7]!="--stopped" || args[8]!="--firmware-9c91ab0" {
-            return Err("Usage: restore-song SOURCE TARGET_BACKUP TARGET_SLOT RECOVERY_FILE PORT_NAME --stopped --firmware-9c91ab0 APPROVAL_TOKEN".into());
+            return Err("Usage: restore-song SOURCE TARGET_BACKUP TARGET_SLOT RECOVERY_FILE PORT_NAME --stopped --firmware-9c91ab0 APPROVAL_TOKEN|--confirm".into());
         }
         let (_,source)=verify_song_archive(File::open(&args[2]).map_err(|e|e.to_string())?)?;
         let (target,base)=verify_song_archive(File::open(&args[3]).map_err(|e|e.to_string())?)?;
@@ -144,12 +225,24 @@ fn run()->Result<(),String>{
         restore::validate_hardware_target(slot,&target)?;
         restore::validate_hardware_source(&source, &args[8])?;
         let plan=restore::Plan::new(slot,base,source,restore::Mode::Replace)?;
-        println!("{}",serde_json::to_string_pretty(&plan.summary()).map_err(|e|e.to_string())?);
-        if args[9]!=plan.approval_token() {return Err("Exact replacement approval token required".into());}
-        if Path::new(&args[5]).exists(){return Err("Recovery output exists".into());}
+        println!("{}",plan.brief());
+        if Path::new(&args[5]).exists(){return Err("Recovery output exists; choose a new recovery filename".into());}
+        let approval=if args[9]=="--confirm" {
+            use std::io::{IsTerminal,Write};
+            if !std::io::stdin().is_terminal(){return Err("Interactive confirmation requires a terminal; no device accessed".into());}
+            print!("\nTo authorize this write, type '{}': ",plan.confirmation_phrase());
+            std::io::stdout().flush().map_err(|e|e.to_string())?;
+            let mut line=String::new();
+            std::io::stdin().read_line(&mut line).map_err(|e|e.to_string())?;
+            if !plan.accepts_confirmation(&line){return Err("Cancelled; no device accessed".into());}
+            plan.approval_token()
+        }else{
+            if args[9]!=plan.approval_token(){return Err("Exact approval token required, or use --confirm for an interactive prompt".into());}
+            args[9].clone()
+        };
         let link=midi::MidiLink::open(&args[6],&args[6])?;
         let mut device=transfer::Adapter{link,read_timeout:Duration::from_secs(3),stage_timeout:Duration::from_secs(3),commit_timeout:Duration::from_secs(30)};
-        restore::execute(&mut device,&plan,&args[9],true,true,|raw|{
+        restore::execute(&mut device,&plan,&approval,true,true,|raw|{
             let timestamp=SystemTime::now().duration_since(UNIX_EPOCH).map_err(|e|e.to_string())?.as_secs();
             let m=song_manifest(raw,slot,&args[6],&args[6],timestamp)?;
             let mut file=OpenOptions::new().write(true).create_new(true).open(&args[5]).map_err(|e|e.to_string())?;
@@ -161,14 +254,18 @@ fn run()->Result<(),String>{
         return Ok(());
     }
     if args.get(1).map(String::as_str)==Some("plan-restore") {
-        if args.len()!=6 {return Err("Usage: plan-restore SOURCE_SONG_ARCHIVE TARGET_BACKUP TARGET_SLOT replace|patch (offline only)".into());}
+        if !(args.len()==6 || (args.len()==7 && args[6]=="--json")) {return Err("Usage: plan-restore SOURCE_SONG_ARCHIVE TARGET_BACKUP TARGET_SLOT replace|patch [--json] (offline only)".into());}
         let (_,after)=verify_song_archive(File::open(&args[2]).map_err(|e|e.to_string())?)?;
         let (base,before)=verify_song_archive(File::open(&args[3]).map_err(|e|e.to_string())?)?;
         let slot=args[4].parse::<usize>().map_err(|_|"Invalid target slot")?;
         if base["slot"]!=slot {return Err("Target backup belongs to a different slot".into());}
         let mode=match args[5].as_str(){"replace"=>restore::Mode::Replace,"patch"=>restore::Mode::Patch,_=>return Err("Choose replace or patch".into())};
         let plan=restore::Plan::new(slot,before,after,mode)?;
-        println!("{}",serde_json::to_string_pretty(&plan.summary()).map_err(|e|e.to_string())?);
+        if args.len()==7 {
+            println!("{}",serde_json::to_string_pretty(&plan.summary()).map_err(|e|e.to_string())?);
+        }else{
+            println!("{}\n\nNo device accessed. Full diff: repeat with --json.\nTo write interactively, use restore-song with --confirm instead of a token.\n\nApproval token (only needed for noninteractive use):\n{}",plan.brief(),plan.approval_token());
+        }
         return Ok(());
     }
     let mut input=MidiInput::new("CARBON read-only backup").map_err(|e|e.to_string())?;

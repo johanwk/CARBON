@@ -88,6 +88,16 @@ pub fn import(doc:&Value)->Result<(usize,Vec<u8>),String>{
  for i in 0..384{d[1056+2*i]=0;d[1057+2*i]=1;}for i in 0..2304{d[1824+6*i]=0;}
  d[15648]=0;d[15649]=100;d[15650]=255;d[15654..15662].fill(0);d[15662]=1;d[15663]=0;d[15664]=12;d[15665]=100;d[15738..15774].fill(100);d[15774..15810].fill(0);d[15810]=255;d[15811..15817].fill(254);
  d[1830..1836].copy_from_slice(&[0x90,48,96,255,106,0]);d}
+ #[test]fn bundled_default_135(){
+  let text=include_str!("../templates/default-1.35.json");
+  let doc=crate::json::parse(text).unwrap();let (_,raw)=import(&doc).unwrap();
+  assert_eq!(&raw[..4],&[35,0,1,0]);
+  assert!(raw[1824..15648].chunks_exact(6).all(|e|e[0]==0));
+  assert_eq!(doc["metadata"]["extensions"]["default_template"]["maximum_supported_firmware"],"1.35");
+  for cv in 1..=4{assert_eq!(doc["settings"][format!("cv{cv}.calibration")],0);assert_eq!(doc["settings"][format!("cv{cv}.offset")],0);}
+  for t in 1..=6{for out in 1..=2{assert_eq!(doc["settings"][format!("track{t}.output{out}.port")],-1);}}
+  assert_eq!(export(&raw,36).unwrap()["shared_tracks"],doc["shared_tracks"]);
+ }
  #[test]fn validation_only(){
   for version in [34,35]{let mut raw=fixture();raw[0]=version;let doc=export(&raw,19).unwrap();let text=serde_json::to_string(&doc).unwrap();let summary=validate_text(&text).unwrap();assert!(summary.contains("20480 bytes"));assert!(summary.contains(&hash(&raw)));assert!(summary.contains(if version==35{"schema2"}else{"schema1"}));
    let mut bad=doc.clone();bad["provenance"]["raw_sha256"]=json!("wrong");assert!(validate_text(&bad.to_string()).is_err());
