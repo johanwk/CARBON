@@ -3,9 +3,10 @@
 use crate::{hash, song_range, SONG_SIZE};
 use serde_json::{json, Value};
 const SECTOR: usize = 4096;
-/// Only explicitly designated test slots; backup identity is mandatory.
+/// Explicit panel slot in the song bank; backup identity is mandatory.
 pub fn validate_hardware_target(slot:usize,backup:&Value)->Result<(),String>{
- if ![30,31].contains(&slot) || backup["slot"]!=slot {return Err("Hardware restore requires matching backup for approved test slot30 or31".into());}
+ song_range(slot)?;
+ if backup["slot"]!=slot {return Err("Hardware restore target must match the verified backup slot".into());}
  Ok(())
 }
 
@@ -111,8 +112,8 @@ pub fn execute<D:Device,F:FnMut(&[u8])->Result<(),String>>(device:&mut D,plan:&P
  for s in 0..384{d[1056+2*s+1]=1;}d[15649]=100;d[15650]=255;d[15665]=100;d[15810]=255;for i in 0..6{d[15811+i]=254;}d}
  fn setup()->(Plan,Fake){let mut before=fixture();before[..4].copy_from_slice(&[34,0,1,0]);before[SONG_SIZE-4..].copy_from_slice(&[0x47,0x4e,0x4f,0x53]);let mut after=before.clone();after[1830]=0x90;after[1831]=48;after[1832]=97;let plan=Plan::new(20,before.clone(),after,Mode::Patch).unwrap();(plan,Fake{data:before,buf:vec![0;SECTOR],writes:0,fail:false})}
  #[test] fn hardware_target_identity(){
-  for slot in [30,31]{assert!(validate_hardware_target(slot,&json!({"slot":slot})).is_ok());}
-  for slot in [0,1,29,32,64,65]{assert!(validate_hardware_target(slot,&json!({"slot":slot})).is_err());}
+  for slot in 1..=64{assert!(validate_hardware_target(slot,&json!({"slot":slot})).is_ok());}
+  for slot in [0,65,usize::MAX]{assert!(validate_hardware_target(slot,&json!({"slot":slot})).is_err());}
   assert!(validate_hardware_target(31,&json!({"slot":30})).is_err());
   assert!(validate_hardware_target(31,&json!({})).is_err());
  }

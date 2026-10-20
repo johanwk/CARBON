@@ -3,8 +3,44 @@ use carbon_backup::*;
 use midir::{Ignore,MidiInput,MidiOutput};
 use std::{env,fs::{File,OpenOptions},path::Path,sync::mpsc,time::{Duration,Instant,SystemTime,UNIX_EPOCH}};
 
+const HELP:&str = "CARBON song tools — MIDI import, JSON editing and safe single-song transfer
+
+Offline commands:
+  analyse-midi FILE [--json]              Inspect MIDI tracks, bars and timing
+  plan-midi FILE [selection options]      Preview approximate note conversion
+  import-midi MIDI TEMPLATE OUTPUT --output-port N [selection options]
+                                         Create song JSON; replaces musical content
+  validate-json FILE                     Check JSON and binary compilation
+  import-json JSON BACKUP                Compile a single-song archive
+  export-json BACKUP JSON                Export editable song JSON
+  view FILE [--track N] [--steps A-B]     Inspect stored notes/grid
+  verify BACKUP                          Verify archive integrity
+  plan-restore SOURCE BASE SLOT replace  Preview single-song replacement
+
+Device commands (explicit invocation only):
+  ports
+  backup-song SLOT FILE INPUT OUTPUT --stopped [--pause-ms N]
+  backup-bank FILE INPUT OUTPUT --stopped [--pause-ms N]
+  restore-song SOURCE BASE SLOT RECOVERY PORT --stopped --firmware-9c91ab0 TOKEN
+    WRITES one song slot1..64. Requires reviewed plan and fresh recovery backup.
+
+MIDI selection: --start-bar N --bars N --tracks 2,3|NAME --step-length auto|96
+Output ports: 0 DIN1, 1 DIN2, 3 USB-host, 4 USB-device (CV unsupported).
+Use --step-length 96 --bars 16 for a quarter-grid opening excerpt in 4/4.
+Conversion may drop/shift notes; inspect metadata.extensions.midi_import.
+Template must be schema2/1.35. Source programs/expression are not reproduced.
+See tools/carbon-backup/README.md for policies and transfer precautions.
+";
+
 fn run()->Result<(),String>{
     let args:Vec<String>=env::args().collect();
+    if args.len()==1 || matches!(args.get(1).map(String::as_str),Some("--help"|"-h"|"help")) || args.get(2).is_some_and(|a|a=="--help" || a=="-h") {
+        println!("{HELP}"); return Ok(());
+    }
+    if !["import-midi","plan-midi","analyse-midi","validate-json","view","verify","export-json","import-json","restore-song","plan-restore","ports","backup-song","backup-bank"].contains(&args[1].as_str()){
+        return Err(format!("Unknown command {:?}; use --help",args[1]));
+    }
+
     if args.get(1).map(String::as_str)==Some("validate-json") {
         if args.len()!=3{return Err("Usage: validate-json FILE (offline; no output file or device access)".into());}
         let text=std::fs::read_to_string(&args[2]).map_err(|e|e.to_string())?;
