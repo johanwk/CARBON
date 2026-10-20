@@ -28,11 +28,49 @@ static void live(int status, int note, int value) {
     struct midi_msg msg = {.port = 7, .len = 3, .status = status, .data0 = note, .data1 = value};
     seq_engine_live_send_msg(0, &msg);
 }
+// Hrm + delayed MIDI phrase investigation: production engine/output path.
+static void test_harmony_delayed_phrase(void) {
+    init(); test_root=SONG_ROOT_OFF; test_scale=SCALE_CHROMATIC;
+    test_transpose=0; outproc_root_changed();
+    enabled[0]=1; sestate.clock_div_count[0]=0; sestate.step_size[0]=96;
+    put(0,0,SONG_EVENT_HARMONY,SCALE_MAJOR+1,SONG_HARMONY_ROOT_C);
+    put(0,1,SONG_EVENT_NOTE,61,91); fixture[0][1].length=48;
+    put(0,2,SONG_EVENT_NOTE,60,92); fixture[0][2].length=48;
+    fixture[0][2].delay=99; // one third of the actual step = 32 ticks
+    seq_engine_run(1);
+    assert(wires==2 && wire[0].data0==60 && wire[0].data1==91);
+    for(int tick=2;tick<=33;tick++) seq_engine_run(tick);
+    assert(wires==4 && wire[2].data0==60 && wire[2].data1==92);
+    // Distinct source pitches collapse onto the same destination pitch.
+    // First release occurs while the second attack is meant to remain sounding.
+    for(int tick=34;tick<=49;tick++) seq_engine_run(tick);
+    assert(wires==6 && wire[4].status==MIDI_NOTE_OFF && wire[4].data0==60);
+    for(int tick=50;tick<=81;tick++) seq_engine_run(tick);
+    assert(wires==8 && wire[6].status==MIDI_NOTE_OFF && wire[6].data0==60);
+    for(int i=0;i<OUTPROC_MAX_NOTES;i++) assert(!opstate.notes[0][i].input.status);
+
+    // A later Hrm applies to an earlier step's pending attack at attack time.
+    init(); test_root=SONG_ROOT_OFF; test_scale=SCALE_CHROMATIC;
+    test_transpose=0; outproc_root_changed();
+    struct seq_engine_step_visit visit={.slots=1};
+    visit.events[0]=(struct track_event){.type=SONG_EVENT_NOTE,.data0=61,
+        .data1=90,.length=8,.delay=48};
+    seq_engine_track_play_step(0,0,&visit); assert(!wires);
+    for(int tick=0;tick<24;tick++) seq_engine_track_manage_notes(0);
+    struct seq_engine_step_visit visits[SEQ_NUM_TRACKS]={0};
+    visits[0].slots=1;visits[0].events[0]=(struct track_event){
+        .type=SONG_EVENT_HARMONY,.data0=SCALE_MAJOR+1,.data1=SONG_HARMONY_ROOT_C};
+    seq_engine_resolve_harmony(visits);
+    for(int tick=24;tick<48;tick++) seq_engine_track_manage_notes(0);
+    assert(wires==2 && wire[0].data0==60);
+    seq_engine_track_stop_all_notes(0);
+}
 #ifdef CARBON_TEST_REMOTE
 int pitch_tests_main(void) {
 #else
 int main(void) {
 #endif
+    test_harmony_delayed_phrase();
     init();
     live(MIDI_NOTE_ON, 64, 100); assert(wires == 2 && wire[0].data0 == 65);
     test_root = 2; test_scale = SCALE_NAT_MINOR; test_transpose = -3;
