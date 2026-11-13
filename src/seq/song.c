@@ -1807,6 +1807,8 @@ int song_add_step_event(int scene, int track, int step,
         log_error("sase - step invalid: %d", step);
         return -1;
     }
+    if((event->type == SONG_EVENT_GLIDE && (event->data0 > 8 || event->data1 > 127)) ||
+            (event->type == SONG_EVENT_INTERNAL_CC && event->data0 == 34 && event->data1 > 8)) return -1;
     if(event->type == SONG_EVENT_NOTE && event->delay > SEQ_START_DELAY_MAX &&
             event->delay != SEQ_START_DELAY_INHERIT) return -1;
     // search for a blank slot or a slot with the same event type
@@ -1884,6 +1886,8 @@ int song_set_step_event(int scene, int track, int step,
         log_error("ssse - slot invalid: %d", slot);
         return -1;
     }
+    if((event->type == SONG_EVENT_GLIDE && (event->data0 > 8 || event->data1 > 127)) ||
+            (event->type == SONG_EVENT_INTERNAL_CC && event->data0 == 34 && event->data1 > 8)) return -1;
     if(event->type == SONG_EVENT_NOTE && event->delay > SEQ_START_DELAY_MAX &&
             event->delay != SEQ_START_DELAY_INHERIT) return -1;
 #ifdef SONG_NOTES_PER_SCENE

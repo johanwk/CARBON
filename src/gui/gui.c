@@ -21,6 +21,7 @@
  *
  */
 #include "gui.h"
+#include "step_edit.h"
 #include "panel.h"
 #include "../config.h"
 #include "../config_store.h"
@@ -240,6 +241,8 @@ uint32_t GUI_GRID_TRACK_COLOR_OFF[][2] = {
 struct gui_state {
     // grid square colors
     uint32_t grid_state[SEQ_NUM_STEPS];  // colors of main grid
+    struct seq_step_preview pitch_preview[SEQ_NUM_STEPS];
+    uint16_t pitch_marks[SEQ_NUM_STEPS][SEQ_TRACK_POLY]; // cached pixel positions
     uint32_t grid_overlay[SEQ_NUM_STEPS];  // colors of the grid overlay
     int grid_overlay_enable;  // 0 = disable, 1 = enable
     uint32_t preview_state[SEQ_NUM_TRACKS][SEQ_NUM_STEPS];  // colors of preview grids
@@ -1010,30 +1013,47 @@ void gui_draw_grid_bg(void) {
 
 // draw the grid squares if they are dirty
 int gui_draw_main_grid(void) {
-    int step, track, x, y;
-    int dirty = 0;
-    uint32_t color;
-    track = seq_ctrl_get_first_track();
-    for(step = 0; step < SEQ_NUM_STEPS; step ++) {
-        // only redraw if the square has changed
-        if(gstate.grid_overlay_enable && gstate.grid_overlay[step]) {
-            color = gstate.grid_overlay[step];
+    int track = seq_ctrl_get_first_track(), dirty = 0;
+    int low = 127, high = 0;
+    if(track < 0 || track >= SEQ_NUM_TRACKS) return 0;
+    // GUI refresh polls effective state, including transient Bias/CCi/Hrm/Inv.
+    // Scratch data lives in gstate, not on the small realtime stack.
+    for(int step = 0; step < SEQ_NUM_STEPS; step++) {
+        struct seq_step_preview *p = &gstate.pitch_preview[step];
+        seq_engine_preview_step(track, step, p);
+        for(int i = 0; i < p->count; i++) {
+            if(p->pitch[i] < low) low = p->pitch[i];
+            if(p->pitch[i] > high) high = p->pitch[i];
         }
-        else {
-            color = gstate.preview_state[track][step];
+    }
+    // One octave-anchored range for the WHOLE grid, at least two octaves.
+    low = (low / 12) * 12;
+    int span = ((high - low + 11) / 12) * 12;
+    if(span < 24) span = 24;
+    for(int step = 0; step < SEQ_NUM_STEPS; step++) {
+        uint16_t marks[SEQ_TRACK_POLY] = {0};
+        uint32_t color = gstate.grid_overlay_enable && gstate.grid_overlay[step]
+            ? gstate.grid_overlay[step] : gstate.preview_state[track][step];
+        struct seq_step_preview *p = &gstate.pitch_preview[step];
+        // Step Edit retains the pitch view; other overlays keep their own meaning.
+        if(!gstate.grid_overlay_enable || step_edit_get_enable()) for(int i = 0; i < p->count; i++) {
+            int px = 3 + (p->delay[i] * (gstate.GUI_GRID_SQUARE_W - 15) + 127) / 255;
+            int py = 3 + (gstate.GUI_GRID_SQUARE_H - 8) -
+                ((p->pitch[i] - low) * (gstate.GUI_GRID_SQUARE_H - 8) + span / 2) / span;
+            marks[i] = (py << 8) | px;
         }
-        if(gstate.grid_state[step] != color) {
-            x = step & 0x07;
-            y = (step >> 3) & 0x07;
-            gstate.grid_state[step] = color;
-            gfx_fill_rect(gstate.GUI_GRID_SQUARE_X +
-                ((gstate.GUI_GRID_SQUARE_W + gstate.GUI_GRID_SQUARE_SPACE) * x),
-                gstate.GUI_GRID_SQUARE_Y +
-                ((gstate.GUI_GRID_SQUARE_H + gstate.GUI_GRID_SQUARE_SPACE) * y),
-                gstate.GUI_GRID_SQUARE_W, gstate.GUI_GRID_SQUARE_H,
-                color);
-            dirty = 1;
-        }
+        if(gstate.grid_state[step] == color &&
+                !memcmp(gstate.pitch_marks[step], marks, sizeof(marks))) continue;
+        int x = gstate.GUI_GRID_SQUARE_X + (gstate.GUI_GRID_SQUARE_W + gstate.GUI_GRID_SQUARE_SPACE) * (step & 7);
+        int y = gstate.GUI_GRID_SQUARE_Y + (gstate.GUI_GRID_SQUARE_H + gstate.GUI_GRID_SQUARE_SPACE) * (step >> 3);
+        gstate.grid_state[step] = color;
+        memcpy(gstate.pitch_marks[step], marks, sizeof(marks));
+        gfx_fill_rect(x, y, gstate.GUI_GRID_SQUARE_W, gstate.GUI_GRID_SQUARE_H, color);
+        unsigned r = (color >> 16) & 255, g = (color >> 8) & 255, b = color & 255;
+        uint32_t ink = (r * 299 + g * 587 + b * 114) > 140000 ? 0xff202020 : 0xffbbbbbb;
+        for(int i = 0; i < SEQ_TRACK_POLY; i++) if(marks[i])
+            gfx_fill_rect(x + (marks[i] & 255), y + (marks[i] >> 8), 9, 2, ink);
+        dirty = 1;
     }
     return dirty;
 }

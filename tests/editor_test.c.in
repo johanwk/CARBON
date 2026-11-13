@@ -63,11 +63,63 @@ static void setup(void) {
     memset(events, 0, sizeof(events)); count = running = 0;
     for(i = 0; i < SEQ_TRACK_POLY; i ++) sedits.playing_notes[i] = -1;
 }
+static void test_glide_editor(void) {
+    setup();
+    events[0]=(struct track_event){.type=SONG_EVENT_INTERNAL_CC,.data0=34,.data1=8};
+    step_edit_adjust_note(1,0);
+    assert(events[0].data0==35 && !strcmp(rows[0],"CCi 35: Glide Curve"));
+    for(int c=0;c<128;c++) {
+        events[0].data1=c; step_edit_adjust_velocity(0,0);
+        char expected[64]; snprintf(expected,sizeof(expected),"CCi 35: Curve %d %s",c,
+            c==64?"Linear":c<64?"Slow Start":"Fast Start");
+        assert(!strcmp(rows[0],expected));
+        assert(step_edit_adjust_cci_value(35,c,1)==(c==127?127:c+1));
+        assert(step_edit_adjust_cci_value(35,c,-1)==(c==0?0:c-1));
+        assert(midi_ctrl_internal_cc_to_value(35,c,64)==c);
+    }
+    assert(midi_ctrl_internal_cc_to_value(35,128,64)==-1);
+    assert(midi_ctrl_internal_cc_to_value(35,-1,64)==-1);
+    step_edit_adjust_note(1,0); assert(events[0].data0==35);
+    step_edit_adjust_note(-1,0); assert(events[0].data0==34 && events[0].data1==8);
+    assert(!count);
+    setup(); events[0]=(struct track_event){.type=SONG_EVENT_INVERSION};
+    step_edit_adjust_note(1,1);
+    assert(events[0].type==SONG_EVENT_GLIDE && events[0].data0==4 && events[0].data1==64);
+    for(int d=0;d<=8;d++) {
+        events[0].data0=d; step_edit_adjust_note(0,0);
+        char expected[64]; snprintf(expected,sizeof(expected),"Gli: Duration %s",glide_label(d));
+        assert(!strcmp(rows[0],expected));
+        for(int c=0;c<128;c++) {
+            events[0].data1=c; step_edit_adjust_velocity(0,0);
+            snprintf(expected,sizeof(expected),"Gli: Curve %d %s",c,
+                c==64?"Linear":c<64?"Slow Start":"Fast Start");
+            assert(!strcmp(rows[0],expected));
+        }
+    }
+    step_edit_adjust_velocity(1,0); assert(events[0].data1==127);
+    step_edit_adjust_velocity(-200,0); assert(events[0].data1==0);
+    step_edit_adjust_note(-100,0); assert(events[0].data0==0);
+    step_edit_adjust_note(100,0); assert(events[0].data0==8);
+    assert(!count); step_edit_play_step(); assert(!count);
+    events[0]=(struct track_event){.type=SONG_EVENT_INTERNAL_CC,.data0=29,.data1=100};
+    step_edit_adjust_note(1,0); assert(events[0].data0==34 && events[0].data1==8);
+    assert(!strcmp(rows[0],"CCi 34: Glide Duration"));
+    for(int d=0;d<=8;d++) {
+        events[0].data1=d; step_edit_adjust_velocity(0,0);
+        char expected[64]; snprintf(expected,sizeof(expected),"CCi 34: Glide %s",glide_label(d));
+        assert(!strcmp(rows[0],expected));
+    }
+    step_edit_adjust_velocity(-100,0); assert(events[0].data1==0);
+    step_edit_adjust_velocity(100,0); assert(events[0].data1==8);
+    step_edit_adjust_note(-1,0); assert(events[0].data0==29);
+    assert(!count);
+}
 int main(void) {
+    test_glide_editor();
     int i;
     static const uint8_t types[] = {SONG_EVENT_NOTE, SONG_EVENT_CC,
         SONG_EVENT_INTERNAL_CC, SONG_EVENT_PROGCHG, SONG_EVENT_PROBABILITY,
-        SONG_EVENT_EUCLIDEAN, SONG_EVENT_PRE, SONG_EVENT_NON_PRE, SONG_EVENT_HARMONY, SONG_EVENT_INVERSION};
+        SONG_EVENT_EUCLIDEAN, SONG_EVENT_PRE, SONG_EVENT_NON_PRE, SONG_EVENT_HARMONY, SONG_EVENT_INVERSION, SONG_EVENT_GLIDE};
     {
         char label[16];
         assert(SEQ_UTILS_CLOCK_24PPQ == 8);
@@ -77,11 +129,11 @@ int main(void) {
         assert(!strcmp(label, "16 PPQ"));
     }
     setup(); events[0].type = SONG_EVENT_NOTE;
-    for(i = 1; i <= 10; i ++) {
+    for(i = 1; i <= 11; i ++) {
         step_edit_adjust_note(1, 1);
-        assert(events[0].type == types[i % 10]);
+        assert(events[0].type == types[i % 11]);
     }
-    for(i = 9; i >= 0; i --) {
+    for(i = 10; i >= 0; i --) {
         step_edit_adjust_note(-1, 1); assert(events[0].type == types[i]);
     }
     events[0] = (struct track_event){.type = SONG_EVENT_PROBABILITY, .data0 = 50};
@@ -295,7 +347,7 @@ int main(void) {
     setup(); step_edit_clear_recording_notes(); sedits.enable=1; events[0]=(struct track_event){.type=SONG_EVENT_NOTE,.delay=103};
     struct midi_msg input={.status=MIDI_NOTE_ON,.data0=64,.data1=90};
     step_edit_handle_input(&input); assert(events[0].type==SONG_EVENT_NOTE && events[0].delay==255);
-    events[0].type=SONG_EVENT_INVERSION; events[0].delay=99; sedits.event_pos=0;
+    events[0].type=SONG_EVENT_GLIDE; events[0].delay=99; sedits.event_pos=0;
     step_edit_adjust_note(1,1); assert(events[0].type==SONG_EVENT_NOTE && events[0].delay==255);
     puts("editor tests passed"); return 0;
 }

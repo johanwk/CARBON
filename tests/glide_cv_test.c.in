@@ -1,0 +1,78 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later */
+#include <assert.h>
+#include <stdio.h>
+#include <string.h>
+#include "../src/cvproc.c"
+#define MIDI_STREAM_CCM
+#if defined(__clang__)
+#pragma clang diagnostic ignored "-Wconstant-logical-operand"
+#endif
+#include "../src/midi/midi_stream.c"
+static int dac[4], gates[4];
+static float tempo = 120;
+float midi_clock_get_tempo(void) { return tempo; }
+void analog_out_set_cv(int out, int value) { assert(out>=0 && out<4); assert(value>=0 && value<=4095); dac[out]=value; }
+void analog_out_set_gate(int out, int gate) { assert(out>=0 && out<4); gates[out]=gate; }
+void log_error(char *fmt, ...) {}
+void log_warn(char *fmt, ...) {}
+static void attack(int out, int note, int duration, int curve) {
+    struct midi_msg m = {.port=MIDI_PORT_CV_OUT,.status=MIDI_NOTE_ON|out,
+        .len=GLIDE_CV_FLAG|curve,.data0=note|(duration<<7),.data1=100};
+    assert(!midi_stream_send_msg(&m)); cvproc_timer_task();
+}
+static void advance(int ms) { while(ms--) cvproc_timer_task(); }
+int main(void) {
+    for(int c=0;c<128;c++) {
+        uint32_t prev=0; assert(glide_curve(0,c)==0);
+        for(uint32_t u=0;u<=65536;u++) {
+            uint32_t v=glide_curve(u,c); assert(v>=prev && v<=65536); prev=v;
+            if(c==64) assert(v==u);
+            if(c<64) assert(v<=u); else assert(v>=u);
+        }
+        assert(prev==65536);
+    }
+    for(int i=1;i<=8;i++) assert(glide_ticks(i)==(3<<(i-1)));
+    midi_stream_init(); memset(&cvstate,0,sizeof(cvstate)); cvproc_init();
+    attack(0,48,6,64); assert(!cvstate.ramp[0].duration); // first attack snaps
+    struct midi_msg initial_off={.port=MIDI_PORT_CV_OUT,.len=3,.status=MIDI_NOTE_OFF,.data0=48};
+    midi_stream_send_msg(&initial_off); cvproc_timer_task();
+    int low=dac[0]; attack(0,72,6,64); assert(dac[0]==low);
+    assert(cvstate.ramp[0].duration==500);
+    advance(250); int middle=dac[0];
+    assert(middle>low && middle<cvstate.cvproc_scale[0][72]);
+    struct midi_msg off={.port=MIDI_PORT_CV_OUT,.len=3,.status=MIDI_NOTE_OFF,.data0=72};
+    midi_stream_send_msg(&off); cvproc_timer_task(); assert(!gates[0]);
+    assert(cvstate.ramp[0].duration); advance(249);
+    assert(dac[0]==cvstate.cvproc_scale[0][72] && !cvstate.ramp[0].duration);
+    attack(0,48,6,0); advance(250); int slow=dac[0];
+    assert(slow>middle); // slow beginning also works downwards
+    int before=dac[0]; attack(0,60,6,127);
+    assert(dac[0]<=before && before-dac[0]<4); // one timer tick before retarget
+    advance(500); assert(dac[0]==cvstate.cvproc_scale[0][60]);
+    tempo=60; attack(0,72,6,64); assert(cvstate.ramp[0].duration==1000);
+    attack(1,72,0,64); assert(!cvstate.ramp[1].duration);
+    attack(0,48,0,64); assert(!cvstate.ramp[0].duration && dac[0]==cvstate.cvproc_scale[0][48]);
+    // A full real queue drops the whole attack, never leaves settings behind.
+    struct midi_msg m={.port=MIDI_PORT_CV_OUT,.len=3,.status=MIDI_CONTROL_CHANGE,.data0=1};
+    for(int i=0;i<MIDI_STREAM_BUFSIZE-1;i++) assert(!midi_stream_send_msg(&m));
+    m.len=GLIDE_CV_FLAG; m.status=MIDI_NOTE_ON; m.data0=(8<<7)|72; m.data1=100;
+    assert(midi_stream_send_msg(&m)==-1); cvproc_timer_task();
+    m.len=3; m.data0=60; assert(!midi_stream_send_msg(&m)); cvproc_timer_task();
+    assert(!cvstate.ramp[0].duration && dac[0]==cvstate.cvproc_scale[0][60]);
+    assert(midi_stream_free_slots(MIDI_PORT_CV_OUT)==MIDI_STREAM_BUFSIZE-1);
+    assert(!midi_stream_free_slots(-1) && !midi_stream_free_slots(MIDI_MAX_PORTS));
+    // Stop cancels an active ramp, including after queue index wraparound.
+    attack(0,72,8,64); advance(20);
+    m=(struct midi_msg){.port=MIDI_PORT_CV_OUT,.len=0,.status=0x60};
+    assert(!midi_stream_send_msg(&m)); cvproc_timer_task();
+    assert(!cvstate.ramp[0].duration);
+    int stopped=dac[0]; advance(40); assert(dac[0]==stopped);
+    // Reset and non-pitch modes must not leave an active ramp.
+    attack(0,72,8,64); cvproc_set_pair_mode(0,CVPROC_MODE_VELO);
+    assert(!cvstate.ramp[0].duration);
+    advance(20); int velocity=dac[0]; advance(20); assert(dac[0]==velocity);
+    cvproc_set_pairs(CVPROC_PAIRS_AAAA);
+    for(int i=0;i<4;i++) assert(!cvstate.ramp[i].duration);
+    puts("glide curves/CV/queue tests passed");
+    return 0;
+}

@@ -43,6 +43,9 @@
 #define MIDI_CTRL_CC_HARMONY_ROOT 31
 #define MIDI_CTRL_CC_INVERSION 32
 #define MIDI_CTRL_CC_COMPACT 33
+// Internal only; direct duration choices, 0 Off, 1..8 note lengths.
+#define MIDI_CTRL_CC_GLIDE 34
+#define MIDI_CTRL_CC_GLIDE_CURVE 35
 #define MIDI_CTRL_CC_RUN_STOP 80
 
 // init the MIDI control module

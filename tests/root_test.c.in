@@ -14,6 +14,8 @@ void log_error(char *fmt, ...) { assert(!"unexpected error"); }
 static int root = -1, tonality = 1, transpose, effective = -999, drum, scene;
 static struct midi_msg sent[4096];
 static int count, routing;
+int midi_stream_free_slots(int port) { return 255; }
+float midi_clock_get_tempo(void) { return 120.0f; }
 static int copy_busy;
 int song_scene_copy_in_progress(void) { return copy_busy; }
 int seq_engine_get_effective_root(int s) { return root; }

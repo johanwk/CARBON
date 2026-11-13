@@ -40,7 +40,7 @@ fn json_value(data:&[u8],f:&Field)->Value{
 }
 pub fn validate(d:&[u8])->Result<(),String>{
  if d.len()!=SONG_SIZE{return Err("Wrong song size".into());}
- for f in fields(){let v=value(d,&f);let max=if d[0]==35 && f.name.ends_with(".shared_delay_ticks"){103.}else{f.max};if !v.is_finite()||v<f.min||v>max{return Err(format!("Invalid{}={v}",f.name));}
+ for f in fields(){let v=value(d,&f);let max=if d[0]>=35 && f.name.ends_with(".shared_delay_ticks"){103.}else{f.max};if !v.is_finite()||v<f.min||v>max{return Err(format!("Invalid{}={v}",f.name));}
  if f.name=="metronome" && v>2. && v<24.{return Err("Invalid metronome mode".into());}}
  // NULL song-list entries have opaque/stale payload. Active entries use UI limits.
  for i in 0..64{let o=48+6*i;let scene=d[o] as i8;if scene == -1{continue;}

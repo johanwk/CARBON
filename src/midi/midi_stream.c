@@ -55,7 +55,10 @@ uint8_t midi_stream_send_byte_state[MIDI_MAX_PORTS];  // byte stream state
 
 // message queues
 // put data into CCMRAM instead of regular RAM
-struct midi_msg midi_stream_queue[MIDI_MAX_PORTS][MIDI_STREAM_BUFSIZE] __attribute__ ((section (".ccm")));
+#ifndef MIDI_STREAM_CCM
+#define MIDI_STREAM_CCM __attribute__ ((section (".ccm")))
+#endif
+struct midi_msg midi_stream_queue[MIDI_MAX_PORTS][MIDI_STREAM_BUFSIZE] MIDI_STREAM_CCM;
 int midi_stream_queue_inp[MIDI_MAX_PORTS];
 int midi_stream_queue_outp[MIDI_MAX_PORTS];
 
@@ -67,6 +70,12 @@ void midi_stream_init(void) {
         midi_stream_queue_inp[i] = 0;
         midi_stream_queue_outp[i] = 0;
     }
+}
+
+int midi_stream_free_slots(int port) {
+    if(port < 0 || port >= MIDI_MAX_PORTS) return 0;
+    return MIDI_STREAM_BUFSIZE - 1 - ((midi_stream_queue_inp[port] -
+        midi_stream_queue_outp[port]) & MIDI_STREAM_BUFMASK);
 }
 
 // put a message into a stream - the msg will be copied

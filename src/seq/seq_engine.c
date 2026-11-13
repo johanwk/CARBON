@@ -21,6 +21,7 @@
  *
  */
 #include "seq_engine.h"
+#include <string.h>
 #include "conditional.h"
 #include "../util/probability_seed.h"
 #include "seq_ctrl.h"
@@ -59,6 +60,7 @@
 // active note state
 struct seq_engine_active_note {
     struct midi_event note;  // active note
+    uint8_t glide_duration, glide_curve;
     int16_t start_delay_countdown;  // number of ticks before event start
     int8_t ratchet_note_count;  // number of notes to play
     int8_t ratchet_note_countdown;  // number of remaining ratchets remaining
@@ -97,6 +99,10 @@ struct seq_engine_state {
     int bias_track_output[SEQ_NUM_TRACKS];  // bias track output
     struct conditional_state conditions[SEQ_NUM_TRACKS];
     int16_t internal_cc[SEQ_NUM_TRACKS][14];  // CC 16-29; -1 = inactive
+    uint8_t glide_duration[SEQ_NUM_TRACKS];
+    uint8_t glide_curve[SEQ_NUM_TRACKS];
+    uint8_t scheduling_glide[SEQ_NUM_TRACKS];
+    uint8_t scheduling_curve[SEQ_NUM_TRACKS];
     uint8_t inversion[SEQ_NUM_TRACKS];
     uint8_t compact[SEQ_NUM_TRACKS];
     int harmony_active;
@@ -562,6 +568,10 @@ int seq_engine_get_current_scene(void) {
 
 // get a transient override, falling back to the stored song value
 int seq_engine_get_internal_cc(int track, int controller, int fallback) {
+    if(controller == MIDI_CTRL_CC_GLIDE_CURVE && track >= 0 && track < SEQ_NUM_TRACKS)
+        return sestate.glide_curve[track];
+    if(controller == MIDI_CTRL_CC_GLIDE && track >= 0 && track < SEQ_NUM_TRACKS)
+        return sestate.glide_duration[track];
     int index = controller - MIDI_CTRL_CC_STEP_LENGTH;
     if(track < 0 || track >= SEQ_NUM_TRACKS || index < 0 || index >= 14) {
         return fallback;
@@ -817,8 +827,11 @@ void seq_engine_set_kbtrans(int kbtrans) {
 //
 // start an arp note on a track
 void seq_engine_arp_start_note(int track, struct midi_msg *msg) {
-    outproc_deliver_msg(sestate.scene_current, track,
-        msg, OUTPROC_DELIVER_BOTH, OUTPROC_OUTPUT_PROCESSED);  // send note
+    if(track < 0 || track >= SEQ_NUM_TRACKS) return;
+    // Arp attacks use current persistent Bias controls, not local Gli slots
+    // from the chord input. Releases and arp gate timing remain unchanged.
+    outproc_deliver_glide(sestate.scene_current, track, msg,
+        sestate.glide_duration[track], sestate.glide_curve[track]);
 }
 
 // stop an arp note on a track
@@ -1154,9 +1167,55 @@ static void seq_engine_resolve_harmony(const struct seq_engine_step_visit *visit
     if(changed) state_change_fire0(SCE_ENG_HARMONY);
 }
 
+// Shared pre-output pitch stage: preview and playback cannot drift apart.
+static int seq_engine_step_pitch_input(int track, int pitch) {
+    int source = sestate.bias_track_map[track];
+    int bias = source >= 0 && source < SEQ_NUM_TRACKS && source != track
+        ? sestate.bias_track_output[source] : 0;
+    int base = song_get_transpose(sestate.scene_current, track);
+    int delta = seq_engine_get_internal_cc(track, MIDI_CTRL_CC_TRACK_TRANSPOSE, base) - base;
+    if(sestate.track_type[track] == SONG_TRACK_TYPE_DRUM)
+        return seq_utils_clamp(pitch + bias + delta, 0, 127);
+    pitch += sestate.kbtrans + bias;
+    if(seq_engine_get_effective_root(sestate.scene_current) < 0) {
+        pitch += delta;
+        if(!seq_utils_check_note_range(pitch)) return -32768;
+    }
+    return pitch;
+}
+
+void seq_engine_preview_step(int track, int step, struct seq_step_preview *preview) {
+    int pitches[SEQ_TRACK_POLY], delays[SEQ_TRACK_POLY], count = 0;
+    struct track_event event;
+    memset(preview, 0, sizeof(*preview));
+    if(track < 0 || track >= SEQ_NUM_TRACKS || step < 0 || step >= SEQ_NUM_STEPS ||
+            sestate.arp_enable[track]) return;
+    int interval = sestate.step_size[track];
+    if(interval < 1) interval = 1;
+    for(int slot = 0; slot < SEQ_TRACK_POLY; slot++) {
+        if(song_get_step_event(sestate.scene_current, track, step, slot, &event) == -1 ||
+                event.type != SONG_EVENT_NOTE || !event.data1) continue;
+        pitches[count] = event.data0;
+        int ticks = seq_utils_delay_ticks(event.delay == SEQ_START_DELAY_INHERIT
+            ? song_get_start_delay(sestate.scene_current, track, step) : event.delay, interval);
+        delays[count++] = seq_utils_clamp((ticks * 255 + interval / 2) / interval, 0, 255);
+    }
+    // Potential notes only: never evaluate gates or execute stored controls.
+    if(sestate.track_type[track] != SONG_TRACK_TYPE_DRUM)
+        voicing_transform(pitches, count, sestate.inversion[track], sestate.compact[track]);
+    for(int i = 0; i < count; i++) {
+        int pitch = seq_engine_step_pitch_input(track, pitches[i]);
+        if(pitch == -32768) continue;
+        pitch = outproc_preview_pitch(track, pitch);
+        if(!seq_utils_check_note_range(pitch)) continue;
+        int n = preview->count++;
+        preview->pitch[n] = pitch; preview->delay[n] = delays[i];
+    }
+}
+
 void seq_engine_track_play_step(int track, int step,
         const struct seq_engine_step_visit *visit) {
-    int i, bias, temp, count = 0;
+    int i, temp, count = 0;
     int pitches[SEQ_TRACK_POLY], slots[SEQ_TRACK_POLY], voiced[SEQ_TRACK_POLY];
     struct track_event event;
     struct midi_msg msg;
@@ -1172,6 +1231,8 @@ void seq_engine_track_play_step(int track, int step,
         voicing_transform(pitches, count, sestate.inversion[track], sestate.compact[track]);
         for(i = 0; i < count; i++) voiced[slots[i]] = pitches[i];
     }
+    sestate.scheduling_glide[track] = sestate.glide_duration[track];
+    sestate.scheduling_curve[track] = sestate.glide_curve[track];
     // play each event on the step
     for(i = 0; i < SEQ_TRACK_POLY; i ++) {
         // get the event and make sure it's valid
@@ -1179,42 +1240,16 @@ void seq_engine_track_play_step(int track, int step,
             event = visit->events[i];
             // handle event types
             switch(event.type) {
+                case SONG_EVENT_GLIDE:
+                    if(event.data0 <= 8 && event.data1 <= 127) {
+                        sestate.scheduling_glide[track] = event.data0;
+                        sestate.scheduling_curve[track] = event.data1;
+                    }
+                    break;
                 case SONG_EVENT_NOTE:
-                    bias = 0;
-                    // if bias track is enabled and not our own track
-                    if(sestate.bias_track_map[track] != track &&
-                            sestate.bias_track_map[track] != SONG_TRACK_BIAS_NULL) {
-                        bias = sestate.bias_track_output[sestate.bias_track_map[track]];
-                    }
-
-                    // drum track - bias / no kbtrans
-                    if(sestate.track_type[track] == SONG_TRACK_TYPE_DRUM) {
-                        midi_utils_enc_note_on(&msg, 0, 0,
-                            seq_utils_clamp(event.data0 + bias +
-                            seq_engine_get_internal_cc(track,
-                                MIDI_CTRL_CC_TRACK_TRANSPOSE,
-                                song_get_transpose(sestate.scene_current, track)) -
-                            song_get_transpose(sestate.scene_current, track),
-                            0, 127), event.data1);
-                    }
-                    // voice track - bias + kbtrans + songmode.kbtrans
-                    else {
-                        // Internal CC 17 is transient, so compensate for the
-                        // stored transpose that outproc will add later.
-                        temp = voiced[i] + sestate.kbtrans + bias +
-                            seq_engine_get_internal_cc(track,
-                                MIDI_CTRL_CC_TRACK_TRANSPOSE,
-                                song_get_transpose(sestate.scene_current, track)) -
-                            song_get_transpose(sestate.scene_current, track);
-                        if(seq_engine_get_effective_root(sestate.scene_current) >= 0) {
-                            // Named roots process the effective transpose at output, once.
-                            temp = voiced[i] + sestate.kbtrans + bias;
-                        }
-                        else if(!seq_utils_check_note_range(temp)) {
-                            continue;
-                        }
-                        midi_utils_enc_note_on(&msg, 0, 0, temp, event.data1);
-                    }
+                    temp = seq_engine_step_pitch_input(track, voiced[i]);
+                    if(temp == -32768) continue;
+                    midi_utils_enc_note_on(&msg, 0, 0, temp, event.data1);
                     seq_engine_track_start_note(track, step, event.length,
                         seq_utils_delay_ticks(event.delay == SEQ_START_DELAY_INHERIT
                             ? song_get_start_delay(sestate.scene_current, track, step)
@@ -1291,6 +1326,8 @@ void seq_engine_track_start_note(int track, int step, int length, int delay, str
     // now we have a slot we can use for this new note
     // put the note data into the slot and ensure it has a valid length
     midi_utils_copy_msg(&sestate.track_active_notes[track][free_slot].note.msg, on_msg);
+    sestate.track_active_notes[track][free_slot].glide_duration = sestate.scheduling_glide[track];
+    sestate.track_active_notes[track][free_slot].glide_curve = sestate.scheduling_curve[track];
     // figure out the total length scaled by gate override (for non-ratchet mode)
     // gate time of 0x80 is 100%
     total_len = (length * sestate.gate_time[track]) >> 7;
@@ -1345,8 +1382,9 @@ void seq_engine_track_start_note(int track, int step, int length, int delay, str
     }
     // normal notes play now if the start delay is zero
     else if(sestate.track_active_notes[track][free_slot].start_delay_countdown == 0) {
-        outproc_deliver_msg(sestate.scene_current, track, on_msg,
-            OUTPROC_DELIVER_BOTH, OUTPROC_OUTPUT_PROCESSED);
+        outproc_deliver_glide(sestate.scene_current, track, on_msg,
+            sestate.track_active_notes[track][free_slot].glide_duration,
+            sestate.track_active_notes[track][free_slot].glide_curve);
     }
 }
 
@@ -1363,9 +1401,10 @@ void seq_engine_track_manage_notes(int track) {
                 sestate.track_active_notes[track][note].start_delay_countdown --;
                 // time to start the note for reals - everything else is set up
                 if(sestate.track_active_notes[track][note].start_delay_countdown == 0) {
-                    outproc_deliver_msg(sestate.scene_current, track,
+                    outproc_deliver_glide(sestate.scene_current, track,
                         &sestate.track_active_notes[track][note].note.msg,
-                        OUTPROC_DELIVER_BOTH, OUTPROC_OUTPUT_PROCESSED);
+                        sestate.track_active_notes[track][note].glide_duration,
+                        sestate.track_active_notes[track][note].glide_curve);
                 }
             }
             // ratcheting is enabled so let's deal with that
@@ -1388,9 +1427,10 @@ void seq_engine_track_manage_notes(int track) {
                     // see if we should start the note again
                     sestate.track_active_notes[track][note].ratchet_note_countdown --;
                     if(sestate.track_active_notes[track][note].ratchet_note_countdown > 0) {
-                        outproc_deliver_msg(sestate.scene_current, track,
+                        outproc_deliver_glide(sestate.scene_current, track,
                             &sestate.track_active_notes[track][note].note.msg,
-                            OUTPROC_DELIVER_BOTH, OUTPROC_OUTPUT_PROCESSED);
+                            sestate.track_active_notes[track][note].glide_duration,
+                            sestate.track_active_notes[track][note].glide_curve);
                         // reset stuff for the next note
                         sestate.track_active_notes[track][note].ratchet_note_length_countdown =
                             sestate.track_active_notes[track][note].ratchet_note_length;
@@ -1494,6 +1534,14 @@ void seq_engine_apply_internal_cc(int source_track, int controller, int value) {
         if(target == source_track || sestate.bias_track_map[target] != source_track) {
             continue;
         }
+        if(controller == MIDI_CTRL_CC_GLIDE_CURVE) {
+            if(value >= 0 && value <= 127) sestate.glide_curve[target] = value;
+            continue;
+        }
+        if(controller == MIDI_CTRL_CC_GLIDE) {
+            if(value >= 0 && value <= 8) sestate.glide_duration[target] = value;
+            continue;
+        }
         motion_length = seq_engine_get_effective_motion_length(target);
         scaled = midi_ctrl_internal_cc_to_value(controller, value, motion_length);
         if((scaled < 0 && controller != MIDI_CTRL_CC_TRACK_TRANSPOSE) || sestate.internal_cc[target]
@@ -1568,12 +1616,17 @@ void seq_engine_refresh_internal_cc_target(int track, int controller) {
 
 // discard all transient automation; stored song values remain untouched
 void seq_engine_clear_internal_cc(void) {
+    outproc_reset_glide_owners();
     int track, index;
     int had_harmony = sestate.harmony_active;
     sestate.harmony_active = 0;
     sestate.harmony_root = SONG_ROOT_INHERIT;
     if(had_harmony) state_change_fire0(SCE_ENG_HARMONY);
     for(track = 0; track < SEQ_NUM_TRACKS; track ++) {
+        sestate.glide_duration[track] = 0;
+        sestate.glide_curve[track] = 64;
+        sestate.scheduling_glide[track] = 0;
+        sestate.scheduling_curve[track] = 64;
         sestate.inversion[track] = 0;
         sestate.compact[track] = 0;
         for(index = 0; index < 14; index ++) {

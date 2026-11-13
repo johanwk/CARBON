@@ -33,6 +33,10 @@
 
 // init the output processor
 void outproc_init(void);
+// Read-only pitch calculation shared by output and grid preview.
+int outproc_preview_pitch(int track, int note);
+// Release track priority at song/scene/position boundaries; keep sounding ramps.
+void outproc_reset_glide_owners(void);
 
 // the transpose changed on a track
 void outproc_transpose_changed(int scene, int track);
@@ -47,6 +51,9 @@ void outproc_root_changed(void);
 // deliver a track message to assigned outputs
 void outproc_deliver_msg(int scene, int track, 
     struct midi_msg *msg, int deliver, int process);
+
+// Sequenced attack with captured step-local glide settings.
+void outproc_deliver_glide(int scene, int track, struct midi_msg *msg, int duration, int curve);
 
 // stop all notes on a track
 void outproc_stop_all_notes(int track);

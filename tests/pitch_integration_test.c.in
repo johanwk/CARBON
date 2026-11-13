@@ -14,12 +14,18 @@ void metronome_sound_len_changed(int len) {}
 int song_get_midi_autolive(void) { return 0; }
 int song_get_midi_program(int track, int map) { return SONG_MIDI_PROG_NULL; }
 static struct midi_msg wire[512];
+float midi_clock_get_tempo(void) { return 120.0f; }
 static int wires;
+static int free_slots = 255, reject_sends;
+int midi_stream_free_slots(int port) { return free_slots; }
 int midi_stream_send_msg(struct midi_msg *msg) {
-    assert(msg->data0 >= 0 && msg->data0 <= 127);
+    if(reject_sends) return -1;
+    assert(msg->data0 >= 0 && (msg->data0 <= 127 ||
+        (msg->port == MIDI_PORT_CV_OUT && (msg->len & GLIDE_CV_FLAG))));
     assert(wires < 512); wire[wires++] = *msg; return 0;
 }
 static void init(void) {
+    free_slots=255; reject_sends=0; test_cv_route=0;
     setup(); test_root = 0; test_scale = SCALE_MAJOR; test_transpose = 2;
     test_drum = 0; test_delay = 0; test_ratchet = 1; outproc_init();
     arp_init(); outproc_root_changed(); wires = 0;
@@ -65,11 +71,174 @@ static void test_harmony_delayed_phrase(void) {
     assert(wires==2 && wire[0].data0==60);
     seq_engine_track_stop_all_notes(0);
 }
+static void test_arp_glide(void) {
+    for(int cv=0;cv<2;cv++) {
+        init(); test_cv_route=cv;
+        sestate.arp_enable[0]=1; arp_set_arp_enable(0,1);
+        sestate.bias_track_map[0]=1;
+        seq_engine_apply_internal_cc(1,34,4); seq_engine_apply_internal_cc(1,35,12);
+        // Local Gli on chord input must not override persistent arp settings.
+        struct seq_engine_step_visit v={.slots=3};
+        v.events[0]=(struct track_event){.type=SONG_EVENT_GLIDE,.data0=8,.data1=127};
+        v.events[1]=(struct track_event){.type=SONG_EVENT_NOTE,.data0=64,.data1=100,.length=96};
+        seq_engine_track_play_step(0,0,&v); assert(!wires);
+        arp_run(1);
+        if(cv) {
+            assert(wires==1 && wire[0].len==(GLIDE_CV_FLAG|12));
+            assert((wire[0].data0>>7)==4 && (wire[0].data0&127)==65);
+        } else {
+            assert(wires==6 && wire[0].data0==5 && wire[0].data1==64);
+            assert(wire[1].data0==65 && wire[1].data1==127);
+            assert(wire[2].status==MIDI_NOTE_ON && wire[2].data0==65);
+        }
+        int before=wires; seq_engine_apply_internal_cc(1,35,110); assert(wires==before);
+        arp_stop_all_notes(0);
+        assert(wires==before+(cv?1:2));
+        assert(wire[before].status==MIDI_NOTE_OFF && wire[before].data0==65);
+        wires=0; astate[0].seq_clock_count=astate[0].freerun_clock_count=0; arp_run(2);
+        if(cv) assert(wires==1 && wire[0].len==(GLIDE_CV_FLAG|110));
+        else assert(wires==6 && wire[0].data1==64); // MIDI curve ignored
+        arp_stop_all_notes(0); seq_engine_apply_internal_cc(1,34,0);
+        wires=0; astate[0].seq_clock_count=astate[0].freerun_clock_count=0; arp_run(3);
+        if(cv) assert(wires==1 && (wire[0].data0>>7)==0);
+        else assert(wires==4 && wire[0].data0==65 && wire[0].data1==0);
+        arp_stop_all_notes(0);
+    }
+    init(); // restore ordinary fixture routing
+}
+static void test_pitch_preview(void) {
+    init(); test_root=SONG_ROOT_OFF; test_scale=SCALE_CHROMATIC; test_transpose=0; outproc_root_changed();
+    put(0,0,SONG_EVENT_PROBABILITY,0,0);
+    put(0,1,SONG_EVENT_NOTE,60,100); put(0,2,SONG_EVENT_NOTE,64,100);
+    fixture[0][1].delay=100; fixture[0][2].delay=0; sestate.step_size[0]=96;
+    struct seq_step_preview p;
+    struct seq_engine_state before=sestate;
+    seq_engine_preview_step(0,0,&p);
+    assert(!memcmp(&before,&sestate,sizeof(sestate)) && !wires);
+    assert(p.count==2 && p.pitch[0]==60 && p.pitch[1]==64 && p.delay[0]==128);
+    sestate.bias_track_map[0]=1; sestate.bias_track_output[1]=2;
+    seq_engine_preview_step(0,0,&p); assert(p.pitch[0]==62 && p.pitch[1]==66);
+    seq_engine_remote_inversion(0,1);
+    seq_engine_preview_step(0,0,&p); assert(p.pitch[0]==74 && p.pitch[1]==66);
+    // Compare preview against actual ungated attacks, with shared pitch rules.
+    struct seq_engine_step_visit v={.slots=6};v.events[1]=fixture[0][1];v.events[2]=fixture[0][2];
+    seq_engine_track_play_step(0,0,&v); assert(wires==2 && wire[0].data0==p.pitch[1]);
+    for(int i=0;i<48;i++) seq_engine_track_manage_notes(0);
+    assert(wire[wires-2].status==MIDI_NOTE_ON && wire[wires-2].data0==p.pitch[0]);
+    sestate.arp_enable[0]=1; seq_engine_preview_step(0,0,&p);assert(!p.count);
+    init(); test_root=0; test_scale=SCALE_MAJOR; test_transpose=2; outproc_root_changed();
+    put(0,0,SONG_EVENT_NOTE,64,100);seq_engine_preview_step(0,0,&p);assert(p.pitch[0]==65);
+    test_root=2;seq_engine_preview_step(0,0,&p);assert(p.pitch[0]==66);
+    assert(!wires);
+}
+static void test_glide_curve_control(void) {
+    test_pitch_preview();
+    test_arp_glide();
+    init(); sestate.bias_track_map[0]=1; sestate.bias_track_map[2]=1;
+    assert(sestate.glide_curve[0]==64);
+    seq_engine_apply_internal_cc(1,35,24);
+    assert(sestate.glide_curve[0]==24 && sestate.glide_curve[2]==24);
+    assert(sestate.glide_curve[1]==64 && !sestate.glide_duration[0]);
+    seq_engine_apply_internal_cc(1,35,128); assert(sestate.glide_curve[0]==24);
+    seq_engine_apply_internal_cc(1,34,6); assert(sestate.glide_curve[0]==24);
+    struct seq_engine_step_visit v={.slots=7};
+    v.events[0]=(struct track_event){.type=SONG_EVENT_NOTE,.data0=60,.data1=100,.length=8,.delay=2};
+    v.events[1]=(struct track_event){.type=SONG_EVENT_GLIDE,.data0=4,.data1=100};
+    v.events[2]=v.events[0]; v.events[2].data0=62;
+    seq_engine_track_play_step(0,0,&v); assert(!wires);
+    assert(sestate.track_active_notes[0][SEQ_ENGINE_MAX_NOTES-1].glide_curve==24);
+    assert(sestate.track_active_notes[0][SEQ_ENGINE_MAX_NOTES-2].glide_curve==100);
+    seq_engine_apply_internal_cc(1,35,127);
+    assert(sestate.track_active_notes[0][SEQ_ENGINE_MAX_NOTES-1].glide_curve==24);
+    assert(sestate.glide_duration[0]==6 && sestate.glide_curve[0]==127);
+    seq_engine_clear_internal_cc(); assert(sestate.glide_curve[0]==64);
+    assert(sestate.track_active_notes[0][SEQ_ENGINE_MAX_NOTES-1].glide_curve==24);
+    seq_engine_track_manage_notes(0); seq_engine_track_manage_notes(0); assert(wires==12);
+    init(); enabled[0]=1; sestate.clock_div_count[0]=0; sestate.bias_track_map[1]=0;
+    put(0,0,SONG_EVENT_PROBABILITY,0,0); put(0,1,SONG_EVENT_INTERNAL_CC,35,0);
+    seq_engine_run(1); assert(sestate.glide_curve[1]==64);
+    put(0,0,SONG_EVENT_PROBABILITY,100,0); sestate.clock_div_count[0]=0;
+    seq_engine_run(2); assert(sestate.glide_curve[1]==0);
+    sestate.scene_next=1; seq_engine_change_scene_synced(); assert(sestate.glide_curve[1]==64);
+}
+static void test_glide(void) {
+    test_glide_curve_control();
+    init(); test_scale=SCALE_CHROMATIC; test_transpose=0; outproc_root_changed();
+    sestate.bias_track_map[0]=1;
+    seq_engine_apply_internal_cc(1,34,6); assert(sestate.glide_duration[0]==6);
+    seq_engine_apply_internal_cc(1,34,9); assert(sestate.glide_duration[0]==6);
+    struct seq_engine_step_visit v={.slots=63};
+    v.events[0]=(struct track_event){.type=SONG_EVENT_NOTE,.data0=60,.data1=100,.length=100,.delay=0};
+    v.events[1]=(struct track_event){.type=SONG_EVENT_GLIDE,.data0=4,.data1=0};
+    v.events[2]=v.events[0]; v.events[2].data0=62; v.events[2].delay=2;
+    v.events[3]=(struct track_event){.type=SONG_EVENT_GLIDE,.data0=0,.data1=127};
+    v.events[4]=v.events[0]; v.events[4].data0=64;
+    v.events[5]=(struct track_event){.type=SONG_EVENT_GLIDE,.data0=8,.data1=64};
+    seq_engine_track_play_step(0,0,&v);
+    assert(wires==10); // CC5,CC65,Note on two routes; then Off,Note on both
+    assert(wire[0].data0==5 && wire[0].data1==95);
+    assert(wire[1].data0==65 && wire[1].data1==127 && wire[2].status==MIDI_NOTE_ON);
+    assert(wire[6].data0==65 && wire[6].data1==0);
+    assert(sestate.track_active_notes[0][SEQ_ENGINE_MAX_NOTES-2].glide_duration==4);
+    assert(sestate.track_active_notes[0][SEQ_ENGINE_MAX_NOTES-2].glide_curve==0);
+    seq_engine_clear_internal_cc();
+    seq_engine_track_manage_notes(0); assert(wires==10);
+    seq_engine_track_manage_notes(0); assert(wires==16);
+    assert(wire[10].data0==5 && wire[10].data1==64); // snapshot survived reset of base
+    v.slots=1; seq_engine_track_play_step(0,0,&v);
+    assert(wire[16].data0==65 && wire[16].data1==0); // no local leak
+    outproc_stop_all_notes(0); assert(opstate.glide_owner[0][0]==-1);
+    // Priority per destination, including reversed arrival order. Notes remain.
+    init(); struct midi_msg a={.port=0,.len=3,.status=MIDI_NOTE_ON,.data0=60,.data1=100};
+    opstate.attack_duration=4; opstate.attack_curve=64;
+    outproc_prepare_glide(4,0,0,&a); assert(opstate.glide_owner[0][0]==4);
+    outproc_prepare_glide(1,0,0,&a); assert(opstate.glide_owner[0][0]==1);
+    int before=wires; outproc_prepare_glide(5,0,0,&a); assert(wires==before);
+    outproc_prepare_glide(5,1,0,&a); assert(opstate.glide_owner[1][0]==5);
+    a.port=MIDI_PORT_CV_OUT; outproc_prepare_glide(0,MIDI_PORT_CV_OUT,0,&a);
+    assert(a.len==(GLIDE_CV_FLAG|64) && a.data0==((4<<7)|60));
+    assert(wires==before+2); // no separate CV settings message
+    // Queue congestion drops a whole attack, without latching glide controls.
+    for(int room=0;room<3;room++) {
+        init(); free_slots=room;
+        a=(struct midi_msg){.port=0,.len=3,.status=MIDI_NOTE_ON,.data0=60,.data1=100};
+        outproc_deliver_glide(0,0,&a,4,64);
+        assert(!wires && opstate.glide_owner[0][0]==-1);
+        free_slots=255; outproc_deliver_glide(0,0,&a,4,64); assert(wires==6);
+        a.status=MIDI_NOTE_OFF;
+        outproc_deliver_msg(0,0,&a,OUTPROC_DELIVER_BOTH,OUTPROC_OUTPUT_PROCESSED);
+        assert(wires==6); // dropped attack's release must not stop retrigger
+        outproc_deliver_msg(0,0,&a,OUTPROC_DELIVER_BOTH,OUTPROC_OUTPUT_PROCESSED);
+        assert(wires==8);
+    }
+    // Scene/reset releases priority but preserves cleanup responsibility.
+    init(); a=(struct midi_msg){.port=0,.len=3,.status=MIDI_NOTE_ON,.data0=60,.data1=100};
+    outproc_deliver_glide(0,0,&a,4,64);
+    seq_engine_clear_internal_cc();
+    assert(opstate.glide_owner[0][0]==-1 && opstate.glide_cleanup_owner[0][0]==0);
+    reject_sends=1; outproc_stop_all_notes(0);
+    assert(opstate.glide_used[0][0] && opstate.glide_cleanup_owner[0][0]==0);
+    reject_sends=0; before=wires; outproc_stop_all_notes(0);
+    assert(wires==before+2 && wire[before].data0==65 && wire[before].data1==0);
+    assert(!opstate.glide_used[0][0] && opstate.glide_cleanup_owner[0][0]==-1);
+    // Stopping a non-owner cannot switch off another track's glide.
+    init(); opstate.attack_duration=4; opstate.attack_curve=64;
+    outproc_prepare_glide(3,0,0,&a); outproc_prepare_glide(0,0,0,&a);
+    before=wires; outproc_stop_all_notes(3); assert(wires==before);
+    assert(opstate.glide_owner[0][0]==0);
+    outproc_stop_all_notes(0); assert(wires==before+1);
+    // Failed gate prevents CCi and local Gli from reaching playback.
+    init(); enabled[0]=1; sestate.clock_div_count[0]=0; sestate.bias_track_map[1]=0;
+    put(0,0,SONG_EVENT_PROBABILITY,0,0); put(0,1,SONG_EVENT_INTERNAL_CC,34,8);
+    put(0,2,SONG_EVENT_GLIDE,8,64); put(0,3,SONG_EVENT_NOTE,60,100);
+    seq_engine_run(1); assert(!wires && !sestate.glide_duration[1]);
+}
 #ifdef CARBON_TEST_REMOTE
 int pitch_tests_main(void) {
 #else
 int main(void) {
 #endif
+    test_glide();
     test_harmony_delayed_phrase();
     init();
     live(MIDI_NOTE_ON, 64, 100); assert(wires == 2 && wire[0].data0 == 65);

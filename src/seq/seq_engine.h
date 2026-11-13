@@ -123,4 +123,12 @@ void seq_engine_midi_rx_msg(struct midi_msg *msg);
 // Effective transient internal control (stored fallback when not overridden).
 int seq_engine_get_internal_cc(int track, int cc, int stored_value);
 
+// Current-state potential notes; no condition evaluation or runtime mutation.
+struct seq_step_preview {
+    unsigned char count;
+    unsigned char pitch[6];
+    unsigned char delay[6]; // normalized 0..255 of current step; >=boundary clipped
+};
+void seq_engine_preview_step(int track, int step, struct seq_step_preview *preview);
+
 #endif

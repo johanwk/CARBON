@@ -103,3 +103,9 @@ trap 'rm -rf "$TMP"' EXIT HUP INT TERM
     -ffunction-sections -fdata-sections -fsanitize=address,undefined \
     tests/ext_flash_test.c.in "$LINK_GC" -o "$TMP/ext-flash"
 "$TMP/ext-flash"
+
+"$CC" -x c -std=c11 -Wall -Wextra -Werror -Wno-cpp \
+    -Wno-unused-parameter -Wno-sign-compare \
+    -ffunction-sections -fdata-sections -fsanitize=address,undefined \
+    tests/glide_cv_test.c.in src/midi/midi_utils.c "$LINK_GC" -o "$TMP/glide-cv"
+"$TMP/glide-cv"

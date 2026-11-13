@@ -852,3 +852,91 @@ different design choices or merge conflicts that would need review before any
 upstream submission.
 
 This was intentional independent work, not a rejection of those contributions.
+
+* Gli portamento (local 1.36 candidate)
+
+Initial Gli operation tested by the user over MIDI and CV; CV provides the
+clearer audible reference. CCi35 extension not yet hardware-tested. Use
+monophonic lines and dedicated destinations.
+Gli follows Inv in the event-type cycle. It changes glide settings for eligible
+Note slots to its right on the same step; a later Gli replaces settings only
+for subsequent slots. Conditional gates can suppress Gli. Duration zero is
+explicit Off. Without Gli, the track uses its persistent Bias-controlled setting.
+
+Transpose edits duration: Off, 1/128, 1/64, 1/32, 1/16, 1/8, 1/4, 1/2, 1/1.
+These are note durations, independent of track Step Length. The four-character
+field uses 128 for 1/128; the title gives the full fraction. Velocity edits
+curvature 0..127: 64 Linear, lower Slow Start, higher Fast Start, both upwards
+and downwards. Gates and note lengths are unchanged. Stopped preview ignores Gli.
+
+CCi 34 (Glide Duration) uses direct values 0..8 for those same choices,
+addressing Bias targets but not its own source. The editor skips external-only
+CC30..33, shows descriptive title/value hints, and bounds CCi34 values to 0..8.
+CCi 35 (Glide Curve) sets persistent curvature directly over 0..127, with
+64 Linear, lower Slow Start and higher Fast Start. It does not enable glide
+or change duration. Edits advance one value per detent and show decoded help.
+The curve is captured when each target Note is scheduled; changing it does
+not alter pending notes or ongoing ramps. Local Gli overrides both parameters.
+For arpeggiator output, CCi34/35 are read afresh at each generated note attack.
+Local Gli on a chord-input step is ignored in arp mode: the arp reorders those
+notes and does not inherit their local glide settings. To glide an arpeggio,
+use another track as its Bias source, with CCi34 for duration and CCi35 for
+curve. Curve changes affect the next generated note, not the running ramp.
+Arp gate timing remains unchanged; short gates can make glide less audible.
+MIDI synths may require overlapping notes or their own legato settings.
+
+Curve resets to64, and persistent duration clears on song load, scene
+activation and transport-position reset, like other CCi overrides.
+
+Each scheduled Note snapshots its duration/curve, including delayed attacks
+and ratchets. Local expiry does not cancel an ongoing glide. CV duration is
+converted to milliseconds at attack using current tempo; later tempo changes
+do not stretch an already running ramp. New targets retarget from current pitch.
+First CV attack after full reset snaps rather than gliding from an invented note.
+Glide is enabled only on mono pitch CV groups, not velocity/CC/poly groups.
+
+MIDI sends CC5 then CC65 before the target Note On; Off sends CC65=0 after
+CARBON has used glide on that destination. CC5 maps choices1..8 monotonically
+to16,32,48,64,79,95,111,127, not guaranteed musical durations on the receiver.
+Curvature is ignored for MIDI. Synth support and channel-wide behavior vary.
+
+Output priority is per port/channel (CV group). A lower-numbered requesting
+track can take over; later higher-numbered requests are ignored. Priority is
+retained until output cleanup or a song/scene/position reset. Notes themselves
+are NOT suppressed: shared MIDI channels still share synth controls, and shared
+CV outputs still have last-note priority. Prefer one track per destination.
+This is not polyphonic voice-leading or independent chord-note glide.
+
+Numeric song version1.36 and display1.36-jwk-gli3 identify this local change.
+Event code8 uses existing six-byte records; fixed song size remains20480 bytes.
+Back up before saving: older firmware does not understand Gli. Existing host
+JSON/import/restore tooling remains1.34/1.35-only; do not use it to edit or
+restore1.36 songs until separately updated. Raw backup remains the safe archive.
+
+* Current-state pitch grid (1.36-jwk-grd1 candidate)
+
+The main8x8 grid retains its existing background colours and adds9x2pixel
+pitch strokes. Higher strokes mean higher effective pitches; strokes move
+right with note delay relative to the current step interval. Width is fixed,
+not note duration. All cells share an octave-anchored range of at least two
+octaves, expanded to fit the current preview. The range can change when the
+material or effective harmony changes; this is a contour view, not an absolute
+pitch ruler. Close pitches can merge at LCD resolution.
+
+The preview polls current Bias note offsets, keyboard transpose, CCi transpose,
+Hrm/root/scale, and Inv/Compact. It does not execute stored controls in future
+steps or evaluate conditions: all positive-velocity stored Notes are potential
+notes, including ones that might fail a gate. Voicing uses that potential
+group, so actual conditionally thinned chords can differ. Existing background
+colours still communicate motion/masking/playhead state. This is not a trace
+of sounding voices or a promise of future automation/probability results.
+
+Individual/shared delays use current step interval (including relative choices).
+Delays reaching or crossing the next boundary share the rightmost position;
+no precise cross-step timing is depicted. Gate lengths, ratchet repetitions
+and glide trajectories are not drawn. Arp tracks omit strokes rather than
+pretend the chord input predicts arp output. Step Edit retains pitch strokes, with dark strokes on bright selection
+backgrounds. Other editing overlays retain their uncluttered display. Miniature track previews are unchanged.
+
+Only changed cells redraw. Physical readability, flicker and realtime cost
+remain to be checked on hardware; this candidate has host/build tests only.

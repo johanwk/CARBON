@@ -21,6 +21,8 @@
  *
  */
 #include "cvproc.h"
+#include "seq/glide.h"
+#include "midi/midi_clock.h"
 #include "config.h"
 #include "analog_out.h"
 #include "midi/midi_protocol.h"
@@ -64,6 +66,12 @@ struct cvproc_state {
     // output state
     int8_t out_note[CVPROC_NUM_OUTPUTS];  // the current note at the output
     int16_t out_bend[CVPROC_NUM_OUTPUTS];  // the current bend value (DAC offset)
+    struct {
+        int32_t current, start, target; // Q16 DAC codes
+        uint16_t elapsed, duration;
+        uint8_t curve, valid;
+    } ramp[CVPROC_NUM_OUTPUTS];
+    int attack_ms, attack_curve;
     // output tuning
     uint16_t cvproc_scale[CVPROC_NUM_OUTPUTS][CVPROC_SCALE_NUM_NOTES];
 };
@@ -108,11 +116,47 @@ void cvproc_init(void) {
 void cvproc_timer_task(void) {
     struct midi_msg msg;
     int pair;
+    for(int out = 0; out < CVPROC_NUM_OUTPUTS; out++) {
+        if(cvstate.ramp[out].duration) {
+            uint32_t u;
+            if(++cvstate.ramp[out].elapsed >= cvstate.ramp[out].duration) {
+                cvstate.ramp[out].current = cvstate.ramp[out].target;
+                cvstate.ramp[out].duration = 0;
+            } else {
+                u = (uint32_t)cvstate.ramp[out].elapsed * 65536 / cvstate.ramp[out].duration;
+                u = glide_curve(u, cvstate.ramp[out].curve);
+                cvstate.ramp[out].current = cvstate.ramp[out].start +
+                    (int64_t)(cvstate.ramp[out].target - cvstate.ramp[out].start) * u / 65536;
+            }
+            analog_out_set_cv(out, cvstate.ramp[out].current >> 16);
+        }
+    }
     // CV/gate
     if(midi_stream_data_available(MIDI_PORT_CV_OUT)) {
         while(midi_stream_data_available(MIDI_PORT_CV_OUT)) {
             midi_stream_receive_msg(MIDI_PORT_CV_OUT, &msg);
             pair = msg.status & 0x0f;  // channel is which pair to use
+            if(pair >= CVPROC_NUM_PAIRS) continue;
+            if(msg.len == 0 && (msg.status & 0xf0) == 0x60) {
+                for(int n = 0; n < cvstate.poly_num_voices[pair]; n++)
+                    cvstate.ramp[cvstate.out_offset[pair] + n].duration = 0;
+                continue;
+            }
+            cvstate.attack_ms = 0; cvstate.attack_curve = 64;
+            // A private CV attack occupies ONE queue entry: note and settings
+            // cannot separate on queue overflow. External MIDI never uses this.
+            if((msg.status & 0xf0) == MIDI_NOTE_ON && (msg.len & GLIDE_CV_FLAG)) {
+                int duration = (uint16_t)msg.data0 >> 7;
+                float tempo = midi_clock_get_tempo();
+                if(!(tempo >= 30.0f && tempo <= 300.0f)) tempo = 120.0f;
+                cvstate.attack_ms = (int)(glide_ticks(duration) * 625.0f / tempo + 0.5f);
+                cvstate.attack_curve = msg.len & 127;
+                msg.data0 &= 127;
+                msg.len = 3;
+            }
+            // Initial glide scope is monophonic pitch outputs only.
+            if(cvstate.poly_num_voices[pair] != 1 || cvstate.pair_mode[pair] != CVPROC_MODE_NOTE)
+                cvstate.attack_ms = 0;
             switch(cvstate.pairs) {
                 case CVPROC_PAIRS_ABCD:
                     switch(pair) {
@@ -559,12 +603,19 @@ void cvproc_cc_handler(int pair, struct midi_msg *msg) {
 // turn off all notes and reset state
 void cvproc_reset_state(void) {
     int i, j;
+    cvstate.attack_ms = 0;
+    for(i = 0; i < CVPROC_NUM_OUTPUTS; i++) {
+        cvstate.ramp[i].duration = 0;
+        cvstate.ramp[i].valid = 0;
+    }
     // turn off / reset outputs
     for(i = 0; i < CVPROC_NUM_OUTPUTS; i ++) {
         cvproc_set_note(i, CVPROC_DEFAULT_NOTE, CVPROC_GATE_OFF);
         cvproc_set_bend(i, 0);
     }
     
+    // No previous musical pitch after reset: first attack must snap.
+    for(i = 0; i < CVPROC_NUM_OUTPUTS; i++) cvstate.ramp[i].valid = 0;
     // clear mono state
     for(i = 0; i < CVPROC_NUM_PAIRS; i ++) {
         for(j = 0; j < CVPROC_MONO_DEPTH; j ++) {
@@ -589,6 +640,11 @@ void cvproc_reset_state(void) {
 // reset a specific pair
 void cvproc_reset_pair(int pair) {
     int i;
+    cvstate.attack_ms = 0;
+    for(i = 0; i < cvstate.poly_num_voices[pair]; i++) {
+        cvstate.ramp[cvstate.out_offset[pair] + i].duration = 0;
+        cvstate.ramp[cvstate.out_offset[pair] + i].valid = 0;
+    }
     switch(cvstate.pairs) {
         case CVPROC_PAIRS_ABCD:
             cvstate.damper[cvstate.out_offset[pair]] = 0;
@@ -663,7 +719,20 @@ void cvproc_set_note(int out, int note, int gate) {
         log_error("csn - note invalid: %d", note);
         return;
     }
-    analog_out_set_cv(out, cvstate.cvproc_scale[out][note] + cvstate.out_bend[out]);
+    // Releases must not snap an unfinished glide back to the note target.
+    if(gate == CVPROC_GATE_ON || !cvstate.ramp[out].duration) {
+        int target = cvstate.cvproc_scale[out][note] + cvstate.out_bend[out];
+        if(target < 0) target = 0;
+        if(target > 4095) target = 4095;
+        cvstate.ramp[out].target = target * 65536;
+        cvstate.ramp[out].start = cvstate.ramp[out].current;
+        cvstate.ramp[out].elapsed = 0;
+        cvstate.ramp[out].curve = cvstate.attack_curve;
+        cvstate.ramp[out].duration = cvstate.ramp[out].valid ? cvstate.attack_ms : 0;
+        if(!cvstate.ramp[out].duration) cvstate.ramp[out].current = cvstate.ramp[out].target;
+        cvstate.ramp[out].valid = 1;
+        analog_out_set_cv(out, cvstate.ramp[out].current >> 16);
+    }
     analog_out_set_gate(out, gate);
     cvstate.out_note[out] = note;
 }
@@ -697,6 +766,9 @@ void cvproc_set_bend(int out, int bend) {
         return;
     }
     
+    // Bound the lookup even for poly notes near the MIDI endpoints.
+    note = cvstate.out_note[out];
+    if(note < cvstate.bend_range || note + cvstate.bend_range >= CVPROC_SCALE_NUM_NOTES) return;
     // bend up
     if(bend >= 0) {
         note = cvstate.out_note[out];
@@ -709,7 +781,18 @@ void cvproc_set_bend(int out, int bend) {
         cvstate.out_bend[out] = ((cvstate.cvproc_scale[out][note] - 
                 cvstate.cvproc_scale[out][note - cvstate.bend_range]) * bend) >> 13;    
     }
-    analog_out_set_cv(out, cvstate.cvproc_scale[out][note] + cvstate.out_bend[out]);
+    {
+        int target = cvstate.cvproc_scale[out][note] + cvstate.out_bend[out];
+        if(target < 0) target = 0;
+        if(target > 4095) target = 4095;
+        cvstate.ramp[out].start = cvstate.ramp[out].current;
+        cvstate.ramp[out].target = target * 65536;
+        if(cvstate.ramp[out].duration) {
+            cvstate.ramp[out].duration -= cvstate.ramp[out].elapsed;
+            cvstate.ramp[out].elapsed = 0;
+        } else cvstate.ramp[out].current = cvstate.ramp[out].target;
+        analog_out_set_cv(out, cvstate.ramp[out].current >> 16);
+    }
 }
 
 // build the scale for an output based on scaling and cvcal

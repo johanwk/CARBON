@@ -216,7 +216,7 @@ fn run()->Result<(),String>{
     }
     if args.get(1).map(String::as_str)==Some("restore-song") {
         // Explicitly selected hardware test slots; backup identity must match.
-        if args.len()!=10 || args[7]!="--stopped" || args[8]!="--firmware-9c91ab0" {
+        if args.len()!=10 || args[7]!="--stopped" || !["--firmware-9c91ab0","--firmware-1.36-gli3"].contains(&args[8].as_str()) {
             return Err("Usage: restore-song SOURCE TARGET_BACKUP TARGET_SLOT RECOVERY_FILE PORT_NAME --stopped --firmware-9c91ab0 APPROVAL_TOKEN|--confirm".into());
         }
         let (_,source)=verify_song_archive(File::open(&args[2]).map_err(|e|e.to_string())?)?;

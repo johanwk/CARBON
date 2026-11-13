@@ -116,5 +116,24 @@ int main(void) {
     song_save(0); song_timer_task(); memset(&song, 0, sizeof(song));
     song_load(0); song_timer_task(); song_get_step_event(0, 0, 0, 0, &actual);
     assert(actual.type == SONG_EVENT_INVERSION && actual.data0 == 5 && actual.data1 == 1);
+    actual=(struct track_event){.type=SONG_EVENT_GLIDE,.data0=8,.data1=127};
+    assert(!song_set_step_event(0,0,0,0,&actual));
+    actual.data0=9; assert(song_set_step_event(0,0,0,0,&actual)==-1);
+    actual.data0=8; actual.data1=128; assert(song_add_step_event(0,0,0,&actual)==-1);
+    actual=(struct track_event){.type=SONG_EVENT_INTERNAL_CC,.data0=34,.data1=8};
+    assert(!song_set_step_event(0,0,0,1,&actual));
+    actual.data1=9; assert(song_set_step_event(0,0,0,1,&actual)==-1);
+    assert(!song_save(0)); song_timer_task(); memset(&song,0,sizeof(song));
+    assert(!song_load(0)); song_timer_task();
+    assert(!song_get_step_event(0,0,0,0,&actual));
+    assert(actual.type==SONG_EVENT_GLIDE && actual.data0==8 && actual.data1==127);
+    assert(!song_get_step_event(0,0,0,1,&actual));
+    assert(actual.type==SONG_EVENT_INTERNAL_CC && actual.data0==34 && actual.data1==8);
+    actual=(struct track_event){.type=SONG_EVENT_INTERNAL_CC,.data0=35,.data1=127};
+    assert(!song_set_step_event(0,0,0,2,&actual));
+    assert(!song_save(0)); song_timer_task(); memset(&song,0,sizeof(song));
+    assert(!song_load(0)); song_timer_task();
+    assert(!song_get_step_event(0,0,0,2,&actual));
+    assert(actual.type==SONG_EVENT_INTERNAL_CC && actual.data0==35 && actual.data1==127);
     puts("song tests passed"); return 0;
 }

@@ -346,3 +346,19 @@ transfer failures. They do not prove every musical result or hardware failure
 case. For optional local Bach tests, set `CARBON_MIDI_TEST_ROOT` to your MIDI
 directory and run the Rust test named `local_bach_acceptance` with `--ignored`.
 The local `carbon-firmware-briefing.org` records detailed development history.
+
+## 1.36 glide compatibility
+
+Offline JSON schema3/profile carbon-1.36-glide supports Gli with parameters
+`duration_choice` (0..8) and `curve` (0..127), plus CCi34 duration and CCi35
+curve. Note/shared delay semantics are unchanged from1.35. Profile must match
+raw provenance; no implicit migration. Schema1/2 support is retained.
+
+Explicit `restore-song` accepts1.36 sources with `--firmware-1.36-gli3`
+asserting installed1.36-jwk-gli3. Existing1.35 assertion is still supported
+only for1.35 sources. All target/base/token/recovery/readback safeguards remain.
+The simpler interactive upload-song flow and bundled default/import-midi
+template remain1.35-only; use explicit restore-song for1.36.
+
+Authorized song36 replacement with a schema3 CV bassline completed with full
+readback match. This verifies transfer, not musical playback acceptance.

@@ -20,6 +20,8 @@
  */
 #include "outproc.h"
 #include "scale.h"
+#include "glide.h"
+#include "../midi/midi_clock.h"
 #include "seq_engine.h"
 #include "song.h"
 #include "../midi/midi_stream.h"
@@ -42,10 +44,14 @@ struct outproc_state {
     int current_root[SEQ_NUM_TRACKS];
     int damper[SEQ_NUM_TRACKS];
     uint32_t next_order;
+    int8_t glide_owner[MIDI_PORT_NUM_TRACK_OUTPUTS][16];
+    uint8_t glide_used[MIDI_PORT_NUM_TRACK_OUTPUTS][16];
+    int8_t glide_cleanup_owner[MIDI_PORT_NUM_TRACK_OUTPUTS][16];
+    int attack_duration, attack_curve;
 };
 struct outproc_state opstate;
 
-static int outproc_pitch(int track, int note) {
+int outproc_preview_pitch(int track, int note) {
     int scene = seq_engine_get_current_scene();
     int root = seq_engine_get_effective_root(scene);
     int scale = song_get_track_type(track) == SONG_TRACK_TYPE_DRUM
@@ -60,9 +66,22 @@ static int outproc_pitch(int track, int note) {
         opstate.current_transpose[track];
 }
 
+void outproc_reset_glide_owners(void) {
+    for(int p = 0; p < MIDI_PORT_NUM_TRACK_OUTPUTS; p++)
+        for(int c = 0; c < 16; c++) opstate.glide_owner[p][c] = -1;
+}
+
 void outproc_init(void) {
     int track, i;
     opstate.next_order = 0;
+    opstate.attack_duration = 0;
+    opstate.attack_curve = 64;
+    for(int p = 0; p < MIDI_PORT_NUM_TRACK_OUTPUTS; p++)
+        for(int c = 0; c < 16; c++) {
+            opstate.glide_owner[p][c] = -1;
+            opstate.glide_used[p][c] = 0;
+            opstate.glide_cleanup_owner[p][c] = -1;
+        }
     for(track = 0; track < SEQ_NUM_TRACKS; track ++) {
         for(i = 0; i < OUTPROC_MAX_NOTES; i ++)
             opstate.notes[track][i].input.status = 0;
@@ -77,6 +96,21 @@ void outproc_stop_all_notes(int track) {
     int i;
     struct midi_msg off;
     if(track < 0 || track >= SEQ_NUM_TRACKS) return;
+    for(int p = 0; p < MIDI_PORT_NUM_TRACK_OUTPUTS; p++) {
+        for(int c = 0; c < 16; c++) {
+            if(opstate.glide_cleanup_owner[p][c] != track) continue;
+            if(p == MIDI_PORT_CV_OUT) {
+                off.port = p; off.len = 0; off.status = 0x60 | c;
+                off.data0 = 0; off.data1 = 64;
+            } else midi_utils_enc_control_change(&off, p, c, 65, 0);
+            // If congested, keep cleanup ownership so a later stop/attack
+            // can still turn glide off. No retry loop in the realtime path.
+            if(midi_stream_send_msg(&off) != 0) continue;
+            opstate.glide_owner[p][c] = -1;
+            opstate.glide_used[p][c] = 0;
+            opstate.glide_cleanup_owner[p][c] = -1;
+        }
+    }
     if(opstate.damper[track]) {
         midi_utils_enc_control_change(&off, 0, 0, MIDI_CONTROLLER_DAMPER, 0);
         outproc_deliver_msg(0, track, &off, OUTPROC_DELIVER_BOTH, OUTPROC_OUTPUT_RAW);
@@ -171,6 +205,42 @@ static int outproc_enqueue(int track, int destination, struct midi_msg *input, s
     return -1;
 }
 
+/* Ownership persists until track output cleanup. A lower numbered requester
+ * can take over; higher numbered glide requests cannot change its settings.
+ * Notes themselves are not suppressed by glide arbitration. */
+static void outproc_prepare_glide(int track, int port, int channel, struct midi_msg *attack) {
+    struct midi_msg control;
+    int duration = opstate.attack_duration;
+    int owner = opstate.glide_owner[port][channel];
+    if(duration && (owner < 0 || track < owner))
+        opstate.glide_owner[port][channel] = owner = track;
+    if(owner >= 0 && owner != track) return;
+    if(!duration && !opstate.glide_used[port][channel]) return;
+    opstate.glide_used[port][channel] = 1;
+    opstate.glide_cleanup_owner[port][channel] = track;
+    if(port == MIDI_PORT_CV_OUT) {
+        attack->len = GLIDE_CV_FLAG | opstate.attack_curve;
+        attack->data0 |= duration << 7;
+    } else {
+        if(duration) {
+            /* Receiver-specific CC5 time: monotonic choice mapping, not ms. */
+            midi_utils_enc_control_change(&control, port, channel, 5,
+                (duration * 127 + 4) / 8);
+            midi_stream_send_msg(&control);
+        }
+        midi_utils_enc_control_change(&control, port, channel, 65, duration ? 127 : 0);
+        midi_stream_send_msg(&control);
+    }
+}
+
+void outproc_deliver_glide(int scene, int track, struct midi_msg *msg, int duration, int curve) {
+    opstate.attack_duration = duration >= 0 && duration <= GLIDE_MAX ? duration : 0;
+    opstate.attack_curve = curve >= 0 && curve <= 127 ? curve : GLIDE_LINEAR;
+    outproc_deliver_msg(scene, track, msg, OUTPROC_DELIVER_BOTH, OUTPROC_OUTPUT_PROCESSED);
+    opstate.attack_duration = 0;
+    opstate.attack_curve = GLIDE_LINEAR;
+}
+
 // deliver a track message to assigned outputs
 void outproc_deliver_msg(int scene, int track, struct midi_msg *msg, 
         int deliver, int process) {
@@ -221,8 +291,9 @@ void outproc_deliver_msg(int scene, int track, struct midi_msg *msg,
         if(port == SONG_PORT_DISABLE) {
             continue;  // port not assigned
         }
-        // get channel mapping
+        // get channel mapping; reject malformed routes before array access.
         channel = song_get_midi_channel_map(track, out);
+        if(port < 0 || port >= MIDI_PORT_NUM_TRACK_OUTPUTS || channel < 0 || channel > 15) continue;
         
         // handle event types    
         switch(msg->status & 0xf0) {
@@ -232,11 +303,29 @@ void outproc_deliver_msg(int scene, int track, struct midi_msg *msg,
                 midi_stream_send_msg(&send_msg);
                 break;
             case MIDI_NOTE_ON:
+                // Reserve enough room before emitting CC5/CC65/Note On.
+                // Output producers run serially in the RT task; consumers
+                // can only increase room. Never emit a partial glide attack.
+                temp = 1;
+                if(port != MIDI_PORT_CV_OUT &&
+                        (opstate.attack_duration || opstate.glide_used[port][channel]) &&
+                        (opstate.glide_owner[port][channel] < 0 ||
+                         opstate.glide_owner[port][channel] == track ||
+                         (opstate.attack_duration && track < opstate.glide_owner[port][channel])))
+                    temp += opstate.attack_duration ? 2 : 1;
+                if(midi_stream_free_slots(port) < temp) {
+                    // Retain silent FIFO identity for the eventual release.
+                    if(process == OUTPROC_OUTPUT_PROCESSED) {
+                        send_msg = *msg; send_msg.status = 0;
+                        outproc_enqueue(track, out, msg, &send_msg);
+                    }
+                    continue;
+                }
                 midi_utils_enc_note_on(&send_msg, port, channel, msg->data0, msg->data1);
                 // do note processing / queue
                 if(process == OUTPROC_OUTPUT_PROCESSED) {
                     input = *msg;
-                    temp = outproc_pitch(track, send_msg.data0);
+                    temp = outproc_preview_pitch(track, send_msg.data0);
                     // note became invalid
                     if(!seq_utils_check_note_range(temp)) {
                         // Keep a silent identity so its release cannot consume a
@@ -250,6 +339,7 @@ void outproc_deliver_msg(int scene, int track, struct midi_msg *msg,
                     if(slot < 0) continue;
                 }
                 if(!seq_utils_check_note_range(send_msg.data0)) continue;
+                outproc_prepare_glide(track, port, channel, &send_msg);
                 midi_stream_send_msg(&send_msg);
                 break;
             case MIDI_POLY_KEY_PRESSURE:

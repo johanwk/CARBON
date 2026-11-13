@@ -84,7 +84,8 @@ int song_get_scene_sync(void) { return SONG_SCENE_SYNC_BEAT; }
 #ifdef CARBON_TEST_PITCH
 int song_get_tonality(int scene, int track) { return test_scale; }
 int song_get_midi_channel_map(int track, int map) { return track; }
-int song_get_midi_port_map(int track, int map) { return map; }
+static int test_cv_route;
+int song_get_midi_port_map(int track, int map) { return test_cv_route ? (map ? SONG_PORT_DISABLE : MIDI_PORT_CV_OUT) : map; }
 #else
 int song_get_tonality(int scene, int track) { return 0; }
 int song_get_midi_port_map(int track, int map) { return SONG_PORT_DISABLE; }
@@ -136,6 +137,10 @@ void outproc_deliver_msg(int scene, int track, struct midi_msg *msg,
 #endif
     output[output_count ++] = *msg;
 }
+void outproc_deliver_glide(int scene, int track, struct midi_msg *msg, int duration, int curve) {
+    outproc_deliver_msg(scene, track, msg, 2, 1);
+}
+void outproc_reset_glide_owners(void) {}
 void outproc_stop_all_notes(int track) {}
 void arp_handle_input(int track, struct midi_msg *msg) {}
 void arp_clear_input(int track) {}

@@ -31,11 +31,12 @@ fn detail(e:&[u8])->(&'static str,String){let a=e[1];let b=e[2];let len=u16::fro
  1=>("CCi",format!("controller {a}  raw value {b}")),2=>("Prb",format!("{a}%")),
  3=>("Euc",format!("pair index {a}  rotation {b}")),4=>("Pre",String::new()),5=>("!Pre",String::new()),
  6=>("Hrm",format!("scale choice {a}  root choice {b}")),7=>("Inv",format!("rotations {a}  Compact {}",if b==0{"Off"}else{"On"})),
+ 8=>("Gli",format!("duration choice {a}  curve {b}")),
  _=>("Unknown",format!("raw type {} data {a}/{b} length {len}",e[0]))}}
 pub fn render(data:&[u8],opts:&Options)->Result<String,String>{
  if data.len()!=SONG_SIZE{return Err("Wrong song size".into());}
  let version=u32::from_le_bytes(data[..4].try_into().unwrap());
- if version!=0x10022 && version!=0x10023{return Err("View currently requires1.34 image; no implicit legacy migration".into());}
+ if version!=0x10022 && version!=0x10023 && version!=0x10024{return Err("View currently requires1.34 image; no implicit legacy migration".into());}
  crate::restore::validate_source(data)?;crate::song::validate(data)?;
  if opts.first_step<1||opts.last_step>64||opts.first_step>opts.last_step||opts.track.is_some_and(|t|!(1..=6).contains(&t)){return Err("Invalid view selection".into());}
  if opts.grid{return render_grid(data,opts);}
@@ -43,7 +44,7 @@ pub fn render(data:&[u8],opts:&Options)->Result<String,String>{
  for t in 1..=6{if opts.track.is_some_and(|selected|selected!=t){continue;}
   for s in opts.first_step..=opts.last_step{let o=1056+2*((t-1)*64+s-1);
    writeln!(out,"Track {t} / Step {s}  [shared delay {}; ratchet {}]",delay_label(data[o]),data[o+1]).unwrap();
-   for p in 1..=6{let o=1824+(((t-1)*64+s-1)*6+p-1)*6;let(kind,mut text)=detail(&data[o..o+6]);if version==0x10023 && data[o]==0x90{text.push_str(&format!("  delay {}",delay_label(data[o+3])));}writeln!(out,"  {p}  {kind:<7} {text}").unwrap();}out.push('\n');
+   for p in 1..=6{let o=1824+(((t-1)*64+s-1)*6+p-1)*6;let(kind,mut text)=detail(&data[o..o+6]);if version>=0x10023 && data[o]==0x90{text.push_str(&format!("  delay {}",delay_label(data[o+3])));}writeln!(out,"  {p}  {kind:<7} {text}").unwrap();}out.push('\n');
   }
  }Ok(out)
 }

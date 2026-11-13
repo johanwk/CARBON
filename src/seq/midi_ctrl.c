@@ -127,6 +127,8 @@ int midi_ctrl_internal_cc_supported(int controller) {
         case MIDI_CTRL_CC_ARP_GATE_TIME:
         case MIDI_CTRL_CC_EUCLIDEAN_DENSITY:
         case MIDI_CTRL_CC_EUCLIDEAN_ROTATION:
+        case MIDI_CTRL_CC_GLIDE_CURVE:
+        case MIDI_CTRL_CC_GLIDE:
             return 1;
         default:
             return 0;
@@ -135,6 +137,8 @@ int midi_ctrl_internal_cc_supported(int controller) {
 
 // scale a MIDI-style 0-127 value to an internal parameter value
 int midi_ctrl_internal_cc_to_value(int controller, int value, int motion_length) {
+    if(controller == MIDI_CTRL_CC_GLIDE_CURVE) return value >= 0 && value <= 127 ? value : -1;
+    if(controller == MIDI_CTRL_CC_GLIDE) return value >= 0 && value <= 8 ? value : -1;
     value = seq_utils_clamp(value, 0, 127);
     motion_length = seq_utils_clamp(motion_length, 1, SEQ_NUM_STEPS);
     switch(controller) {

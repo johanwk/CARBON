@@ -20,6 +20,7 @@
  */
 #include "step_edit.h"
 #include "../seq/conditional.h"
+#include "../seq/glide.h"
 #include "gui.h"
 #include "panel_menu.h"
 #include "../config.h"
@@ -297,18 +298,22 @@ void step_edit_adjust_note(int change, int shift) {
             sedits.event_pos, &event) != -1) {
         static const uint8_t types[] = {SONG_EVENT_NOTE, SONG_EVENT_CC,
             SONG_EVENT_INTERNAL_CC, SONG_EVENT_PROGCHG, SONG_EVENT_PROBABILITY,
-            SONG_EVENT_EUCLIDEAN, SONG_EVENT_PRE, SONG_EVENT_NON_PRE, SONG_EVENT_HARMONY, SONG_EVENT_INVERSION};
+            SONG_EVENT_EUCLIDEAN, SONG_EVENT_PRE, SONG_EVENT_NON_PRE, SONG_EVENT_HARMONY, SONG_EVENT_INVERSION, SONG_EVENT_GLIDE};
         int index;
-        for(index = 0; index < 10; index ++) {
+        for(index = 0; index < 11; index ++) {
             if(types[index] == event.type) break;
         }
-        index = (index + (change > 0 ? 1 : 9)) % 10;
+        index = (index + (change > 0 ? 1 : 10)) % 11;
         event.type = types[index];
         event.delay = SEQ_START_DELAY_INHERIT;
         event.data0 = 0;
         event.data1 = 0;
         event.length = 0;
         switch(event.type) {
+            case SONG_EVENT_GLIDE:
+                event.data0 = 4; // 1/16
+                event.data1 = GLIDE_LINEAR;
+                break;
             case SONG_EVENT_NOTE:
                 event.data0 = STEP_EDIT_NEW_NOTE;
                 event.data1 = STEP_EDIT_NEW_NOTE_VELOCITY;
@@ -432,6 +437,8 @@ static int step_edit_adjust_cci_value(int controller, int raw, int change) {
     int direction = change > 0 ? 1 : -1;
     int steps = seq_utils_clamp(change > 0 ? change : -change, 0, 128);
     int decoded, next, candidate;
+    if(controller == MIDI_CTRL_CC_GLIDE_CURVE) return seq_utils_clamp(raw + change, 0, 127);
+    if(controller == MIDI_CTRL_CC_GLIDE) return seq_utils_clamp(raw + change, 0, GLIDE_MAX);
     if(!change) return raw;
     if(controller == MIDI_CTRL_CC_EUCLIDEAN_ROTATION) {
         // Usability compromise: retain intermediate fractions for all targets,
@@ -575,16 +582,22 @@ void step_edit_adjust_step(int change, int mode, int single, int shift) {
                             continue;
                         }
                     }
-                    // internal CC: only the per-track CC 16-29 destinations
+                    // Internal CC: 16-29 plus 34-35; external-only 30-33 are skipped.
                     else if(event.type == SONG_EVENT_INTERNAL_CC) {
-                        event.data0 = seq_utils_clamp(event.data0 + change,
-                            MIDI_CTRL_CC_STEP_LENGTH,
-                            MIDI_CTRL_CC_EUCLIDEAN_ROTATION);
+                        int index = event.data0 >= MIDI_CTRL_CC_GLIDE ? event.data0 - MIDI_CTRL_CC_GLIDE + 14 : event.data0 - 16;
+                        index = seq_utils_clamp(index + change, 0, 15);
+                        event.data0 = index >= 14 ? MIDI_CTRL_CC_GLIDE + index - 14 : index + 16;
+                        if(event.data0 == MIDI_CTRL_CC_GLIDE) event.data1 = seq_utils_clamp(event.data1, 0, GLIDE_MAX);
                         if(single) {
                             sedits.cci_hint_controller = event.data0;
                             sedits.cci_hint_show_value = 0;
                             sedits.cci_hint_timeout = STEP_EDIT_CCI_HINT_MS;
                         }
+                        inhibit_preview = 1;
+                    }
+                    else if(event.type == SONG_EVENT_GLIDE) {
+                        event.data0 = seq_utils_clamp(event.data0 + change, 0, GLIDE_MAX);
+                        sedits.last_adjust_type = STEP_EDIT_ADJUST_NOTE;
                         inhibit_preview = 1;
                     }
                     else if(event.type == SONG_EVENT_INVERSION) {
@@ -635,6 +648,10 @@ void step_edit_adjust_step(int change, int mode, int single, int shift) {
                             sedits.cci_hint_timeout = STEP_EDIT_CCI_HINT_MS;
                         }
                         inhibit_preview = 1;  // user must retrigger edit to hear
+                    }
+                    else if(event.type == SONG_EVENT_GLIDE) {
+                        event.data1 = seq_utils_clamp(event.data1 + change, 0, 127);
+                        inhibit_preview = 1;
                     }
                     else if(event.type == SONG_EVENT_INVERSION) {
                         event.data1 = seq_utils_clamp(event.data1 + change, 0, 1);
@@ -699,6 +716,8 @@ static const char *step_edit_cci_name(int controller) {
         "Arp enable", "Arp type", "Arp speed", "Arp gate time",
         "Euclidean density", "Euclidean rotation"
     };
+    if(controller == MIDI_CTRL_CC_GLIDE) return "Glide Duration";
+    if(controller == MIDI_CTRL_CC_GLIDE_CURVE) return "Glide Curve";
     if(controller < MIDI_CTRL_CC_STEP_LENGTH || controller > MIDI_CTRL_CC_EUCLIDEAN_ROTATION)
         return NULL;
     return names[controller - MIDI_CTRL_CC_STEP_LENGTH];
@@ -737,6 +756,13 @@ static void step_edit_cci_value_title(char *title, int controller, int raw) {
     int decoded = midi_ctrl_internal_cc_to_value(controller, raw, SEQ_NUM_STEPS);
     const char *label = "Value";
     switch(controller) {
+        case MIDI_CTRL_CC_GLIDE_CURVE:
+            snprintf(title, GFX_LABEL_LEN, "CCi 35: Curve %d %s", raw,
+                raw == 64 ? "Linear" : raw < 64 ? "Slow Start" : "Fast Start");
+            return;
+        case MIDI_CTRL_CC_GLIDE:
+            snprintf(title, GFX_LABEL_LEN, "CCi 34: Glide %s", glide_label(raw));
+            return;
         case MIDI_CTRL_CC_STEP_LENGTH:
         case MIDI_CTRL_CC_ARP_SPEED:
             panel_utils_step_len_to_str(value, decoded);
@@ -811,6 +837,15 @@ static void step_edit_update_title(void) {
     char title[GFX_LABEL_LEN];
     const char *name = step_edit_cci_name(sedits.cci_hint_controller);
     struct track_event event = {.delay = SEQ_START_DELAY_INHERIT};
+    if(sedits.event_pos >= 0 && song_get_step_event(sedits.scene, sedits.track,
+            sedits.step_pos, sedits.event_pos, &event) != -1 && event.type == SONG_EVENT_GLIDE) {
+        if(sedits.last_adjust_type == STEP_EDIT_ADJUST_VELO)
+            snprintf(title, sizeof(title), "Gli: Curve %d %s", event.data1,
+                event.data1 == 64 ? "Linear" : event.data1 < 64 ? "Slow Start" : "Fast Start");
+        else snprintf(title, sizeof(title), "Gli: Duration %s", glide_label(event.data0));
+        gui_set_status_text(0, title);
+        return;
+    }
     if(sedits.event_pos >= 0 && song_get_step_event(sedits.scene, sedits.track,
             sedits.step_pos, sedits.event_pos, &event) != -1 && event.type == SONG_EVENT_INVERSION) {
         snprintf(title, sizeof(title), "Inv: %d Compact %s", event.data0, event.data1 ? "On" : "Off");
@@ -949,6 +984,12 @@ void step_edit_update_display(void) {
                 sprintf(tempstr, "%-3d", event.data0);
                 gui_set_status_text_part(2, xpos, 4, tempstr);
                 sprintf(tempstr, "%-3d", event.data1);
+                gui_set_status_text_part(3, xpos, 4, tempstr);
+                break;
+            case SONG_EVENT_GLIDE:
+                gui_set_status_text_part(1, xpos, 4, "Gli");
+                gui_set_status_text_part(2, xpos, 4, event.data0 == 1 ? "128" : (char *)glide_label(event.data0));
+                snprintf(tempstr, sizeof(tempstr), "%d", event.data1);
                 gui_set_status_text_part(3, xpos, 4, tempstr);
                 break;
             case SONG_EVENT_INVERSION:

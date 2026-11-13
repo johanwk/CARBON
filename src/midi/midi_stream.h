@@ -35,6 +35,8 @@ void midi_stream_init(void);
 // put a message into a stream - the msg will be copied
 // returns 0 on success and -1 if the stream is full, -2 if the port is invalid
 int midi_stream_send_msg(struct midi_msg *msg);
+// Available complete-message slots; used before a short ordered output group.
+int midi_stream_free_slots(int port);
 
 // put a SYSEX message into a stream - the data will be copied
 // data is converted in 1-3 byte chunks and sent in midi_message structs
