@@ -58,7 +58,10 @@ void state_change_fire1(int event, int value) {}
 #define SONG_GET2(name, value) int name(int scene, int track) { return (value); }
 SONG_GET2(song_get_arp_enable, 0)
 SONG_GET2(song_get_arp_type, 0)
-SONG_GET2(song_get_arp_speed, 0)
+static int timing_step[6], timing_arp[6];
+int song_get_arp_speed(int scene, int track) {return timing_arp[track];}
+void song_set_arp_speed(int scene, int track, int value) {timing_arp[track]=value;}
+void song_set_step_length(int scene, int track, int value) {timing_step[track]=value;}
 SONG_GET2(song_get_arp_gate_time, 128)
 SONG_GET2(song_get_bias_track, sestate.bias_track_map[track])
 SONG_GET2(song_get_gate_time, 128)
@@ -66,7 +69,7 @@ SONG_GET2(song_get_motion_start, 0)
 static int scene_reverse;
 SONG_GET2(song_get_motion_dir, scene == 1 ? scene_reverse : 0)
 SONG_GET2(song_get_mute, sestate.track_mute[track])
-SONG_GET2(song_get_step_length, 0)
+int song_get_step_length(int scene, int track) {return timing_step[track];}
 #ifdef CARBON_TEST_PITCH
 static int test_scale = 1, test_transpose, test_drum;
 #endif
@@ -108,6 +111,13 @@ int song_get_step_event(int scene, int track, int step, int slot,
 }
 int song_get_motion_length(int scene, int track) { return 8; }
 int song_get_pattern_type(int scene, int track) { return enabled[track]; }
+static int transpose_writes, written_transpose;
+void song_set_transpose(int scene,int track,int value) {
+    transpose_writes++; written_transpose=value;
+#ifdef CARBON_TEST_PITCH
+    test_transpose=value;
+#endif
+}
 int song_get_transpose(int scene, int track) {
 #ifdef CARBON_TEST_PITCH
     return test_transpose;
@@ -147,6 +157,7 @@ void arp_clear_input(int track) {}
 void arp_set_arp_enable(int track, int value) {}
 void arp_set_type(int track, int value) {}
 void arp_set_speed(int track, int value) {}
+void arp_align_rate(int track) {}
 void arp_set_gate_time(int track, int value) {}
 #endif
 void state_change_fire2(int event, int a, int b) {}
@@ -156,6 +167,7 @@ void state_change_fire2(int event, int a, int b) {}
  */
 static void setup(void) {
     int t;
+    memset(timing_step,0,sizeof(timing_step)); memset(timing_arp,0,sizeof(timing_arp));
     memset(&sestate, 0, sizeof(sestate));
     memset(fixture, 0, sizeof(fixture));
     memset(reads, 0, sizeof(reads));
@@ -647,7 +659,86 @@ static void test_delayed_ratchets(void) {
     for(int i=0;i<100;i++) seq_engine_track_manage_notes(0);
     assert(!output_count);
 }
+static void test_pitch_ladder(void) {
+    for(int mode=1;mode<=2;mode++) for(int ref=-24;ref<=24;ref++)
+        for(int cur=-24;cur<=24;cur++) for(int dir=-1;dir<=1;dir+=2) {
+            int v=seq_engine_pitch_choice(cur,ref,mode,dir);
+            assert(v>=-24 && v<=24);
+            if(v!=cur) {int d=((v-ref)%12+12)%12;assert(d==0 || (mode==2 && d==7));assert((v-cur)*dir>0);}
+        }
+    assert(seq_engine_pitch_choice(0,0,2,1)==7);
+    assert(seq_engine_pitch_choice(0,0,2,-1)==-5);
+    assert(seq_engine_pitch_choice(0,0,2,2)==12);
+    assert(seq_engine_pitch_choice(5,5,1,1)==17);
+    assert(seq_engine_pitch_choice(17,5,1,1)==17);
+    assert(seq_engine_pitch_choice(5,5,1,-1)==-7);
+    setup();transpose_writes=0;running=1;seq_engine_set_pitch_mode(2);
+    seq_engine_adjust_pitch(0,1);assert(seq_engine_pitch_value(0,0)==7);
+    seq_engine_adjust_pitch(0,1);assert(seq_engine_pitch_value(0,0)==12);
+    seq_engine_apply_pitch(383);assert(!transpose_writes);
+    seq_engine_apply_pitch(384);assert(transpose_writes==1 && written_transpose==12);
+    assert(!seq_engine_pitch_pending(0));
+    seq_engine_adjust_pitch(0,1);seq_engine_set_straight(0);assert(seq_engine_pitch_pending(0));
+    seq_engine_set_pitch_mode(0);assert(!seq_engine_pitch_pending(0));
+    seq_engine_set_pitch_mode(2);seq_engine_adjust_pitch(0,-1);
+    seq_engine_clear_internal_cc();assert(!seq_engine_pitch_pending(0) && seq_engine_pitch_mode()==2);
+    running=0;transpose_writes=0;seq_engine_adjust_pitch(0,1);
+    assert(transpose_writes==1 && written_transpose==7);
+    seq_engine_set_pitch_mode(0);
+}
+static void test_straight_timing(void) {
+    test_pitch_ladder();
+    static const int allowed[]={1,4,7,10,13,16};
+    for(int current=0;current<23;current++) {
+        for(int dir=-1;dir<=1;dir+=2) {
+            int result=seq_engine_straight_choice(current,dir),found=0;
+            for(int i=0;i<6;i++) found |= allowed[i]==result;
+            assert(found);
+        }
+        assert(seq_engine_straight_choice(current,0)==current);
+    }
+    assert(seq_engine_straight_choice(17,1)==13); // 1/3 bar -> half note
+    assert(seq_engine_straight_choice(17,-1)==10);
+    assert(seq_engine_straight_choice(18,1)==10); // 1/5 bar -> quarter
+    assert(seq_engine_straight_choice(18,-1)==7);
+    assert(seq_engine_straight_choice(5,1)==7);
+    assert(seq_engine_straight_choice(5,-1)==4);
+    assert(seq_engine_straight_choice(4,3)==13);
+    assert(seq_engine_straight_choice(4,1000)==16);
+    setup(); timing_step[0]=timing_arp[0]=4; running=1;
+    seq_engine_set_straight(1);
+    seq_engine_adjust_timing(0,0,7); seq_engine_adjust_timing(0,1,10);
+    assert(timing_step[0]==4 && timing_arp[0]==4);
+    assert(seq_engine_timing_value(0,0,0)==7 && seq_engine_timing_pending(0,1));
+    seq_engine_adjust_timing(0,0,10);
+    seq_engine_adjust_timing(1,0,7); // multi-track batch
+    for(int tick=1;tick<384;tick++) seq_engine_run(tick);
+    assert(timing_step[0]==4 && timing_arp[0]==4);
+    int position=sestate.step_pos[0];
+    seq_engine_run(384);
+    assert(timing_step[0]==10 && timing_step[1]==7 && timing_arp[0]==10);
+    assert(sestate.step_size[0]==96 && sestate.clock_div_count[0]==1);
+    assert(!seq_engine_timing_pending(0,0) && !seq_engine_timing_pending(0,1));
+    assert(sestate.step_pos[0]!=position); // next step, not motion-start reset
+    seq_engine_adjust_timing(0,0,13); seq_engine_adjust_timing(0,0,10);
+    assert(!seq_engine_timing_pending(0,0)); // turn back cancels
+    seq_engine_adjust_timing(0,0,13); seq_engine_set_straight(0);
+    assert(!seq_engine_timing_pending(0,0) && timing_step[0]==10);
+    seq_engine_set_straight(1); seq_engine_adjust_timing(0,0,7);
+    seq_engine_run(0); assert(!seq_engine_timing_pending(0,0) && timing_step[0]==10);
+    seq_engine_adjust_timing(0,0,7); sestate.scene_next=1; seq_engine_change_scene_synced();
+    assert(!seq_engine_timing_pending(0,0) && seq_engine_straight_enabled());
+    running=0; seq_engine_adjust_timing(0,0,7); assert(timing_step[0]==7);
+    // Effective automated values retain priority over the committed stored edit.
+    setup();running=1;seq_engine_set_straight(1);
+    sestate.internal_cc[0][0]=5; sestate.internal_cc[0][10]=2;
+    seq_engine_adjust_timing(0,0,7); seq_engine_adjust_timing(0,1,10);
+    seq_engine_run(384); assert(timing_step[0]==7 && timing_arp[0]==10);
+    assert(sestate.internal_cc[0][0]==5 && sestate.internal_cc[0][10]==2);
+    assert(sestate.step_size[0]==seq_utils_step_len_to_ticks(5));
+}
 int main(void) {
+    test_straight_timing();
     test_delayed_ratchets();
     test_note_delays();
     test_harmony();

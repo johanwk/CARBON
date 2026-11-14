@@ -1835,6 +1835,12 @@ void gui_update_song_mode(void) {
                     SEQ_SONG_LIST_MIN_LENGTH, SEQ_SONG_LIST_MAX_LENGTH),
                 sngmode->total_beats);
         }
+        if(seq_engine_straight_enabled() || seq_engine_pitch_mode()) {
+            // Replace the existing prefix: no extra width or lost Euclidean status.
+            memcpy(song_status, seq_engine_straight_enabled() ? "STR" : "PIT", 3);
+            song_status[3] = (seq_engine_timing_pending(track, 0) ||
+                seq_engine_timing_pending(track, 1) || seq_engine_pitch_pending(track)) ? '*' : ' ';
+        }
         // Match playback rounding: mask positions, not sounding notes.
         if(density < 100 && length >= 1 && length <= SEQ_NUM_STEPS) {
             hits = (density * length + 50) / 100;

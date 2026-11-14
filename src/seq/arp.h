@@ -58,5 +58,7 @@ void arp_set_gate_time(int track, int time);
 // convert an arp type to a text string
 void arp_type_to_name(char *text, int type);
 
+// Align only the rate phase; preserve program position and held inputs.
+void arp_align_rate(int track);
 #endif
 

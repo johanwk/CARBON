@@ -5,6 +5,11 @@
 static struct song_mode_state mode;
 static int density = 44, length = 16, rotation = 3, songmode;
 struct song_mode_state *seq_engine_get_song_mode_state(void) { return &mode; }
+static int straight_ui, pending_ui;
+int seq_engine_pitch_mode(void) {return 0;}
+int seq_engine_pitch_pending(int track) {return 0;}
+int seq_engine_straight_enabled(void) { return straight_ui; }
+int seq_engine_timing_pending(int track, int kind) { return pending_ui; }
 int seq_ctrl_get_song_mode(void) { return songmode; }
 int seq_engine_get_effective_motion_length(int track) { return length; }
 int seq_engine_get_effective_euclidean_density(int track) { return density; }
@@ -89,5 +94,11 @@ int main(void) {
         for(int slot=0;slot<6;slot++) gui_set_status_text_part(3,3+4*slot,4,(char *)choices[c]);
         assert(!gstate.glabels[GUI_LABEL_STATUS_L4].dirty);
     }
+    straight_ui=1; pending_ui=0; gui_update_song_mode();
+    assert(!strncmp(label,"STR ",4));
+    pending_ui=1; gui_update_song_mode(); assert(!strncmp(label,"STR*",4));
+    gstate.glabels[GUI_LABEL_SONG_MODE].dirty=0;gui_update_song_mode();
+    assert(!gstate.glabels[GUI_LABEL_SONG_MODE].dirty);
+    straight_ui=0; gui_update_song_mode();assert(!strncmp(label,"SONG",4));
     puts("GUI status tests passed"); return 0;
 }

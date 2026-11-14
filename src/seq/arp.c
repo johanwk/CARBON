@@ -282,6 +282,13 @@ void arp_set_type(int track, int type) {
 }
 
 // set the arp speed
+void arp_align_rate(int track) {
+    if(track < 0 || track >= SEQ_NUM_TRACKS) return;
+    arp_stop_all_notes(track);
+    astate[track].seq_clock_count = 0;
+    astate[track].freerun_clock_count = 0;
+}
+
 void arp_set_speed(int track, int speed) {
     if(track < 0 || track >= SEQ_NUM_TRACKS) {
         log_error("ass - track invalid: %d", track);

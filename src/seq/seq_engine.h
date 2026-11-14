@@ -131,4 +131,20 @@ struct seq_step_preview {
 };
 void seq_engine_preview_step(int track, int step, struct seq_step_preview *preview);
 
+// Manual pitch ladder, independent of Straight timing.
+int seq_engine_pitch_mode(void);
+void seq_engine_set_pitch_mode(int mode);
+int seq_engine_pitch_pending(int track);
+int seq_engine_pitch_value(int scene, int track);
+int seq_engine_pitch_choice(int current, int reference, int mode, int change);
+void seq_engine_adjust_pitch(int track, int change);
+
+// Manual performance timing: kind0=step length, kind1=arp speed.
+int seq_engine_straight_enabled(void);
+void seq_engine_set_straight(int enabled);
+int seq_engine_timing_value(int scene, int track, int kind);
+int seq_engine_timing_pending(int track, int kind);
+void seq_engine_adjust_timing(int track, int kind, int value);
+int seq_engine_straight_choice(int current, int change);
+
 #endif

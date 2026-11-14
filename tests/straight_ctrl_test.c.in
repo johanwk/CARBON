@@ -1,0 +1,30 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later */
+#include <assert.h>
+#include <stdio.h>
+#include <string.h>
+#include "../src/seq/seq_ctrl.c"
+static int straight, values[6][2], calls, pitch_mode, pitch_calls;
+int seq_engine_pitch_mode(void) {return pitch_mode;}
+void seq_engine_adjust_pitch(int track,int change) {assert(track==0 || track==2);pitch_calls+=change;}
+int song_get_transpose(int scene,int track) {return 0;}
+void song_set_transpose(int scene,int track,int value) {}
+int seq_engine_get_current_scene(void) {return 0;}
+int seq_engine_straight_enabled(void) {return straight;}
+int seq_engine_timing_value(int scene,int track,int kind) {return values[track][kind];}
+int seq_engine_straight_choice(int current,int change) {
+    // Controller plumbing tested here; production choice helper tested in engine suite.
+    assert(straight);return current+3*change;
+}
+void seq_engine_adjust_timing(int track,int kind,int value) {values[track][kind]=value;calls++;}
+int main(void) {
+    memset(&sstate,0,sizeof(sstate));sstate.track_select[0]=sstate.track_select[2]=1;
+    values[0][0]=4;values[2][0]=7;straight=1;
+    seq_ctrl_adjust_step_length(1);assert(calls==2 && values[0][0]==7 && values[2][0]==7);
+    seq_ctrl_adjust_step_length(1);assert(values[0][0]==10);
+    values[0][1]=4;seq_ctrl_adjust_arp_speed(1);assert(values[2][1]==7);
+    int before=calls;seq_ctrl_adjust_step_length(0);seq_ctrl_adjust_arp_speed(0);assert(calls==before);
+    straight=0;seq_ctrl_adjust_step_length(1);assert(values[0][0]==11);
+    seq_ctrl_adjust_arp_speed(-1);assert(values[0][1]==6);
+    pitch_mode=2;seq_ctrl_adjust_transpose(1);assert(pitch_calls==2);
+    puts("straight timing controller tests passed");return 0;
+}

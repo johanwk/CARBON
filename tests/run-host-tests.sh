@@ -109,3 +109,9 @@ trap 'rm -rf "$TMP"' EXIT HUP INT TERM
     -ffunction-sections -fdata-sections -fsanitize=address,undefined \
     tests/glide_cv_test.c.in src/midi/midi_utils.c "$LINK_GC" -o "$TMP/glide-cv"
 "$TMP/glide-cv"
+
+"$CC" -x c -std=c11 -Wall -Wextra -Werror -Wno-cpp \
+    -Wno-unused-parameter -Wno-sign-compare \
+    -ffunction-sections -fdata-sections -fsanitize=address,undefined \
+    tests/straight_ctrl_test.c.in src/util/seq_utils.c "$LINK_GC" -o "$TMP/straight-ctrl"
+"$TMP/straight-ctrl"

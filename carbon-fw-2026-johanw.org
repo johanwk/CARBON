@@ -940,3 +940,80 @@ backgrounds. Other editing overlays retain their uncluttered display. Miniature 
 
 Only changed cells redraw. Physical readability, flicker and realtime cost
 remain to be checked on hardware; this candidate has host/build tests only.
+
+* Performance Grid: Straight timing (1.36-jwk-str1)
+
+In the Clock menu, navigate to the final entry, Perform Grid, and select
+Straight. This global performance-session setting defaults Off on boot and
+is not saved in songs. Enabling it does not change any existing song values.
+
+Manual Step Length and Arp Speed adjustments (including Shift+Length and
+the respective menus) now visit only1/32,1/16,1/8,1/4,1/2,1/1. Triplet,
+dotted and bar-relative divisions are skipped. From an excluded division,
+the next choice is the faster/slower permitted duration in that direction.
+
+While running, edits wait until the next transport-aligned4/4 bar boundary
+(384internal ticks). This applies to internal and external clock, using the
+existing swung sequencer tick callback; clock generation is unchanged. Further
+turns build on the pending value, last choice wins. Turning back to the stored
+value cancels that request. Selected tracks receive the same requested value.
+While stopped, edits apply immediately.
+
+At the boundary, a changed sequence rate starts the next sequence step (not
+necessarily motion Start) on the bar. Already sounding notes retain their
+lengths; unheard delayed attacks from the old interval are cancelled. A changed
+arp rate aligns its next attack to that bar, releasing the previous arp note
+while preserving held chord input and program position. Other tracks continue
+unchanged. This is rhythmic rate alignment, not automatic phrase rearrangement.
+
+The song-status prefix STR indicates Straight mode; STR* means the selected
+track has a pending rate edit. Rate menus display e.g.1/16 next bar until
+application. Stored settings remain unchanged until the boundary, so saving
+before then saves the old rate. Stop, transport reset, scene/song change, or
+disabling Straight cancels pending edits rather than unexpectedly applying
+them later. A subsequent direct MIDI Remote edit supersedes that parameter's
+queued panel request.
+
+Only manual rate adjustments are protected. MIDI Remote setters, programmed
+CCi16/26, existing note delays, ratchets, swing and odd motion lengths remain
+unrestricted. Latched CCi rate overrides retain priority over edited stored
+values; therefore Straight is not a guarantee that all playback is straight.
+No new persistent song fields or numeric song-version change.
+
+Host tests and release build pass. Next-bar timing and the controls still
+require hardware audition; no hardware verification claimed for this candidate.
+
+* Performance Pitch ladder (1.36-jwk-prf2)
+
+Clock menu -> Perform Pitch (after Perform Grid): Off, Octaves, Octaves+5ths.
+Independent of Straight timing, session-only, Off at boot. Enabling/changing
+mode captures each track's current stored transpose as its reference, without
+changing any pitches. Manual Transpose gestures then step along that ladder.
+Off retains ordinary semitone editing. MIDI Remote, Bias notes and CCi17 are
+not restricted. This is not scale-degree transposition or a harmonic guarantee.
+
+Octaves uses reference+12*n. Octaves+5ths uses reference+12*n or+7+12*n:
+from C the successive pitches are C,G,C,G in either direction (down from C
+is the G five semitones below, not F seven semitones below). From transpose+5,
+octave moves go to+17 or-7. Limits remain-24..+24; movement stops at the last
+allowed value rather than clamping to an off-ladder interval. Multiple selected
+tracks move independently relative to their own reference, preserving their
+initial offsets; unlike unrestricted editing they need not acquire equal values.
+
+While running, changes wait for the next transport4/4bar boundary, alongside
+queued timing changes. Further turns edit the pending value; turning back to
+the stored value cancels the request. While stopped, edits apply immediately.
+Stop/Reset cancels pending requests but preserves the reference. Scene/song
+changes cancel requests and establish a new reference on the next gesture.
+Changing/disabling pitch mode cancels pitch requests only; disabling Straight
+cancels timing requests only. Applied transpose is an ordinary saved setting.
+
+Transpose menu shows the pending value plus next bar. Status prefix PIT marks
+pitch protection alone; STR takes priority when Straight is also enabled. An
+asterisk marks pending timing or pitch for the selected track. Existing held-note
+policy is unchanged: named-root notes keep their sounding pitch; Root Off can
+use legacy revoicing. Existing root/scale quantization still follows transpose;
+fifth shifts can therefore change intervals. No new song fields or numeric
+version; custom degree selection is not implemented.
+
+Tests/build pass; hardware audition pending.

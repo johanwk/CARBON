@@ -883,15 +883,12 @@ void seq_ctrl_set_step_length(int track, int length) {
 // adjust the step length of the selected scene and track(s)
 void seq_ctrl_adjust_step_length(int change) {
     int track, val;
-    val = seq_utils_clamp(song_get_step_length(seq_engine_get_current_scene(),
-        sstate.first_track) + change,
-        0, (SEQ_UTILS_STEP_LENS - 1));
-    // update selected track values
-    for(track = 0; track < SEQ_NUM_TRACKS; track ++) {
-        if(sstate.track_select[track]) {
-            song_set_step_length(seq_engine_get_current_scene(), track, val);
-        }
-    }
+    if(!change) return;
+    int current = seq_engine_timing_value(seq_engine_get_current_scene(), sstate.first_track, 0);
+    val = seq_engine_straight_enabled() ? seq_engine_straight_choice(current, change)
+        : seq_utils_clamp(current + change, 0, SEQ_UTILS_STEP_LENS - 1);
+    for(track = 0; track < SEQ_NUM_TRACKS; track++)
+        if(sstate.track_select[track]) seq_engine_adjust_timing(track, 0, val);
 }
 
 // adjust the tonality setting of selected tracks
@@ -930,6 +927,11 @@ void seq_ctrl_set_transpose(int track, int transpose) {
 
 // adjust the transpose of selected tracks
 void seq_ctrl_adjust_transpose(int change) {
+    if(seq_engine_pitch_mode()) {
+        for(int track=0;track<SEQ_NUM_TRACKS;track++)
+            if(sstate.track_select[track]) seq_engine_adjust_pitch(track, change);
+        return;
+    }
     int track;
     int transpose;
     transpose = seq_utils_clamp(song_get_transpose(seq_engine_get_current_scene(),
@@ -1309,13 +1311,12 @@ void seq_ctrl_set_arp_speed(int track, int speed) {
 // adjust the arp speed on selected tracks
 void seq_ctrl_adjust_arp_speed(int change) {
     int track, val;
-    val = seq_utils_clamp(song_get_arp_speed(seq_engine_get_current_scene(),
-        sstate.first_track) + change, 0, (SEQ_UTILS_ARP_SPEEDS - 1));
-    for(track = 0; track < SEQ_NUM_TRACKS; track ++) {
-        if(sstate.track_select[track]) {
-            song_set_arp_speed(seq_engine_get_current_scene(), track, val);
-        }
-    }
+    if(!change) return;
+    int current = seq_engine_timing_value(seq_engine_get_current_scene(), sstate.first_track, 1);
+    val = seq_engine_straight_enabled() ? seq_engine_straight_choice(current, change)
+        : seq_utils_clamp(current + change, 0, SEQ_UTILS_ARP_SPEEDS - 1);
+    for(track = 0; track < SEQ_NUM_TRACKS; track++)
+        if(sstate.track_select[track]) seq_engine_adjust_timing(track, 1, val);
 }
 
 // set the arp gate time on a track - supports SEQ_CTRL_TRACK_OMNI

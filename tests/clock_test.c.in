@@ -44,7 +44,19 @@ static void test_variable_delay_intervals(void) {
     midi_clock_ticked_swing(97);
     assert(output[output_count-1].status==MIDI_NOTE_ON && output_ticks[output_count-1]==97);
 }
+static void test_straight_bar_clock(void) {
+    setup(); midi_clock_init(); midi_clock_set_swing(70);
+    midi_clock_midi_rx_start(); pump(30);
+    assert(midi_clock_get_running());
+    timing_step[0]=4; seq_engine_recalc_params(); seq_engine_set_straight(1);
+    seq_engine_adjust_timing(0,0,7);
+    int elapsed=0;
+    while(timing_step[0]==4 && elapsed++<12000) pump(1);
+    assert(timing_step[0]==7 && engine_tick==384);
+    assert(!seq_engine_timing_pending(0,0));
+}
 int main(void) {
+    test_straight_bar_clock();
     test_variable_delay_intervals();
     struct conditional_state expected;
     setup(); midi_clock_init();

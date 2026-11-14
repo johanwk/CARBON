@@ -19,6 +19,7 @@
  *
  */
 #include "panel_menu.h"
+#include <string.h>
 #include "gui.h"
 #include "../config.h"
 #include "../config_store.h"
@@ -88,6 +89,19 @@ void panel_menu_init(void) {
 
 // run the panel timer task - run on the realtime thread
 void panel_menu_timer_task(void) {
+    // Refresh timing readouts when a queued edit applies/cancels, without
+    // keeping the menu alive or forcing a full LCD refresh.
+    static int shown = -1, pending = -1;
+    int kind = pmstate.menu_mode == PANEL_MENU_ARP && pmstate.menu_submode == PANEL_MENU_ARP_SPEED ? 1 :
+        pmstate.menu_mode == PANEL_MENU_CLOCK && pmstate.menu_submode == PANEL_MENU_CLOCK_STEP_LEN ? 0 :
+        pmstate.menu_mode == PANEL_MENU_TONALITY && pmstate.menu_submode == PANEL_MENU_TONALITY_TRANSPOSE ? 2 : -1;
+    if(kind >= 0) {
+        int value = kind == 2 ? seq_engine_pitch_value(seq_ctrl_get_scene(), seq_ctrl_get_first_track()) :
+            seq_engine_timing_value(seq_ctrl_get_scene(), seq_ctrl_get_first_track(), kind);
+        int wait = kind == 2 ? !!seq_engine_pitch_pending(seq_ctrl_get_first_track()) :
+            !!seq_engine_timing_pending(seq_ctrl_get_first_track(), kind);
+        if(value != shown || wait != pending) {shown = value; pending = wait; panel_menu_update_display();}
+    } else {shown = pending = -1;}
     // handle menu timeout
     if(pmstate.menu_timeout_count) {
         // only time out if we're not set to max = special non-timeout setting
@@ -600,6 +614,14 @@ void panel_menu_update_display(void) {
 }
 
 // display the swing menu
+static void panel_menu_display_timing_value(int kind) {
+    char value[32];
+    panel_utils_step_len_to_str(value, seq_engine_timing_value(seq_ctrl_get_scene(),
+        seq_ctrl_get_first_track(), kind));
+    if(seq_engine_timing_pending(seq_ctrl_get_first_track(), kind)) strcat(value, " next bar");
+    gui_set_menu_value(value);
+}
+
 void panel_menu_display_swing(void) {
     char tempstr[64];
     if(pmstate.menu_submode >= PANEL_MENU_SWING_SONG_ROOT) {
@@ -673,8 +695,9 @@ void panel_menu_display_tonality(void) {
             // voice mode
             else {
                 panel_utils_transpose_to_str(tempstr,
-                    song_get_transpose(seq_ctrl_get_scene(),
+                    seq_engine_pitch_value(seq_ctrl_get_scene(),
                     seq_ctrl_get_first_track()));
+                if(seq_engine_pitch_pending(seq_ctrl_get_first_track())) strcat(tempstr, " next bar");
                 gui_set_menu_value(tempstr);
             }
             break;
@@ -744,10 +767,7 @@ void panel_menu_display_arp(void) {
                 (seq_ctrl_get_first_track() + 1));
             gui_set_menu_subtitle(tempstr);
             gui_set_menu_param("Arp Speed");
-            panel_utils_step_len_to_str(tempstr,
-                song_get_arp_speed(seq_ctrl_get_scene(),
-                seq_ctrl_get_first_track()));
-            gui_set_menu_value(tempstr);
+            panel_menu_display_timing_value(1);
             break;
         case PANEL_MENU_ARP_GATE_TIME:
             sprintf(tempstr, "Scene %d Track %d",
@@ -1090,16 +1110,24 @@ void panel_menu_display_clock(void) {
     int temp;
     gui_set_menu_title("CLOCK");
     switch(pmstate.menu_submode) {
+        case PANEL_MENU_CLOCK_PITCH:
+            gui_set_menu_subtitle("Manual pitch / next bar");
+            gui_set_menu_param("Perform Pitch");
+            gui_set_menu_value(seq_engine_pitch_mode() == 2 ? "Octaves+5ths" :
+                seq_engine_pitch_mode() == 1 ? "Octaves" : "Off");
+            break;
+        case PANEL_MENU_CLOCK_PERFORMANCE:
+            gui_set_menu_subtitle("Manual rates / next bar");
+            gui_set_menu_param("Perform Grid");
+            gui_set_menu_value(seq_engine_straight_enabled() ? "Straight" : "Off");
+            break;
         case PANEL_MENU_CLOCK_STEP_LEN:
             sprintf(tempstr, "Scene %d Track %d",
                 (seq_ctrl_get_scene() + 1),
                 (seq_ctrl_get_first_track() + 1));
             gui_set_menu_subtitle(tempstr);
             gui_set_menu_param("Step Length");
-            panel_utils_step_len_to_str(tempstr,
-                song_get_step_length(seq_ctrl_get_scene(),
-                seq_ctrl_get_first_track()));
-            gui_set_menu_value(tempstr);
+            panel_menu_display_timing_value(0);
             break;
         case PANEL_MENU_CLOCK_METRONOME_MODE:
             gui_set_menu_subtitle("");
@@ -1395,6 +1423,12 @@ void panel_menu_edit_sys(int change) {
 // edit a value in the clock menu
 void panel_menu_edit_clock(int change) {
     switch(pmstate.menu_submode) {
+        case PANEL_MENU_CLOCK_PITCH:
+            seq_engine_set_pitch_mode(seq_utils_clamp(seq_engine_pitch_mode() + change, 0, 2));
+            break;
+        case PANEL_MENU_CLOCK_PERFORMANCE:
+            if(change) seq_engine_set_straight(change > 0);
+            break;
         case PANEL_MENU_CLOCK_STEP_LEN:
             seq_ctrl_adjust_step_length(change);
             break;

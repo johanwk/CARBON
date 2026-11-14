@@ -106,7 +106,53 @@ static void test_arp_glide(void) {
     }
     init(); // restore ordinary fixture routing
 }
+static void test_perform_pitch(void) {
+    init();running=1;test_root=0;test_scale=SCALE_MAJOR;test_transpose=0;outproc_root_changed();
+    live(MIDI_NOTE_ON,60,100);assert(wires==2);
+    seq_engine_set_pitch_mode(2);
+    seq_engine_adjust_pitch(0,1);assert(seq_engine_pitch_pending(0));
+    seq_engine_run(383);assert(test_transpose==0);
+    seq_engine_run(384);assert(test_transpose==7);
+    outproc_root_changed(); // fixture song setter does not dispatch state changes
+    assert(wires==2); // named-root held note remains until release
+    live(MIDI_NOTE_ON,62,100);assert(wire[2].data0==69);
+    live(MIDI_NOTE_OFF,60,64);assert(wire[4].data0==60);
+    seq_engine_adjust_pitch(0,1);assert(seq_engine_pitch_value(0,0)==12);
+    seq_engine_adjust_pitch(0,-1);assert(!seq_engine_pitch_pending(0));
+    seq_engine_adjust_pitch(0,-1);assert(seq_engine_pitch_value(0,0)==0);
+    seq_engine_set_run_state(0);assert(!seq_engine_pitch_pending(0));
+    assert(sestate.pitch_reference[0]==0); // stopping does not rebase the ladder
+    seq_engine_adjust_pitch(0,1);
+    int data[]={0,0,3};seq_engine_handle_state_change(SCE_SONG_TRANSPOSE,data,3);
+    assert(!seq_engine_pitch_pending(0));
+    seq_engine_adjust_pitch(0,1);seq_engine_run(0);
+    assert(!seq_engine_pitch_pending(0) && sestate.pitch_reference[0]==0);
+    seq_engine_adjust_pitch(0,1);sestate.scene_next=1;seq_engine_change_scene_synced();
+    assert(!seq_engine_pitch_pending(0) && !sestate.pitch_reference_valid);
+    init();running=1;seq_engine_set_pitch_mode(2);
+    sestate.internal_cc[0][1]=5;seq_engine_adjust_pitch(0,1);seq_engine_apply_pitch(384);
+    assert(sestate.internal_cc[0][1]==5); // programmed transpose remains authoritative
+}
+static void test_straight_arp(void) {
+    test_perform_pitch();
+    init();running=1;timing_arp[0]=4;arp_set_speed(0,4);
+    sestate.arp_enable[0]=1;arp_set_arp_enable(0,1);
+    live(MIDI_NOTE_ON,60,100);arp_run(1);assert(wires==2);
+    seq_engine_set_straight(1);seq_engine_adjust_timing(0,1,7);
+    astate[0].seq_clock_count=astate[0].freerun_clock_count=11;
+    seq_engine_apply_timing(383);assert(astate[0].step_size==24);
+    seq_engine_apply_timing(384);assert(astate[0].step_size==48);
+    assert(!astate[0].seq_clock_count && !astate[0].freerun_clock_count);
+    assert(astate[0].held_note_count==1 && wire[2].status==MIDI_NOTE_OFF);
+    int before=wires;arp_run(384);assert(wires==before+2 && wire[before].status==MIDI_NOTE_ON);
+    seq_engine_adjust_timing(0,1,10);seq_engine_set_run_state(0);
+    assert(!seq_engine_timing_pending(0,1) && timing_arp[0]==7);
+    // Scene/load/reset boundaries cancel rather than leaking to a new song.
+    seq_engine_adjust_timing(0,1,10);seq_engine_song_loaded(0);
+    assert(!seq_engine_timing_pending(0,1));
+}
 static void test_pitch_preview(void) {
+    test_straight_arp();
     init(); test_root=SONG_ROOT_OFF; test_scale=SCALE_CHROMATIC; test_transpose=0; outproc_root_changed();
     put(0,0,SONG_EVENT_PROBABILITY,0,0);
     put(0,1,SONG_EVENT_NOTE,60,100); put(0,2,SONG_EVENT_NOTE,64,100);

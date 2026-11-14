@@ -99,6 +99,13 @@ struct seq_engine_state {
     int bias_track_output[SEQ_NUM_TRACKS];  // bias track output
     struct conditional_state conditions[SEQ_NUM_TRACKS];
     int16_t internal_cc[SEQ_NUM_TRACKS][14];  // CC 16-29; -1 = inactive
+    uint8_t pitch_mode; // 0=Off, 1=Octaves, 2=Octaves+5ths
+    uint8_t pitch_reference_valid;
+    int8_t pitch_reference[SEQ_NUM_TRACKS];
+    uint8_t pitch_pending[SEQ_NUM_TRACKS]; // transpose - MIN + 1, zero=none
+    uint8_t straight;
+    uint8_t timing_pending[SEQ_NUM_TRACKS][2]; // choice+1, zero=none
+    uint8_t timing_scene;
     uint8_t glide_duration[SEQ_NUM_TRACKS];
     uint8_t glide_curve[SEQ_NUM_TRACKS];
     uint8_t scheduling_glide[SEQ_NUM_TRACKS];
@@ -333,6 +340,139 @@ void seq_engine_timer_task(void) {
 }
 
 // run the sequencer - called on each clock tick
+static void seq_engine_pitch_reference(void) {
+    if(sestate.pitch_reference_valid) return;
+    for(int track=0;track<SEQ_NUM_TRACKS;track++)
+        sestate.pitch_reference[track] = song_get_transpose(sestate.scene_current, track);
+    sestate.pitch_reference_valid = 1;
+}
+int seq_engine_pitch_mode(void) { return sestate.pitch_mode; }
+void seq_engine_set_pitch_mode(int mode) {
+    if(mode < 0 || mode > 2 || mode == sestate.pitch_mode) return;
+    memset(sestate.pitch_pending, 0, sizeof(sestate.pitch_pending));
+    sestate.pitch_mode = mode;
+    sestate.pitch_reference_valid = 0;
+    if(mode) seq_engine_pitch_reference();
+}
+int seq_engine_pitch_pending(int track) {
+    return track >= 0 && track < SEQ_NUM_TRACKS && sestate.pitch_pending[track];
+}
+int seq_engine_pitch_value(int scene, int track) {
+    if(track < 0 || track >= SEQ_NUM_TRACKS) return 0;
+    return scene == sestate.scene_current && seq_engine_pitch_pending(track)
+        ? sestate.pitch_pending[track] + SEQ_TRANSPOSE_MIN - 1
+        : song_get_transpose(scene, track);
+}
+int seq_engine_pitch_choice(int current, int reference, int mode, int change) {
+    int moves = seq_utils_clamp(change, -128, 128), direction = change > 0 ? 1 : -1;
+    if(mode < 1 || mode > 2) return current;
+    if(moves < 0) moves = -moves;
+    while(moves--) {
+        int next = current;
+        for(int candidate=current+direction; candidate>=SEQ_TRANSPOSE_MIN && candidate<=SEQ_TRANSPOSE_MAX; candidate+=direction) {
+            int degree = ((candidate-reference)%12+12)%12;
+            if(degree == 0 || (mode == 2 && degree == 7)) {next=candidate;break;}
+        }
+        if(next == current) break; // never clamp to an off-ladder interval
+        current = next;
+    }
+    return current;
+}
+void seq_engine_adjust_pitch(int track, int change) {
+    if(track < 0 || track >= SEQ_NUM_TRACKS || !sestate.pitch_mode || !change) return;
+    seq_engine_pitch_reference();
+    int current = seq_engine_pitch_value(sestate.scene_current, track);
+    int next = seq_engine_pitch_choice(current, sestate.pitch_reference[track], sestate.pitch_mode, change);
+    if(midi_clock_get_running()) {
+        int base = song_get_transpose(sestate.scene_current, track);
+        sestate.pitch_pending[track] = next == base ? 0 : next - SEQ_TRANSPOSE_MIN + 1;
+    } else song_set_transpose(sestate.scene_current, track, next);
+}
+static void seq_engine_apply_pitch(uint32_t tick) {
+    if(!sestate.pitch_mode || tick % (MIDI_CLOCK_PPQ * 4)) return;
+    for(int track=0;track<SEQ_NUM_TRACKS;track++) {
+        if(!sestate.pitch_pending[track]) continue;
+        int value = sestate.pitch_pending[track] + SEQ_TRANSPOSE_MIN - 1;
+        sestate.pitch_pending[track] = 0;
+        song_set_transpose(sestate.scene_current, track, value);
+    }
+}
+
+int seq_engine_straight_enabled(void) { return sestate.straight; }
+void seq_engine_set_straight(int enabled) {
+    sestate.straight = !!enabled;
+    if(!enabled) memset(sestate.timing_pending, 0, sizeof(sestate.timing_pending));
+}
+
+int seq_engine_straight_choice(int current, int change) {
+    static const int choices[] = {1,4,7,10,13,16};
+    int direction = change > 0 ? 1 : -1;
+    int moves = seq_utils_clamp(change, -128, 128);
+    if(moves < 0) moves = -moves;
+    while(moves--) {
+        int next = direction > 0 ? 16 : 1;
+        int ticks = seq_utils_step_len_to_ticks(current);
+        if(direction > 0) {
+            for(int i=0;i<6;i++) if(seq_utils_step_len_to_ticks(choices[i])>ticks) {next=choices[i];break;}
+        } else {
+            for(int i=5;i>=0;i--) if(seq_utils_step_len_to_ticks(choices[i])<ticks) {next=choices[i];break;}
+        }
+        current = next;
+    }
+    return current;
+}
+
+int seq_engine_timing_pending(int track, int kind) {
+    return track >= 0 && track < SEQ_NUM_TRACKS && kind >= 0 && kind < 2 &&
+        sestate.timing_scene == sestate.scene_current && sestate.timing_pending[track][kind];
+}
+int seq_engine_timing_value(int scene, int track, int kind) {
+    if(track < 0 || track >= SEQ_NUM_TRACKS || kind < 0 || kind > 1) return 0;
+    if(scene == sestate.scene_current && seq_engine_timing_pending(track, kind))
+        return sestate.timing_pending[track][kind] - 1;
+    return kind ? song_get_arp_speed(scene, track) : song_get_step_length(scene, track);
+}
+void seq_engine_adjust_timing(int track, int kind, int value) {
+    if(track < 0 || track >= SEQ_NUM_TRACKS || kind < 0 || kind > 1) return;
+    if(value < 0 || value >= (kind ? SEQ_UTILS_ARP_SPEEDS : SEQ_UTILS_STEP_LENS)) return;
+    int scene = sestate.scene_current;
+    if(sestate.straight && midi_clock_get_running()) {
+        if(sestate.timing_scene != scene) memset(sestate.timing_pending, 0, sizeof(sestate.timing_pending));
+        sestate.timing_scene = scene;
+        int base = kind ? song_get_arp_speed(scene, track) : song_get_step_length(scene, track);
+        sestate.timing_pending[track][kind] = value == base ? 0 : value + 1;
+    } else if(kind) song_set_arp_speed(scene, track, value);
+    else song_set_step_length(scene, track, value);
+}
+
+static void seq_engine_apply_timing(uint32_t tick) {
+    if(!sestate.straight || tick % (MIDI_CLOCK_PPQ * 4) || sestate.timing_scene != sestate.scene_current) return;
+    for(int track=0;track<SEQ_NUM_TRACKS;track++) {
+        int step = sestate.timing_pending[track][0], arp = sestate.timing_pending[track][1];
+        if(!step && !arp) continue;
+        sestate.timing_pending[track][0] = sestate.timing_pending[track][1] = 0;
+        if(step) {
+            song_set_step_length(sestate.scene_current, track, step - 1);
+            seq_engine_recalc_params();
+            // Continue with the next sequence step, without resetting its notes
+            // or conditional history. Cancel only unheard delayed attacks.
+            if(sestate.internal_cc[track][0] < 0) {
+                seq_engine_track_cancel_pending(track);
+                sestate.clock_div_count[track] = 0;
+                sestate.bar_div_remainder[track] = 0;
+            }
+        }
+        if(arp) {
+            song_set_arp_speed(sestate.scene_current, track, arp - 1);
+            // Do not override a latched programmed arp speed.
+            int effective = seq_engine_get_internal_cc(track, MIDI_CTRL_CC_ARP_SPEED, arp - 1);
+            arp_set_speed(track, effective);
+            if(sestate.internal_cc[track][MIDI_CTRL_CC_ARP_SPEED - MIDI_CTRL_CC_STEP_LENGTH] < 0)
+                arp_align_rate(track);
+        }
+    }
+}
+
 void seq_engine_run(uint32_t tick_count) {
     struct seq_engine_step_visit visits[SEQ_NUM_TRACKS] = {0};
     int track, live_active;
@@ -390,6 +530,8 @@ void seq_engine_run(uint32_t tick_count) {
             seq_engine_change_scene_synced();
         }
 
+        seq_engine_apply_pitch(tick_count);
+        seq_engine_apply_timing(tick_count);
         seq_engine_prepare_visits(visits);
 
         // process track notes / recording start/stop
@@ -490,6 +632,10 @@ void seq_engine_run(uint32_t tick_count) {
 // the sequencer has been started or stopped
 void seq_engine_set_run_state(int run) {
     int track, mapnum;
+    if(!run) {
+        memset(sestate.timing_pending, 0, sizeof(sestate.timing_pending));
+        memset(sestate.pitch_pending, 0, sizeof(sestate.pitch_pending));
+    }
     // starting
     if(run) {
         seq_engine_recalc_params();  // make sure we have the right stuff
@@ -682,6 +828,13 @@ void seq_engine_change_scene(int scene) {
 
 // handle state change
 void seq_engine_handle_state_change(int event_type, int *data, int data_len) {
+    if(event_type == SCE_SONG_TRANSPOSE && data_len >= 2 &&
+            data[0] == sestate.scene_current && data[1] >= 0 && data[1] < SEQ_NUM_TRACKS)
+        sestate.pitch_pending[data[1]] = 0;
+    // A later direct edit (e.g. MIDI Remote) supersedes a queued panel edit.
+    if((event_type == SCE_SONG_STEP_LEN || event_type == SCE_SONG_ARP_SPEED) &&
+            data_len >= 2 && data[0] == sestate.scene_current && data[1] >= 0 && data[1] < SEQ_NUM_TRACKS)
+        sestate.timing_pending[data[1]][event_type == SCE_SONG_ARP_SPEED] = 0;
     switch(event_type) {
         case SCE_SONG_LOADED:
             seq_engine_song_loaded(data[0]);
@@ -1616,6 +1769,8 @@ void seq_engine_refresh_internal_cc_target(int track, int controller) {
 
 // discard all transient automation; stored song values remain untouched
 void seq_engine_clear_internal_cc(void) {
+    memset(sestate.pitch_pending, 0, sizeof(sestate.pitch_pending));
+    memset(sestate.timing_pending, 0, sizeof(sestate.timing_pending));
     outproc_reset_glide_owners();
     int track, index;
     int had_harmony = sestate.harmony_active;
@@ -2340,6 +2495,7 @@ void seq_engine_arp_enable_changed(int scene, int track, int enable) {
 //
 // a song was loaded - time to reset stuff
 void seq_engine_song_loaded(int song) {
+    sestate.pitch_reference_valid = 0;
     int track, mapnum;
     for(track = 0; track < SEQ_NUM_TRACKS; track ++) {
         seq_engine_track_stop_all_notes(track);
@@ -2520,6 +2676,7 @@ int seq_engine_change_scene_synced(void) {
         return 1;  // notify caller that we actually just stopped
     }
 
+    sestate.pitch_reference_valid = 0;
     sestate.scene_current = sestate.scene_next;
     seq_engine_clear_internal_cc();
 
