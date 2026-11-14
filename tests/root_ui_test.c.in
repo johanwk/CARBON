@@ -3,6 +3,10 @@
 #define GUI_STATE_SECTION
 #include "../src/gui/gui.c"
 #include "../src/gui/panel_menu.c"
+int seq_engine_snapshot_status(void) {return 0;}
+int seq_engine_snapshot_capture(void) {return 0;}
+int seq_engine_snapshot_recall(void) {return 0;}
+void seq_engine_snapshot_cancel(void) {}
 int seq_engine_pitch_mode(void) {return 0;}
 void seq_engine_set_pitch_mode(int mode) {}
 int seq_engine_pitch_pending(int track) {return 0;}

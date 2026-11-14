@@ -483,4 +483,10 @@ int song_get_ratchet_mode(int scene, int track, int step);
 // set the ratchet mode for a step
 void song_set_ratchet_mode(int scene, int track, int step, int ratchet);
 
+// Volatile full-song performance snapshot; never writes flash.
+int song_snapshot_capture(void);
+int song_snapshot_restore(void);
+int song_snapshot_available(void);
+int song_snapshot_idle(void);
+void song_snapshot_clear(void);
 #endif

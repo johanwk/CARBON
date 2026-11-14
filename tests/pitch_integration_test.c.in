@@ -106,7 +106,45 @@ static void test_arp_glide(void) {
     }
     init(); // restore ordinary fixture routing
 }
+static void test_snapshot_recall(void) {
+    init();running=1;
+    put(0,0,SONG_EVENT_NOTE,48,100);
+    sestate.glide_duration[0]=4;sestate.glide_curve[0]=24;
+    sestate.internal_cc[0][1]=7;sestate.inversion[0]=1;sestate.compact[0]=1;
+    sestate.harmony_active=1;sestate.harmony_root=2;sestate.harmony_scale[0]=3;
+    sestate.bias_track_output[1]=5;
+    assert(seq_engine_snapshot_recall()==-1);
+    assert(!seq_engine_snapshot_capture() && seq_engine_snapshot_status()==1);
+    test_record_mode=SEQ_CTRL_RECORD_RT;
+    assert(seq_engine_snapshot_capture()==-1 && seq_engine_snapshot_recall()==-1);
+    test_record_mode=SEQ_CTRL_RECORD_IDLE;
+    fixture[0][0].data0=72;seq_engine_clear_internal_cc();
+    live(MIDI_NOTE_ON,60,100);live(MIDI_CONTROL_CHANGE,64,127);
+    struct seq_engine_step_visit v={.slots=1};
+    v.events[0]=(struct track_event){.type=SONG_EVENT_NOTE,.data0=64,.data1=100,.length=8,.delay=96};
+    seq_engine_track_play_step(0,0,&v);
+    sestate.timing_pending[0][0]=8;sestate.pitch_pending[0]=25;
+    assert(!seq_engine_snapshot_recall() && seq_engine_snapshot_status()==2);
+    uint32_t rng=sestate.conditions[0].random;
+    seq_engine_run(383);assert(fixture[0][0].data0==72);
+    seq_engine_run(384);assert(fixture[0][0].data0==48 && seq_engine_snapshot_status()==1);
+    assert(sestate.glide_duration[0]==4 && sestate.glide_curve[0]==24);
+    assert(sestate.internal_cc[0][1]==7 && sestate.inversion[0]==1 && sestate.compact[0]==1);
+    assert(sestate.harmony_active && sestate.harmony_root==2 && sestate.harmony_scale[0]==3);
+    assert(sestate.conditions[0].random==rng);
+    assert(!sestate.pitch_pending[0] && !sestate.timing_pending[0][0]);
+    for(int i=0;i<SEQ_ENGINE_MAX_NOTES;i++) assert(!sestate.track_active_notes[0][i].note.msg.status);
+    for(int i=0;i<OUTPROC_MAX_NOTES;i++) assert(!opstate.notes[0][i].input.status);
+    fixture[0][0].data0=80;running=0;assert(!seq_engine_snapshot_recall());
+    assert(fixture[0][0].data0==48); // repeated recall, no new capture
+    running=1;assert(!seq_engine_snapshot_recall());seq_engine_set_run_state(0);assert(seq_engine_snapshot_status()==1);
+    snapshot_test_busy=1;assert(seq_engine_snapshot_capture()==-1 && seq_engine_snapshot_recall()==-1);
+    snapshot_test_busy=0;assert(!seq_engine_snapshot_recall());
+    snapshot_test_busy=1;seq_engine_run(768);assert(seq_engine_snapshot_status()==1);
+    snapshot_test_busy=0;seq_engine_song_loaded(0);assert(!seq_engine_snapshot_status());
+}
 static void test_perform_pitch(void) {
+    test_snapshot_recall();
     init();running=1;test_root=0;test_scale=SCALE_MAJOR;test_transpose=0;outproc_root_changed();
     live(MIDI_NOTE_ON,60,100);assert(wires==2);
     seq_engine_set_pitch_mode(2);

@@ -1531,6 +1531,22 @@ void midi_clock_ext_sync_changed(int synced) {
 // local functions
 //
 // refresh modules when the song is loaded or cleared
+void seq_ctrl_restore_snapshot_modes(int live, int songmode) {
+    // Do not call mode setters: song-mode enable normally requests clock reset.
+    sstate.live_mode = live; sstate.song_mode = songmode;
+    sstate.record_mode = SEQ_CTRL_RECORD_IDLE;
+    pattern_edit_set_enable(0); step_edit_set_enable(0); song_edit_set_enable(0);
+}
+void seq_ctrl_refresh_snapshot_modules(void) {
+    // Consume old CV releases before restoring pairing/calibration.
+    cvproc_timer_task();
+    midi_clock_set_source(song_get_midi_clock_source() == SONG_MIDI_CLOCK_SOURCE_INT
+        ? MIDI_CLOCK_INTERNAL : MIDI_CLOCK_EXTERNAL);
+    seq_ctrl_refresh_modules();
+    for(int port=0;port<MIDI_PORT_NUM_TRACK_OUTPUTS;port++)
+        clock_out_set_output(port, song_get_midi_port_clock_out(port));
+}
+
 void seq_ctrl_refresh_modules(void) {
     int i, scene, track;
     int song_ver = song_get_song_version();

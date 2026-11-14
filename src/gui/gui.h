@@ -114,5 +114,8 @@ void gui_set_menu_value(char *text);
 // set the edit mode on the menu - highlight the field
 void gui_set_menu_edit(int edit);
 
+// Short performance feedback on the song-status line; menus remain intact.
+void gui_notice(const char *text);
+void gui_notice_tick(void);
 #endif
 

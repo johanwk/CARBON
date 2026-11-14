@@ -905,6 +905,14 @@ void gui_handle_state_change(int event_type, int *data, int data_len) {
             gui_update_song_mode();
             gui_update_clock_source(song_get_midi_clock_source());
             break;
+        case SCE_ENG_SNAPSHOT_RECALLED:
+            gui_notice("Snapshot recalled");
+            gui_update_tempo(song_get_tempo());
+            gui_update_scene(seq_ctrl_get_scene());
+            gui_update_song_mode();
+            gui_update_clock_source(song_get_midi_clock_source());
+            gui_force_refresh();
+            break;
         case SCE_SONG_LOADED:
             gui_update_song(data[0]);
             gui_update_tempo(song_get_tempo());
@@ -1546,7 +1554,9 @@ void gui_update_track_transpose(int scene, int track, int transpose) {
     }
     // update info display
     if(!gstate.status_override && track == gstate.first_track) {
-        gui_set_status_text_part(0, 19, 6, "Tran: ");
+        int pending = seq_engine_pitch_pending(track);
+        gui_set_status_text_part(0, 19, 6, pending ? "Tran:>" : "Tran: ");
+        if(pending) transpose = seq_engine_pitch_value(scene, track);
         panel_utils_transpose_to_str(tempstr, transpose);
         gui_set_status_text_part(0, 25, 3, tempstr);
     }
@@ -1715,9 +1725,11 @@ void gui_update_step_length(int scene, int track, int len) {
     }
     // update info display
     if(!gstate.status_override && track == gstate.first_track) {
-        gui_set_status_text_part(2, 0, 6, "Step: ");
+        int pending = seq_engine_timing_pending(track, 0);
+        gui_set_status_text_part(2, 0, 6, pending ? "Step:>" : "Step: ");
+        if(pending) len = seq_engine_timing_value(scene, track, 0);
         panel_utils_step_len_to_str(tempstr, len);
-        gui_set_status_text_part(2, 7, 6, tempstr);
+        gui_set_status_text_part(2, 6, 7, tempstr);
     }
 }
 
@@ -1804,7 +1816,26 @@ void gui_update_active_step(int track, int step) {
 }
 
 // update the song mode status display
+static char performance_notice[29];
+static int performance_notice_ms;
+void gui_notice(const char *text) {
+    snprintf(performance_notice, sizeof(performance_notice), "%-28.28s", text);
+    performance_notice_ms = 2000;
+}
+void gui_notice_tick(void) { if(performance_notice_ms) performance_notice_ms--; }
 void gui_update_song_mode(void) {
+    // Queued panel edits do not fire stored-song events until the bar. Poll
+    // targets here; label setters leave unchanged text clean. Respect menus.
+    if(!gstate.status_override) {
+        gui_update_track_transpose(gstate.current_scene, gstate.first_track,
+            seq_engine_pitch_value(gstate.current_scene, gstate.first_track));
+        gui_update_step_length(gstate.current_scene, gstate.first_track,
+            seq_engine_timing_value(gstate.current_scene, gstate.first_track, 0));
+    }
+    if(performance_notice_ms) {
+        gui_set_label(GUI_LABEL_SONG_MODE, performance_notice);
+        return;
+    }
     gui_update_tonality(gstate.current_scene, gstate.first_track,
         seq_engine_get_effective_tonality(gstate.current_scene, gstate.first_track));
     struct song_mode_state *sngmode;

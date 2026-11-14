@@ -60,5 +60,6 @@ void arp_type_to_name(char *text, int type);
 
 // Align only the rate phase; preserve program position and held inputs.
 void arp_align_rate(int track);
+void arp_stop_all_notes(int track);
 #endif
 

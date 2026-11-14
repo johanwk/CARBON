@@ -1017,3 +1017,67 @@ fifth shifts can therefore change intervals. No new song fields or numeric
 version; custom degree selection is not implemented.
 
 Tests/build pass; hardware audition pending.
+
+* Performance snapshot (1.36-jwk-snp1)
+
+Clock menu has two new final entries:
+- Snapshot: turn Value right to capture (or replace) the RAM snapshot.
+- Recall: turn Value right to request recall; left cancels a queued recall.
+  The readout shows Empty, Ready or Next bar.
+
+Capture remembers the entire current song in RAM, including notes, event edits,
+all scenes, routing and song settings. It also remembers the current scene,
+keyboard/Bias offsets, transient CCi/Hrm/Inv/Compact/glide controls and live/
+song modes. Capture is immediate. Pending performance edits are NOT captured
+as though applied: the snapshot reflects the currently active/stored state.
+
+While running, recall restores on the next transport-aligned4/4bar (384ticks).
+Stopped recall is immediate. All sequence tracks restart at their motion
+starts (reverse tracks at the reverse end); arps restart with fresh sequence
+input. Existing sequence/live/arp notes and pedal state are released through
+the OLD routing before restoring. Unheard delayed attacks are cancelled.
+The recalled song-mode entry restarts from its beginning, not its captured
+beat position. Pending timing/pitch edits and scene requests are cancelled.
+
+Repeated recalls use the same snapshot until replaced. Stop/transport Reset
+cancels queued recall but retains the snapshot. Changing scenes retains it;
+loading another song or clearing the song invalidates it. Power-off loses it.
+Capture/recall refuse during recording/arming and active panel song I/O. If
+song I/O or recording begins before a queued recall is due, recall cancels.
+
+No flash writes, autosave or MIDI Program Change resend occurs during recall.
+Saving afterward is an explicit panel operation. Restored notes use captured
+controls, but the restarted sequence may immediately issue new control events.
+Conditional history/cycle restart; probability random streams are not rewound.
+External synth patches, envelopes, arbitrary CC state, global pattern-bank
+edits and system configuration are not captured. Timing/pitch safety mode
+preferences remain as currently selected. Global transport position is not
+reset. External clock still determines tempo while synced; clock-source
+changes follow the normal clock module policy, not seamless clock switching.
+
+Uses an additional20KB song copy plus small control state. Host tests/build
+pass; hardware recall timing, note cleanup and UI audition remain necessary.
+
+** Snapshot performance shortcuts (1.36-jwk-snp2)
+- Hold Clock FIRST, then press Record: capture/replace snapshot.
+- Hold Clock FIRST, then press Load: recall next bar (immediate if stopped).
+These chords are intercepted before ordinary Record/Load actions, regardless
+of the current menu or edit mode. Each press triggers once. Either release
+order is accepted. Capture and queued recall leave the current menu intact;
+actual recall exits editing as described above. Recording/song-I/O guards
+still apply. Feedback appears for two seconds on the song-status line, without
+replacing menu contents. Clock alone now opens its menu on release; Shift+Clock
+still taps tempo on press. Pressing Record or Load BEFORE Clock retains its
+ordinary action and is not a snapshot shortcut. Menu capture/recall remain.
+
+** Queued performance values (1.36-jwk-snp3)
+The normal track readout immediately shows pending targets as Tran:>+7 and
+Step:>1/4. The > disappears on application or cancellation; the displayed
+value then returns to the stored setting. Menus/edit displays are not
+overwritten. Target polling does not change playback or the active pitch grid.
+
+** Hardware feedback for snapshot/performance workflow
+The user tested performance modes and snapshot/recall on CARBON and reported
+positive results. After flashing1.36-jwk-snp3, the queued-target readouts were
+also tested and reported as a great improvement. This is practical hardware
+acceptance, not exhaustive timing, routing or failure-condition coverage.

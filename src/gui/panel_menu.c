@@ -89,6 +89,12 @@ void panel_menu_init(void) {
 
 // run the panel timer task - run on the realtime thread
 void panel_menu_timer_task(void) {
+    static int snapshot_shown = -1;
+    if(pmstate.menu_mode == PANEL_MENU_CLOCK &&
+            (pmstate.menu_submode == PANEL_MENU_CLOCK_CAPTURE || pmstate.menu_submode == PANEL_MENU_CLOCK_RECALL)) {
+        int status = seq_engine_snapshot_status();
+        if(status != snapshot_shown) { snapshot_shown = status; panel_menu_update_display(); }
+    } else snapshot_shown = -1;
     // Refresh timing readouts when a queued edit applies/cancels, without
     // keeping the menu alive or forcing a full LCD refresh.
     static int shown = -1, pending = -1;
@@ -1110,6 +1116,17 @@ void panel_menu_display_clock(void) {
     int temp;
     gui_set_menu_title("CLOCK");
     switch(pmstate.menu_submode) {
+        case PANEL_MENU_CLOCK_CAPTURE:
+            gui_set_menu_subtitle("Turn right to capture");
+            gui_set_menu_param("Snapshot");
+            gui_set_menu_value(seq_engine_snapshot_status() ? "Replace" : "Capture");
+            break;
+        case PANEL_MENU_CLOCK_RECALL:
+            gui_set_menu_subtitle("Right recall / left cancel");
+            gui_set_menu_param("Recall");
+            gui_set_menu_value(seq_engine_snapshot_status() == 2 ? "Next bar" :
+                seq_engine_snapshot_status() == 1 ? "Ready" : "Empty");
+            break;
         case PANEL_MENU_CLOCK_PITCH:
             gui_set_menu_subtitle("Manual pitch / next bar");
             gui_set_menu_param("Perform Pitch");
@@ -1423,6 +1440,17 @@ void panel_menu_edit_sys(int change) {
 // edit a value in the clock menu
 void panel_menu_edit_clock(int change) {
     switch(pmstate.menu_submode) {
+        case PANEL_MENU_CLOCK_CAPTURE:
+            if(change > 0 && seq_engine_snapshot_capture() < 0) {
+                gui_set_menu_value("Busy/record"); return;
+            }
+            break;
+        case PANEL_MENU_CLOCK_RECALL:
+            if(change < 0) seq_engine_snapshot_cancel();
+            if(change > 0 && seq_engine_snapshot_recall() < 0) {
+                gui_set_menu_value("Empty/busy"); return;
+            }
+            break;
         case PANEL_MENU_CLOCK_PITCH:
             seq_engine_set_pitch_mode(seq_utils_clamp(seq_engine_pitch_mode() + change, 0, 2));
             break;

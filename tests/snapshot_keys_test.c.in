@@ -1,0 +1,34 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later */
+#include <assert.h>
+#include <stdio.h>
+#include "../src/gui/snapshot_keys.h"
+int main(void) {
+ struct snapshot_keys s={0};
+ assert(snapshot_keys_event(&s,SNAP_CLOCK,1,0)==SNAP_CONSUME);
+ assert(snapshot_keys_event(&s,SNAP_CLOCK,1,0)==SNAP_CONSUME);
+ assert(snapshot_keys_event(&s,SNAP_CLOCK,0,0)==SNAP_MENU);
+ assert(snapshot_keys_event(&s,SNAP_CLOCK,0,0)==SNAP_CONSUME);
+ for(int key=SNAP_RECORD;key<=SNAP_LOAD;key++) {
+  for(int reverse=0;reverse<2;reverse++) {
+   s=(struct snapshot_keys){0};
+   assert(snapshot_keys_event(&s,SNAP_CLOCK,1,0)==SNAP_CONSUME);
+   assert(snapshot_keys_event(&s,key,1,0)==(key==SNAP_RECORD?SNAP_CAPTURE:SNAP_RECALL));
+   assert(snapshot_keys_event(&s,key,1,0)==SNAP_CONSUME);
+   if(reverse) {
+    assert(snapshot_keys_event(&s,SNAP_CLOCK,0,0)==SNAP_CONSUME);
+    assert(snapshot_keys_event(&s,key,1,0)==SNAP_CONSUME);
+    snapshot_keys_event(&s,key,0,0);
+   } else {
+    snapshot_keys_event(&s,key,0,0);
+    assert(snapshot_keys_event(&s,SNAP_CLOCK,0,0)==SNAP_CONSUME);
+   }
+   assert(snapshot_keys_event(&s,key,1,0)==SNAP_PASS);
+   snapshot_keys_event(&s,key,0,0);
+  }
+ }
+ s=(struct snapshot_keys){0};
+ assert(snapshot_keys_event(&s,SNAP_CLOCK,1,1)==SNAP_TAP);
+ assert(snapshot_keys_event(&s,SNAP_CLOCK,0,0)==SNAP_CONSUME);
+ assert(snapshot_keys_event(&s,-1,1,0)==SNAP_PASS);
+ puts("snapshot key chord tests passed");return 0;
+}

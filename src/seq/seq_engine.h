@@ -131,6 +131,12 @@ struct seq_step_preview {
 };
 void seq_engine_preview_step(int track, int step, struct seq_step_preview *preview);
 
+// One RAM snapshot: capture immediately; recall next bar or now if stopped.
+int seq_engine_snapshot_capture(void);
+int seq_engine_snapshot_recall(void);
+void seq_engine_snapshot_cancel(void);
+int seq_engine_snapshot_status(void); // 0=empty, 1=ready, 2=queued
+
 // Manual pitch ladder, independent of Straight timing.
 int seq_engine_pitch_mode(void);
 void seq_engine_set_pitch_mode(int mode);

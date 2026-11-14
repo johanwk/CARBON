@@ -89,7 +89,7 @@ trap 'rm -rf "$TMP"' EXIT HUP INT TERM
     -Wno-unused-parameter -Wno-sign-compare -Wno-deprecated-declarations \
     -ffunction-sections -fdata-sections -fsanitize=address,undefined \
     -Wno-tautological-constant-out-of-range-compare \
-    tests/gui_status_test.c.in src/util/seq_utils.c src/seq/scale.c "$LINK_GC" -o "$TMP/gui-status"
+    tests/gui_status_test.c.in src/util/panel_utils.c src/util/seq_utils.c src/seq/scale.c "$LINK_GC" -o "$TMP/gui-status"
 "$TMP/gui-status"
 
 "$CC" -x c -std=c11 -Wall -Wextra -Werror \
@@ -115,3 +115,7 @@ trap 'rm -rf "$TMP"' EXIT HUP INT TERM
     -ffunction-sections -fdata-sections -fsanitize=address,undefined \
     tests/straight_ctrl_test.c.in src/util/seq_utils.c "$LINK_GC" -o "$TMP/straight-ctrl"
 "$TMP/straight-ctrl"
+
+"$CC" -x c -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined \
+    tests/snapshot_keys_test.c.in -o "$TMP/snapshot-keys"
+"$TMP/snapshot-keys"

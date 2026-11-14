@@ -5,9 +5,11 @@
 static struct song_mode_state mode;
 static int density = 44, length = 16, rotation = 3, songmode;
 struct song_mode_state *seq_engine_get_song_mode_state(void) { return &mode; }
-static int straight_ui, pending_ui;
+static int straight_ui, pending_ui, pitch_wait, pitch_target=0, step_target=4;
+int seq_engine_pitch_value(int scene,int track) {return pitch_target;}
+int seq_engine_timing_value(int scene,int track,int kind) {return step_target;}
 int seq_engine_pitch_mode(void) {return 0;}
-int seq_engine_pitch_pending(int track) {return 0;}
+int seq_engine_pitch_pending(int track) {return pitch_wait;}
 int seq_engine_straight_enabled(void) { return straight_ui; }
 int seq_engine_timing_pending(int track, int kind) { return pending_ui; }
 int seq_ctrl_get_song_mode(void) { return songmode; }
@@ -100,5 +102,29 @@ int main(void) {
     gstate.glabels[GUI_LABEL_SONG_MODE].dirty=0;gui_update_song_mode();
     assert(!gstate.glabels[GUI_LABEL_SONG_MODE].dirty);
     straight_ui=0; gui_update_song_mode();assert(!strncmp(label,"SONG",4));
+    gui_notice("Snapshot captured");gui_update_song_mode();
+    assert(!strncmp(label,"Snapshot captured",17));
+    gstate.glabels[GUI_LABEL_SONG_MODE].dirty=0;gui_update_song_mode();
+    assert(!gstate.glabels[GUI_LABEL_SONG_MODE].dirty);
+    for(int i=0;i<2000;i++) gui_notice_tick();
+    gui_update_song_mode();assert(!strncmp(label,"SONG",4));
+    for(int lcd=0;lcd<GUI_DISP_NUM_TYPES;lcd++) {
+        gstate.screen_type=lcd;gstate.status_override=0;
+        pitch_wait=pending_ui=1;pitch_target=7;step_target=10;
+        gui_update_song_mode();
+        assert(!memcmp(gstate.status_lines[0]+19,"Tran:>+7",8));
+        assert(!memcmp(gstate.status_lines[2],"Step:>1/4",9));
+        gstate.glabels[GUI_LABEL_STATUS_L1].dirty=0;
+        gstate.glabels[GUI_LABEL_STATUS_L3].dirty=0;gui_update_song_mode();
+        assert(!gstate.glabels[GUI_LABEL_STATUS_L1].dirty && !gstate.glabels[GUI_LABEL_STATUS_L3].dirty);
+        pitch_target=-24;step_target=1;gui_update_song_mode();
+        assert(!memcmp(gstate.status_lines[0]+19,"Tran:>-24",9));
+        assert(!memcmp(gstate.status_lines[2],"Step:>1/32",10));
+        gstate.status_override=1;pitch_target=12;step_target=16;gui_update_song_mode();
+        assert(!memcmp(gstate.status_lines[0]+19,"Tran:>-24",9));
+        gstate.status_override=0;pitch_wait=pending_ui=0;gui_update_song_mode();
+        assert(!memcmp(gstate.status_lines[0]+19,"Tran: +12",9));
+        assert(!memcmp(gstate.status_lines[2],"Step: 1/1",9));
+    }
     puts("GUI status tests passed"); return 0;
 }

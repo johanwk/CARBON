@@ -19,6 +19,7 @@
  *
  */
 #include "panel.h"
+#include "snapshot_keys.h"
 #include "gui.h"
 #include "panel_menu.h"
 #include "pattern_edit.h"
@@ -65,6 +66,7 @@ struct panel_key_queue {
 // panel state
 //
 struct panel_state {
+    struct snapshot_keys snapshot_keys;
     int8_t shift_state;  // shift button state
     int16_t shift_tap_timeout;  // shift timeout
     int8_t scene_state;  // scene button state
@@ -163,6 +165,7 @@ void panel_init(void) {
 
 // run the panel timer task - run on the realtime thread
 void panel_timer_task(void) {
+    gui_notice_tick();
     // handle panel input
     panel_handle_key_queue();
 
@@ -393,6 +396,23 @@ void panel_handle_key_queue(void) {
 
 // handle the sequencer input (normal running mode)
 void panel_handle_seq_input(int ctrl, int val) {
+    int key = ctrl == PANEL_SW_CLOCK ? SNAP_CLOCK : ctrl == PANEL_SW_RECORD ? SNAP_RECORD :
+        ctrl == PANEL_SW_LOAD ? SNAP_LOAD : -1;
+    enum snapshot_action action = snapshot_keys_event(&pstate.snapshot_keys, key, !!val, pstate.shift_state);
+    switch(action) {
+        case SNAP_CONSUME: return;
+        case SNAP_MENU: panel_menu_set_mode(PANEL_MENU_CLOCK); return;
+        case SNAP_TAP: seq_ctrl_tap_tempo(); return;
+        case SNAP_CAPTURE:
+            gui_notice(seq_engine_snapshot_capture() == 0 ? "Snapshot captured" : "Snapshot busy/recording");
+            return;
+        case SNAP_RECALL:
+            if(!seq_engine_snapshot_status()) gui_notice("No snapshot");
+            else if(seq_engine_snapshot_recall() < 0) gui_notice("Snapshot busy/recording");
+            else gui_notice(seq_engine_snapshot_status() == 2 ? "Recall next bar" : "Snapshot recalled");
+            return;
+        default: break;
+    }
     // key press / encoder
     if(val) {
         switch(ctrl) {

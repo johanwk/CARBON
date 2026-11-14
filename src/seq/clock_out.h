@@ -35,4 +35,6 @@ void clock_out_run(uint32_t tick_count);
 // handle state change
 void clock_out_handle_state_change(int event_type, int *data, int data_len);
 
+// Refresh saved clock-output configuration without changing transport.
+void clock_out_set_output(int output, int ppq);
 #endif

@@ -324,4 +324,7 @@ void seq_ctrl_make_magic(void);
 // clear tracks - affects the current active tracks / region
 void seq_ctrl_make_clear(void);
 
+// Snapshot refresh: no transport reset or flash/config writes.
+void seq_ctrl_refresh_snapshot_modules(void);
+void seq_ctrl_restore_snapshot_modes(int live, int songmode);
 #endif

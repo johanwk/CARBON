@@ -21,6 +21,7 @@
  *
  */
 #include "song.h"
+#include <string.h>
 #include "arp.h"
 #include "scale.h"
 #include "../config.h"
@@ -171,6 +172,19 @@ struct song_state {
     int loadsave_song;  // which song number is loading or saving
 };
 struct song_state songs;
+static struct song_data snapshot_song;
+static int snapshot_valid;
+int song_snapshot_idle(void) { return songs.state == SONG_IO_STATE_IDLE; }
+int song_snapshot_available(void) { return snapshot_valid; }
+void song_snapshot_clear(void) { snapshot_valid = 0; }
+int song_snapshot_capture(void) {
+    if(!song_snapshot_idle()) return -1;
+    memcpy(&snapshot_song, &song, sizeof(song)); snapshot_valid = 1; return 0;
+}
+int song_snapshot_restore(void) {
+    if(!snapshot_valid || !song_snapshot_idle()) return -1;
+    memcpy(&song, &snapshot_song, sizeof(song)); return 0;
+}
 // Scene copies dispatch many setters synchronously. Defer pitch refresh until
 // the complete scene has been written, avoiding partial legacy revoicing.
 static int song_scene_copying;
@@ -256,6 +270,7 @@ void song_timer_task(void) {
 
 // clear the song in RAM back to defaults
 void song_clear(void) {
+    song_snapshot_clear();
     int scene, track, step, mapnum, port, i;
     struct track_event event = {.delay = SEQ_START_DELAY_INHERIT};
 
@@ -389,6 +404,7 @@ int song_load(int song_num) {
         log_error("sl - song load start error");
         return -1;
     }
+    song_snapshot_clear();
     songs.loadsave_song = song_num;  // which song we are loading
     songs.state = SONG_IO_STATE_LOAD;
     return 0;

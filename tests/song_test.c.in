@@ -135,5 +135,17 @@ int main(void) {
     assert(!song_load(0)); song_timer_task();
     assert(!song_get_step_event(0,0,0,2,&actual));
     assert(actual.type==SONG_EVENT_INTERNAL_CC && actual.data0==35 && actual.data1==127);
+    assert(!song_snapshot_available());
+    assert(!song_snapshot_capture());
+    struct song_data expected_snapshot=song;
+    song.tempo=200; memset(song.trkevents,0,sizeof(song.trkevents));
+    assert(!song_snapshot_restore());assert(!memcmp(&song,&expected_snapshot,sizeof(song)));
+    song.tempo=180; assert(!song_snapshot_restore()); assert(song.tempo==expected_snapshot.tempo);
+    songs.state=SONG_IO_STATE_SAVE;
+    assert(song_snapshot_capture()==-1 && song_snapshot_restore()==-1);
+    songs.state=SONG_IO_STATE_IDLE; assert(!song_snapshot_restore());
+    song_clear();assert(!song_snapshot_available() && song_snapshot_restore()==-1);
+    assert(!song_snapshot_capture()); assert(!song_save(0)); song_timer_task();
+    assert(song_snapshot_available()); assert(!song_load(0)); assert(!song_snapshot_available()); song_timer_task();
     puts("song tests passed"); return 0;
 }

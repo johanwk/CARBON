@@ -31,7 +31,8 @@ int seq_ctrl_get_track_select(int track) {
 #endif
 }
 int seq_ctrl_get_first_track(void) { return 0; }
-int seq_ctrl_get_record_mode(void) { return SEQ_CTRL_RECORD_IDLE; }
+static int test_record_mode;
+int seq_ctrl_get_record_mode(void) { return test_record_mode; }
 int seq_ctrl_get_num_tracks_selected(void) { return 1; }
 void seq_ctrl_set_record_mode(int value) {}
 void seq_ctrl_set_live_mode(int value) { live_mode = value; }
@@ -158,6 +159,8 @@ void arp_set_arp_enable(int track, int value) {}
 void arp_set_type(int track, int value) {}
 void arp_set_speed(int track, int value) {}
 void arp_align_rate(int track) {}
+void arp_stop_all_notes(int track) {}
+int song_get_midi_autolive(void) {return 0;}
 void arp_set_gate_time(int track, int value) {}
 #endif
 void state_change_fire2(int event, int a, int b) {}
@@ -165,8 +168,25 @@ void state_change_fire2(int event, int a, int b) {}
 /* Use the production MIDI CC conversion helpers and MIDI message utilities
  * via separate compilation; only external song/hardware services are fixtures.
  */
+static int snapshot_test_valid, snapshot_test_busy;
+static struct track_event snapshot_events[6][6];
+int song_snapshot_available(void) {return snapshot_test_valid;}
+int song_snapshot_idle(void) {return !snapshot_test_busy;}
+void song_snapshot_clear(void) {snapshot_test_valid=0;}
+int song_snapshot_capture(void) {
+    if(snapshot_test_busy) return -1;
+    memcpy(snapshot_events,fixture,sizeof(snapshot_events));snapshot_test_valid=1;return 0;
+}
+int song_snapshot_restore(void) {
+    if(snapshot_test_busy || !snapshot_test_valid) return -1;
+    memcpy(fixture,snapshot_events,sizeof(snapshot_events));return 0;
+}
+void seq_ctrl_refresh_snapshot_modules(void) {}
+void seq_ctrl_restore_snapshot_modes(int live, int songmode) {}
 static void setup(void) {
     int t;
+    test_record_mode=SEQ_CTRL_RECORD_IDLE;
+    snapshot_test_valid=snapshot_test_busy=snapshot_queued=0;
     memset(timing_step,0,sizeof(timing_step)); memset(timing_arp,0,sizeof(timing_arp));
     memset(&sestate, 0, sizeof(sestate));
     memset(fixture, 0, sizeof(fixture));
