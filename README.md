@@ -1,14 +1,122 @@
-# CARBON
-CARBON Sequencer
+# CARBON community firmware
 
-This is the source code for the CARBON hardware music sequencer by Kilpatrick 
-Audio. Please see this link for product details:
+Unofficial firmware for the Kilpatrick Audio CARBON hardware sequencer.
+Not an official Kilpatrick Audio release. Installation is at your own risk.
 
-[CARBON page at Kilpatrick Audio](http://www.kilpatrickaudio.com/?p=carbon)
+**Release preparation:** proposed community prerelease `community-1.36-rc1`,
+System identity `1.36-jwk-rc1`. No downloadable release is published by this
+preparation. Only use an asset accompanied by its exact source revision, SHA256
+and build record. The [fork releases page](https://github.com/johanwk/CARBON/releases)
+is the intended distribution point after approval; official updater binaries
+do not contain these community additions.
 
-## Looking for Binaries?
+## What it adds
 
-If you don't want to build the code yourself but just want the latest firmware to install (no programming hardware required) just visit this link: [Kilpatrick Audio Firmware Updates](http://www.kilpatrickaudio.com/?p=firmware_updates)
+Program Change per step/scene; Euclidean density/rotation and unusual bar
+divisions; ordered conditional events; Bias-routed internal controls (CCi);
+roots and Hrm harmony; Inv/Compact voicing; individual note delays; curved
+CV glide and synth-dependent MIDI portamento; current-state pitch/delay grid;
+manual performance timing/pitch protection with next-bar target readouts;
+whole-song RAM snapshots; backup, JSON and MIDI import tools.
+
+Use the [official CARBON product/manual page](https://www.kilpatrickaudio.com/?p=carbon)
+for ordinary operation, connections and original features. The
+[community user guide](carbon-fw-2026-johanw.org) documents the additions,
+controls and examples rather than replacing the official manual.
+
+## Hardware and tested setup
+
+Target: original CARBON with STM32F407VE and factory MIDI bootloader; release
+application at 0x08020000. Not a build for other sequencers or modified boards.
+Recorded practical use is on one user's CARBON (LCD A), with macOS/CoreMIDI,
+Bitwig, MIDI and CV/gate, including Moog Mother-32 Program Change/CV use.
+Both LCD layouts have host UI tests, not equivalent physical coverage.
+Do not assume every firmware feature was tested with every device.
+
+## Install a release binary safely
+
+1. **Back up saved songs before installation and before saving migrated songs.**
+   [Song-tool instructions](tools/carbon-backup/README.md) include raw bank backup.
+   Copy archives somewhere safe. They exclude firmware, unsaved RAM, global
+   configuration and editable preset-pattern definitions.
+2. Obtain the specific community release `main.bin`, its SHA256/build record
+   and corresponding source. Verify with `shasum -a 256 main.bin` (macOS) or
+   `sha256sum main.bin` (Linux); the checksum must match that release.
+3. Install [dfu-util](https://dfu-util.sourceforge.net/). On macOS with Homebrew:
+   `brew install dfu-util`; on Debian/Ubuntu: `sudo apt install dfu-util`.
+   Other platforms, USB permissions and drivers are not validated here.
+4. Stop playback, disconnect sensitive outputs if appropriate, and use reliable
+   power and USB. Enter STM32 ROM DFU by holding the power button while applying
+   power. Run `dfu-util -l`; confirm `0483:df11`, alt 0, Internal Flash.
+   The listing may start at 0x08000000; that is NOT the application address.
+5. From the directory containing the verified binary, run exactly:
+
+```sh
+dfu-util -d 0483:df11 -a 0 \
+  --dfuse-address 0x08020000:leave \
+  -D main.bin
+```
+
+**0x08020000 is essential: it preserves the factory bootloader. Never use
+stock `dfu.sh`, development images, mass erase, or 0x08000000 for this release.**
+No JTAG programmer is needed for this procedure. KAUpdate/WebMIDI installation
+of this unofficial binary has not been verified.
+
+6. Wait for successful completion and restart. Check the System identity, then
+   boot/playback, MIDI, CV/gate and a disposable save/reload before performance
+   use. See the [release checklist](RELEASE-CHECKLIST.md).
+
+### Recovery
+
+If installation fails, keep backups intact, re-enter ROM DFU, check USB/power
+and the image checksum/address, then reflash the same known-good release
+application at 0x08020000. Do not erase or replace the bootloader as a shortcut.
+A firmware reflash does not repair a partially replaced saved song. Retain
+recovery archives and inspect/plan a supported song restore before retrying.
+Returning to older firmware requires its matching application and pre-upgrade
+songs; faithful downgrade of 1.36 songs is not supported.
+
+## Everyday starting points
+
+- Shift+Pattern: density; Shift+Transpose: Euclidean rotation in normal mode.
+- Clock menu: Perform Grid (Straight) and Perform Pitch (Octaves/Octaves+5ths).
+  These protect manual gestures, not all automation. Running edits apply next
+  4/4 bar; turning back cancels. Stop/reset/scene/song boundaries cancel edits.
+- Hold Clock first, press Record: capture RAM snapshot. Clock then Load: recall
+  next bar, or immediately stopped. Either release order works. Clock alone
+  opens its menu on release; Shift+Clock tap tempo remains on press.
+- Step Edit: select a slot with Shift+Motion Start; Shift+Transpose selects its
+  event type. See the guide for Hrm, Inv, Gli, CCi and note-delay examples.
+
+## Compatibility and limitations
+
+- New events/delays are not understood by older firmware. Keep pre-upgrade
+  originals; unchanged 20480-byte song size does not imply compatibility.
+- Host upload does not reload RAM: **LOAD afterward; do not save stale RAM.**
+  Song replacement is not atomic across five sectors.
+- Local Gli applies to later Note slots on its step. Persistent CCi34/35 are
+  transient Bias-target overrides, including generated arp output. MIDI glide
+  depends on the receiving synth; CV glide requires mono pitch groups.
+- Grid strokes preview current state, not future probability or automation.
+- Snapshot is one volatile RAM copy, not a backup/undo history; no external
+  synth state, global patterns or PRNG rewind. Load/clear/power-off invalidates it.
+- Finite queues and MIDI bandwidth remain limits; arbitrary overload is not
+  lossless. Worst-case interrupt time and stack headroom are unmeasured.
+- Practical acceptance is meaningful but not exhaustive. The exact candidate
+  and new 1.36 simple-upload workflow still need representative hardware checks.
+
+## Build and contribute
+
+See [BUILDING.md](BUILDING.md), [song tools](tools/carbon-backup/README.md),
+[release notes](RELEASE-NOTES.md) and [verification checklist](RELEASE-CHECKLIST.md).
+Report reproducible community-build issues to the fork with identity, route,
+clock source and minimal steps; do not attach private songs without consent.
+Keep fixes focused; this release freezes the musical feature set. Never upload
+commercial MIDI files or personal backups as test fixtures without rights.
+
+This cumulative release includes PR #10/#11/#12 plus subsequent work. Those
+narrower PR branches remain separate and unchanged; publication of this
+release branch requires a separate decision.
 
 ## Licensing / using code in your own projects
 

@@ -35,8 +35,18 @@ printf 'Jobs: %s\n' "$JOBS"
 printf 'Full log: %s\n\n' "$LOG_FILE"
 
 {
+    printf 'Source commit: %s\n' "$(git rev-parse HEAD)"
+    printf 'Tracked status:\n'
+    git status --short --untracked-files=no
+    printf 'Toolchain:\n'
+    arm-none-eabi-gcc --version
+    printf 'makegen: %s\n' "$(command -v makegen)"
+    printf 'MAKEFLAGS=%s\n' "${MAKEFLAGS:-}"
     ./makegen-run-release.sh &&
     test -s Makefile &&
+    { if grep -E 'tests/.*\.(c|o)|tools/.*\.(c|o)' Makefile; then
+        echo 'ERROR: host sources entered the firmware Makefile' >&2; false
+      else true; fi; } &&
     make -j"$JOBS"
 } 2>&1 | tee "$LOG_FILE"
 BUILD_STATUS=${PIPESTATUS[0]}
@@ -47,6 +57,7 @@ BUILD_STATUS=${PIPESTATUS[0]}
 
     if [ "$BUILD_STATUS" -eq 0 ] && [ -f main ] && [ -f main.bin ]; then
         arm-none-eabi-size main
+        arm-none-eabi-objdump -h main | grep -E 'isr_vector|ccmram|data|bss'
         printf 'main.bin bytes: %s\n' "$(wc -c < main.bin | tr -d '[:space:]')"
         if command -v shasum >/dev/null 2>&1; then
             shasum -a 256 main.bin

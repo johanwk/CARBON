@@ -3,7 +3,7 @@ use carbon_backup::*;
 use midir::{Ignore,MidiInput,MidiOutput};
 use std::{env,fs::{File,OpenOptions},path::Path,sync::mpsc,time::{Duration,Instant,SystemTime,UNIX_EPOCH}};
 
-const HELP:&str = "CARBON song tools — MIDI import, JSON editing and safe single-song transfer
+const HELP:&str = "CARBON song tools - MIDI import, JSON editing and safe single-song transfer
 
 Everyday song transfers (JSON files):
   backup song SLOT FILE.json             Save one song from CARBON
@@ -11,7 +11,7 @@ Everyday song transfers (JSON files):
   Example: backup song 37 song37.json
            upload song 37 song37.json
   CARBON Port 1 is automatic. One prompt covers stopped transport and, for
-  upload, supported firmware1.35. Recovery backup and readback are automatic.
+  upload, community firmware 1.36. Recovery backup and readback are automatic.
   After upload, LOAD the song from the panel. No token or flags needed.
 
 Offline commands:
@@ -35,14 +35,14 @@ Advanced device commands:
   ports
   backup-song SLOT FILE INPUT OUTPUT --stopped [--pause-ms N]
   backup-bank FILE INPUT OUTPUT --stopped [--pause-ms N]
-  restore-song SOURCE BASE SLOT RECOVERY PORT --stopped --firmware-9c91ab0 --confirm|TOKEN
+  restore-song SOURCE BASE SLOT RECOVERY PORT --stopped --firmware-community-1.36 --confirm|TOKEN
     WRITES one song slot1..64. Requires reviewed plan and fresh recovery backup.
 
 MIDI selection: --start-bar N --bars N --tracks 2,3|NAME --step-length auto|96
 Output ports: 0 DIN1, 1 DIN2, 3 USB-host, 4 USB-device (CV unsupported).
 Use --step-length 96 --bars 16 for a quarter-grid opening excerpt in 4/4.
 Conversion may drop/shift notes; inspect metadata.extensions.midi_import.
-Template must be schema2/1.35. Source programs/expression are not reproduced.
+Template must be schema3/1.36 (or explicit legacy schema2/1.35). Source programs/expression are not reproduced.
 See tools/carbon-backup/README.md for policies and transfer precautions.
 ";
 
@@ -51,7 +51,7 @@ fn confirm_transfer(action:&str,slot:usize)->Result<(),String>{
     if !std::io::stdin().is_terminal(){return Err("Confirmation requires an interactive terminal; no device accessed".into());}
     println!("Keep CARBON stopped and do not edit, save or load songs until completion.");
     if action=="replace"{
-        println!("Requires installed 1.35-jwk-dly1 / checkpoint9c91ab0 firmware.\nFirmware is NOT detected automatically. 1.36 and older stock firmware are not supported here.\nThe entire saved song will be overwritten. A recovery backup will be saved first.\nKeep power connected; an interrupted write may leave the target damaged.");
+        println!("Requires installed community firmware 1.36-jwk-rc1 (or documented compatible snp3).\nFirmware is NOT detected automatically. Older or official firmware is not supported here.\nThe entire saved song will be overwritten. A recovery backup will be saved first.\nKeep power connected; an interrupted write may leave the target damaged.");
     }else{println!("Reads saved flash only, not unsaved edits. This does not change CARBON.");}
     print!("\nTo confirm these conditions, type '{action} {slot}' (anything else cancels): ");
     std::io::stdout().flush().map_err(|e|e.to_string())?;
@@ -67,7 +67,7 @@ fn simple_transfer(args:&[String])->Result<(),String>{
         let text=std::fs::read_to_string(path).map_err(|e|e.to_string())?;
         let data=song_transfer::validate_upload(&text)?;
         let notes=data[1824..15648].chunks_exact(6).filter(|e|e[0]==0x90).count();
-        println!("Upload {} -> song{slot} via {}\nValidated1.35 song: {notes} stored Notes; SHA256 {}",path.display(),song_transfer::PORT,hash(&data));
+        println!("Upload {} -> song{slot} via {}\nValidated 1.36 song: {notes} stored Notes; SHA256 {}",path.display(),song_transfer::PORT,hash(&data));
         Some(data)
     }else{
         if path.exists(){return Err("Output exists; choose a new JSON filename".into());}
@@ -141,7 +141,7 @@ fn run()->Result<(),String>{
         let text=serde_json::to_vec_pretty(&doc).map_err(|e|e.to_string())?;
         let mut file=OpenOptions::new().write(true).create_new(true).open(&args[4]).map_err(|e|e.to_string())?;
         std::io::Write::write_all(&mut file,&text).map_err(|e|e.to_string())?;file.sync_all().map_err(|e|e.to_string())?;
-        println!("Compiled MIDI to schema2 JSON offline; {} notes. See metadata.extensions.midi_import for full losses/policies. No upload.",doc["metadata"]["extensions"]["midi_import"]["compiled_notes"]);return Ok(());
+        println!("Compiled MIDI to template-profile JSON offline; {} notes. See metadata.extensions.midi_import for full losses/policies. No upload.",doc["metadata"]["extensions"]["midi_import"]["compiled_notes"]);return Ok(());
     }
 
     if args.get(1).map(String::as_str)==Some("plan-midi") {
@@ -216,8 +216,8 @@ fn run()->Result<(),String>{
     }
     if args.get(1).map(String::as_str)==Some("restore-song") {
         // Explicitly selected hardware test slots; backup identity must match.
-        if args.len()!=10 || args[7]!="--stopped" || !["--firmware-9c91ab0","--firmware-1.36-gli3"].contains(&args[8].as_str()) {
-            return Err("Usage: restore-song SOURCE TARGET_BACKUP TARGET_SLOT RECOVERY_FILE PORT_NAME --stopped --firmware-9c91ab0 APPROVAL_TOKEN|--confirm".into());
+        if args.len()!=10 || args[7]!="--stopped" || !["--firmware-9c91ab0","--firmware-1.36-gli3","--firmware-community-1.36"].contains(&args[8].as_str()) {
+            return Err("Usage: restore-song SOURCE TARGET_BACKUP TARGET_SLOT RECOVERY_FILE PORT_NAME --stopped --firmware-community-1.36 APPROVAL_TOKEN|--confirm".into());
         }
         let (_,source)=verify_song_archive(File::open(&args[2]).map_err(|e|e.to_string())?)?;
         let (target,base)=verify_song_archive(File::open(&args[3]).map_err(|e|e.to_string())?)?;

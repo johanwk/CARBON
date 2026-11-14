@@ -68,6 +68,13 @@ trap 'rm -rf "$TMP"' EXIT HUP INT TERM
     "$LINK_GC" -o "$TMP/song-layout"
 "$TMP/song-layout"
 
+# Cross-language host-tool offsets must also match the production song layout.
+"$CC" -x c -std=c11 -Wall -Wextra -Werror -Wno-cpp \
+    -Wno-unused-parameter -Wno-sign-compare \
+    -ffunction-sections -fdata-sections tests/exchange_layout.c.in \
+    "$LINK_GC" -o "$TMP/exchange-layout"
+"$TMP/exchange-layout"
+
 "$CC" -x c -std=c11 -Wall -Wextra -Werror \
     -Wno-unused-parameter -Wno-sign-compare -Wno-deprecated-declarations \
     -Wno-tautological-constant-out-of-range-compare \

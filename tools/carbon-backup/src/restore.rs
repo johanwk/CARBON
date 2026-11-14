@@ -12,9 +12,9 @@ pub fn validate_hardware_target(slot:usize,backup:&Value)->Result<(),String>{
 
 /// User assertion, not a device capability query. Checked before opening MIDI.
 pub fn validate_hardware_source(data:&[u8],firmware:&str)->Result<(),String>{
-    if !["--firmware-9c91ab0","--firmware-1.36-gli3"].contains(&firmware){return Err("Require firmware assertion --firmware-9c91ab0 or --firmware-1.36-gli3".into());}
+    if !["--firmware-9c91ab0","--firmware-1.36-gli3","--firmware-community-1.36"].contains(&firmware){return Err("Require --firmware-community-1.36 (see README for legacy assertions)".into());}
     validate_source(data)?;
-    let version=if firmware=="--firmware-1.36-gli3"{36}else{35};
+    let version=if firmware=="--firmware-9c91ab0"{35}else{36};
     if data[..4]!=[version,0,1,0]{return Err("Source version must match asserted firmware; no implicit migration".into());}
     crate::song::validate(data)
 }
@@ -85,7 +85,7 @@ impl Plan {
         let fields=self.preview["stored_fields"]["field_changes"].as_array().map_or(0,Vec::len);
         let opaque=self.preview["stored_fields"]["opaque_changes"].as_array().map_or(0,Vec::len);
         let notes=self.after[1824..15648].chunks_exact(6).filter(|e|e[0]==0x90).count();
-        format!("Target: song {} — {}\nResult: firmware song format 1.{}, {} stored Notes\nChanges: {} event slots, {} stored fields, {} opaque bytes\nWrites: {} complete sectors; other song slots untouched\nBase SHA256: {}\nResult SHA256: {}\nA fresh matching backup and a new recovery file are required before writing.\nReplacement is not atomic; keep CARBON stopped and connected.",
+        format!("Target: song {} - {}\nResult: firmware song format 1.{}, {} stored Notes\nChanges: {} event slots, {} stored fields, {} opaque bytes\nWrites: {} complete sectors; other song slots untouched\nBase SHA256: {}\nResult SHA256: {}\nA fresh matching backup and a new recovery file are required before writing.\nReplacement is not atomic; keep CARBON stopped and connected.",
             self.slot,if matches!(self.mode,Mode::Replace){"REPLACE entire song"}else{"patch changed sectors"},self.after[0],notes,event_count,fields,opaque,self.sectors.len(),hash(&self.before),hash(&self.after))
     }
     pub fn confirmation_phrase(&self)->String {format!("replace {}",self.slot)}

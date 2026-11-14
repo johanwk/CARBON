@@ -1,6 +1,6 @@
 # Building the unofficial CARBON firmware
 
-These instructions describe the release build for `1.29-johanwk`. This is
+These instructions describe community candidate `1.36-jwk-rc1`. This is
 unofficial firmware, not a Kilpatrick Audio release. See also the
 [user guide](carbon-fw-2026-johanw.org).
 
@@ -36,7 +36,7 @@ a claim of bit-for-bit reproducibility across hosts.
 Source: <https://github.com/hires/makegen>
 
 The required fix is described in [makegen PR #1](https://github.com/hires/makegen/pull/1):
-“Send stderr to console, not Makefile (needed when tools emit warnings).”
+"Send stderr to console, not Makefile (needed when tools emit warnings)."
 Unpatched `makegen` redirects compiler diagnostics into the generated Makefile,
 which can make modern-toolchain builds fail.
 
@@ -73,7 +73,7 @@ following commands.
 Run from the CARBON repository root:
 
 ```sh
-./build-release.sh
+MAKEFLAGS=-B ./build-release.sh
 ```
 
 The wrapper generates the Makefile, builds in parallel, and returns the build
@@ -129,3 +129,38 @@ has been verified for this unofficial image.
 Allow CARBON to restart and check its version display, normal playback, MIDI,
 and CV/gate operation before relying on it. Firmware installation and use are
 at your own risk.
+
+## Candidate verification and clean checkout
+
+Use an approved source commit/tag, not an arbitrary development HEAD. Before
+publication a local detached worktree can verify that untracked local files
+are not build inputs (choose a new path outside the working tree):
+
+```sh
+git worktree add --detach /tmp/carbon-rc-clean COMMIT
+cd /tmp/carbon-rc-clean
+sh tests/run-host-tests.sh
+cargo test --locked --manifest-path tools/carbon-backup/Cargo.toml
+cargo build --release --locked --manifest-path tools/carbon-backup/Cargo.toml
+git diff --check
+MAKEFLAGS=-B ./build-release.sh
+arm-none-eabi-objdump -h main
+shasum -a 256 main.bin
+```
+
+Replace COMMIT with the complete candidate hash. For a public release, clone
+the fork and check out its approved tag instead. The C runner includes song
+and host-exchange layout assertions. Rust tests use generated fixtures; the
+optional local MIDI test is ignored. Rust/Cargo 1.99.0 and Apple Clang 17 were
+used in preparation; other host platforms are not equivalently tested.
+
+Build logs now retain full commit, tracked dirty status, GCC version and
+MAKEFLAGS. The wrapper rejects host test/tool C inputs in the generated
+Makefile. Host C fixtures use .c.in deliberately because makegen scans .c
+recursively. Do not place unrelated C sources below the build root.
+
+Check .isr_vector VMA and LMA are 0x08020000. Record sections, sizes and
+SHA256 with the logs outside Git. Static BSS/CCM gaps are not stack high-water
+or CPU measurements; follow RELEASE-CHECKLIST.md before claiming readiness.
+Keep a copy of the exact main.bin/build record: another build replaces root
+artifacts. Do not commit generated images or logs to the source branch.

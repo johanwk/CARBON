@@ -26,7 +26,7 @@ pub fn validate_upload(text:&str)->Result<Vec<u8>,String>{
     let (_,raw)=document::import(&doc)?;
     // The simple UI includes this firmware assertion in its confirmation text.
     // It is not inferred from stored song versions and is not a capability query.
-    restore::validate_hardware_source(&raw,"--firmware-9c91ab0")?;
+    restore::validate_hardware_source(&raw,"--firmware-community-1.36")?;
     Ok(raw)
 }
 pub fn confirmation(action:&str,slot:usize,line:&str)->bool{
@@ -49,7 +49,7 @@ pub fn download<D:Device>(device:&mut D,slot:usize,approved:bool)->Result<Value,
 pub fn upload<D:Device,F:FnMut(&[u8])->Result<(),String>>(device:&mut D,slot:usize,raw:Vec<u8>,approved:bool,save_backup:F)->Result<String,String>{
     if !approved{return Err("Cancelled".into());}
     song_range(slot)?;
-    restore::validate_hardware_source(&raw,"--firmware-9c91ab0")?;
+    restore::validate_hardware_source(&raw,"--firmware-community-1.36")?;
     let result=hash(&raw);
     let before=read_pair(device,slot)?;
     let plan=Plan::new(slot,before,raw,Mode::Replace)?;
@@ -73,7 +73,7 @@ pub fn upload<D:Device,F:FnMut(&[u8])->Result<(),String>>(device:&mut D,slot:usi
             Ok(vec![0xf0,0,1,0x72,0x49,1,p[5],1,0xf7])
         }
     }
-    fn fixture()->Vec<u8>{let doc=crate::json::parse(include_str!("../templates/default-1.35.json")).unwrap();document::import(&doc).unwrap().1}
+    fn fixture()->Vec<u8>{let doc=crate::json::parse(include_str!("../templates/default-1.36.json")).unwrap();document::import(&doc).unwrap().1}
     fn device()->Fake{Fake{data:fixture(),stage:vec![0;4096],reads:0,writes:0,stale:false,backed:std::rc::Rc::new(std::cell::Cell::new(false))}}
     #[test]fn download_two_reads_no_writes(){let mut d=device();let doc=download(&mut d,37,true).unwrap();assert_eq!(doc["provenance"]["capture_slot"],37);assert_eq!(document::import(&doc).unwrap().1,d.data);assert_eq!(d.reads,2);assert_eq!(d.writes,0);}
     #[test]fn upload_json_and_readback(){let mut d=device();let mut raw=fixture();raw[4..8].copy_from_slice(&123f32.to_le_bytes());let mut saved=vec![];let backed=d.backed.clone();let result=upload(&mut d,37,raw.clone(),true,|b|{saved=b.to_vec();backed.set(true);Ok(())}).unwrap();assert_eq!(saved,fixture());assert_eq!(result,hash(&raw));assert_eq!(d.data,raw);assert_eq!(d.reads,5);assert_eq!(d.writes,325);}
@@ -94,5 +94,18 @@ pub fn upload<D:Device,F:FnMut(&[u8])->Result<(),String>>(device:&mut D,slot:usi
         assert_eq!(parse(&["upload","x.json","37"]).unwrap(),(true,37,"x.json".into()));
         for xs in [vec!["backup","song","37"],vec!["upload","song","37","x.json","extra"],vec!["backup","track","37","x.json"]]{assert!(parse(&xs).is_err());}
     }
-    #[test]fn consent_and_source(){for action in ["download","replace"]{assert!(confirmation(action,37,&format!("{action} 37\n")));assert!(!confirmation(action,37,"yes"));assert!(!confirmation(action,37,&format!("{action} 36")));}assert!(validate_upload("{}").is_err());assert!(validate_upload(include_str!("../templates/default-1.35.json")).is_ok());}
+    #[test]fn community_source_guards(){
+ let mut raw=fixture();
+ raw[1824..1830].copy_from_slice(&[8,4,64,255,0,0]);
+ raw[1830..1836].copy_from_slice(&[1,35,100,255,0,0]);
+ let doc=document::export(&raw,37).unwrap();
+ assert_eq!(validate_upload(&serde_json::to_string(&doc).unwrap()).unwrap(),raw);
+ let mut d=device();let backed=d.backed.clone();
+ upload(&mut d,37,raw.clone(),true,|_|{backed.set(true);Ok(())}).unwrap();
+ assert_eq!(d.data,raw);assert_eq!(d.writes,325);
+ assert!(validate_upload(include_str!("../templates/default-1.35.json")).is_err());
+ for version in [34,35,37]{raw[0]=version;assert!(restore::validate_hardware_source(&raw,"--firmware-community-1.36").is_err());}
+ assert!(restore::validate_hardware_source(&[],"--firmware-community-1.36").is_err());
+}
+ #[test]fn consent_and_source(){for action in ["download","replace"]{assert!(confirmation(action,37,&format!("{action} 37\n")));assert!(!confirmation(action,37,"yes"));assert!(!confirmation(action,37,&format!("{action} 36")));}assert!(validate_upload("{}").is_err());assert!(validate_upload(include_str!("../templates/default-1.36.json")).is_ok());}
 }

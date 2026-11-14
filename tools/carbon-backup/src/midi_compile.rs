@@ -20,7 +20,7 @@ fn peak_queued(existing:&[(u64,u64,u64,u64)],visit:u64,end:u64,period:u64)->usiz
 pub fn compile(source:&Source,options:&midi_plan::Options,template:&Value,port:u8)->Result<Value,String>{
  if ![0,1,3,4].contains(&port){return Err("Output port must be 0 DIN1, 1 DIN2, 3 USB-host, or 4 USB-device; CV is unsupported".into());}
  let (_,base)=document::import(template)?;
- if base[..4]!=[35,0,1,0]{return Err("MIDI import requires a valid 1.35/schema2 template; no implicit migration".into());}
+ if base[..4]!=[35,0,1,0] && base[..4]!=[36,0,1,0]{return Err("MIDI import requires a valid 1.35/schema2 or 1.36/schema3 template; no implicit migration".into());}
  let mut doc=template.clone();let mut plan=midi_plan::plan(source,options)?;
  let step=number(&plan["chosen"],"step_ticks")?;
  let index=STEPS.iter().position(|n|*n==step).ok_or("Unsupported grid")?;
@@ -107,6 +107,14 @@ pub fn compile(source:&Source,options:&midi_plan::Options,template:&Value,port:u
 
 #[cfg(test)]mod tests{
  use super::*;
+ #[test] fn community_template_compiles_without_glide() {
+ let t=crate::json::parse(include_str!("../templates/default-1.36.json")).unwrap();
+ let d=compile(&source(),&midi_plan::Options{start_bar:1,..Default::default()},&t,4).unwrap();
+ let (_,raw)=document::import(&d).unwrap();
+ assert_eq!(d["schema_version"],3);
+ crate::restore::validate_hardware_source(&raw,"--firmware-community-1.36").unwrap();
+ assert!(raw[1824..15648].chunks_exact(6).all(|e|e[0]==0 || e[0]==0x90));
+}
  fn template()->Value{let mut raw=crate::document::tests::fixture();raw[0]=35;document::export(&raw,30).unwrap()}
  fn source()->Source{Source{ppq:96,format:1,notes:(0..3).map(|i|crate::smf::Note{track:1,channel:2,event:i+1,pitch:60,velocity:90,start:i as u64*32,end:i as u64*32+24}).collect(),tracks:vec![json!({"track":1,"names":["Test"]})],tempos:vec![(0,1000000)],meters:vec![],diagnostics:vec![],end:384,sha256:"test".into()}}
  #[test]fn compilation_timeline_and_neutral_settings(){let t=template();let s=source();let o=midi_plan::Options{start_bar:1,step:Some(96),..Default::default()};let d=compile(&s,&o,&t,4).unwrap();let (_,raw)=document::import(&d).unwrap();assert_eq!(d["metadata"]["extensions"]["midi_import"]["compiled_notes"],3);assert_eq!(d["provenance"],t["provenance"]);assert_eq!(d["settings"]["track1.output1.port"],4);assert_eq!(d["settings"]["track1.output1.channel_zero_based"],1);assert_eq!(d["settings"]["scene6.track1.gate_raw"],128);assert_eq!(raw[1830],0x90);assert_eq!(raw[1833],32);assert_eq!(d["settings"]["tempo"],60.0);}

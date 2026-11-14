@@ -1,53 +1,25 @@
-#+title: CARBON firmware additions — 1.34-johanwk-ch10-dev
-#+author: Johan W. Klüwer using gpt--sol in Emacs gptel
-#+date: 2026-09-30
+#+title: CARBON community firmware 1.36 - user guide
+#+author: Johan W. Kluwer
 
 * Introduction
 
-This is an unofficial set of additions to the CARBON firmware. It is based on the
-upstream =master= commit =bd5f5d4= and firmware 1.27.
-The System page identifies this development variant as =1.34-johanwk-ch10-dev=.
-The preceding submitted builds are =1.29-johanwk= (PR #10) and
-=1.30-johanwk-ch9-dev= (PR #11). These suffixes identify unofficial
-development builds, not official Kilpatrick Audio releases. This guide covers
-the current 1.34 feature set: roots, CCi editor help, Harmony and inversion,
-including external Remote CC30--33. The aim is
-to extend CARBON's MIDI control and rhythmic sequencing while keeping its
-existing workflow intact.
+This unofficial/community firmware builds on Kilpatrick Audio CARBON 1.27
+(upstream master bd5f5d4). It is not an official Kilpatrick Audio release or
+a claim of manufacturer support. Candidate identity: =1.36-jwk-rc1=; numeric
+song format: 1.36. See [[file:README.md][Start here]] for installation, recovery and
+release status, and the [[https://www.kilpatrickaudio.com/?p=carbon][official CARBON documentation]] for basic operation.
 
-The main additions are:
+The additions are Program Change per step/scene, Euclidean density/rotation,
+bar-relative divisions, ordered conditional gates, Bias-routed CCi controls,
+song/scene roots and Hrm harmony, Inv/Compact voicing, individual note delays,
+Gli and persistent glide, current-state pitch/delay strokes, protected manual
+performance gestures, next-bar queued targets, and a whole-song RAM snapshot.
+Host tools provide backup, JSON editing, MIDI import and controlled restore.
 
-- Program Change events on steps and optional Program Changes on scene changes;
-- Euclidean density and rotation for each track and scene;
-- new step lengths that divide a 4/4 bar into 3, 5, 7, 9, 11 or 13 equal parts;
-- MIDI CC control of Euclidean density and rotation;
-- transient internal CC events, routed through Bias Track, for stepped internal
-  automation without a MIDI loopback cable;
-- conditional gates for variation and branching;
-- song/scene roots with root-aware in-scale transposition;
-- Harmony events for stepped Scale and shared Root changes;
-- Bias-target inversion and optional Compact voicing, plus external Remote control.
-
-The firmware has been built, flashed and tested on CARBON hardware. Existing songs
-load, and no existing feature has intentionally been removed or replaced. The
-original Step Length and Arp Speed choices remain available, and the fixed song
-record size is unchanged.
-
-The previously tested development build added about 5.9 kB of firmware text
-compared with the local 1.27 baseline. Measurements for that build are recorded
-below; they do not identify the current 1.34 development candidate.
-
-This work was done independently. The open pull requests in the CARBON GitHub
-repository were not consulted or incorporated, so features proposed there are not
-part of this firmware. The earlier additions were submitted as combined PR #10; the 1.30
-conditional-gate, display and clock-output additions are submitted as the
-dependent PR #11. The harmony/voicing additions extend #11 and therefore
-#10; their separate dependent PR is being prepared. Both earlier submitted
-branches remain unchanged. Roots, Hrm, Inv and the new Remote controls are
-not included in PR #11.
-
-This firmware is not an official Kilpatrick Audio release and is not supported by
-Kilpatrick Audio. Installation and use are at the user's own risk.
+This cumulative candidate includes the work submitted in PRs #10, #11 and
+#12 plus later additions. It does not expand those publication branches.
+Features have differing hardware coverage; see Hardware use and the release
+checklist. No worst-case interrupt time or stack high-water is claimed.
 
 * Building from source
 
@@ -109,7 +81,7 @@ operation before relying on it in a performance.
 - Live input, drums and arp-enabled tracks are excluded. Arp input-chord
   inversion is a possible later extension, not part of this build.
 - External Remote CC32/33 address rotation/Compact directly. See
-  [[*Inv: structural inversion and Compact voicing (1.34 development)][Inv and Compact]] for the algorithm and practical hardware results.
+  [[*Inv: structural inversion and Compact voicing][Inv and Compact]] for the algorithm and practical hardware results.
 
 ** CCi editor help and meaningful value steps
 
@@ -224,6 +196,8 @@ Implemented =CCi= controller numbers are:
 |  27 | Arp gate time      |
 |  28 | Euclidean density  |
 |  29 | Euclidean rotation |
+|  34 | Glide duration     |
+|  35 | Glide curve        |
 
 CC 80 (Run/Stop) is deliberately excluded. A track cannot reliably restart the
 transport after its own automation has stopped playback, and Run/Stop is global
@@ -248,8 +222,7 @@ In particular:
 - the release build remains linked at =0x08020000= so the MIDI bootloader is
   preserved.
 
-The additions have been used on CARBON hardware over the past week, with no bugs
-encountered during practical use.
+The additions have practical hardware acceptance, with coverage varying by feature.
 
 * How to use the new features
 
@@ -258,8 +231,7 @@ encountered during practical use.
 1. Enter Step Edit and select the step.
 2. Use Shift + Motion Start to select one event slot rather than all slots.
 3. Use Shift + Transpose to cycle the event type:
-   =Note → CC → CCi → PC → Prb → Euc → Pre → !Pr → Hrm → Inv → Note=.
-   (The submitted 1.29 build ends after PC; 1.30 ends after !Pr.)
+   =Note -> CC -> CCi -> PC -> Prb -> Euc -> Pre -> !Pr -> Hrm -> Inv -> Gli -> Note=.
 4. Select =PC=.
 5. Use Transpose to choose program 1--128.
 
@@ -345,7 +317,7 @@ intended internal solution.
 
 * Harmony events (Hrm): stepped Scale and Root
 
-Available in local 1.32 development. A Harmony event changes the effective
+A Harmony event changes the effective
 Scale and optionally the shared Root without editing saved base settings.
 It uses one of the step's six event slots and sends no MIDI/CV message itself.
 
@@ -363,12 +335,11 @@ It uses one of the step's six event slots and sends no MIDI/CV message itself.
 | Off         | Select legacy root-off processing.                   |
 | C--B        | Select that root for all melodic tracks.             |
 
-In local 1.33, Hrm Scale choices are Keep, then the sixteen scales:
+Hrm Scale choices are Keep, then the sixteen scales:
 Chromatic is value 1. Keep leaves each receiving track's effective scale
 unchanged. There is no separate Scale Off: choose Chromatic for no scale
 restriction. New events default to Keep / Keep. Hrm: Keep / D changes only
-the shared root. No migration of earlier experimental Hrm encodings is provided,
-as no songs were saved with them. Root Off remains available and distinct. The first numeric row shows the
+the shared root. Root Off remains available and distinct. The first numeric row shows the
 Keep or scale index 1--16; the second shows Keep, Off or the note name. The selected
 event's heading shows the full description, for example =Hrm: Major / D=.
 Gate length is unused. Stopped preview does not apply Hrm changes.
@@ -509,7 +480,7 @@ including later gates. Earlier events are unaffected. Each step visit starts
 afresh: a failed gate does not disable subsequent sequencer steps.
 
 Gates control Note, CC, PC and internal CCi events, including Note-derived
-Bias Track output. In 1.32, they also control Hrm events. A suppressed Note On does not suppress cleanup of notes
+Bias Track output. They also control Hrm, Inv and Gli events. A suppressed Note On does not suppress cleanup of notes
 that were already sounding. Gate events themselves send no MIDI/CV output.
 
 ** Add and edit a gate
@@ -531,7 +502,7 @@ Changing the pair normalizes rotation modulo the new B. Rotation moves one
 position per Velocity increment. Gate length is unused.
 
 Stopped editor preview ignores gates and auditions ordinary Note/CC/PC
-events, including events after a failing gate. CCi and Hrm remain playback-only.
+events, including events after a failing gate. CCi, Hrm, Inv and Gli remain playback-only.
 Preview and display redraws do not draw probability or change gate history.
 
 ** Probability
@@ -628,7 +599,7 @@ text/binary +1928 bytes, initialized data unchanged, BSS +48 bytes.
 ARM -O2 static engine tick frame grows from 64 to 312 bytes; this is not a
 worst-case nested call/interrupt stack measurement.
 
-* Inv: structural inversion and Compact voicing (1.34 development)
+* Inv: structural inversion and Compact voicing
 
 Inv rotates arbitrary note collections without chord recognition or knowledge
 of Scale/Root. Compact is a custom octave-compression algorithm, NOT voice
@@ -705,99 +676,43 @@ and register, synth patch and dynamics still matter.
 
 * Compatibility and storage
 
-Current local version 1.34 includes the 1.31 root fields, Hrm event code 6
-and Inv event code 7. Hrm Scale uses Keep=0 and scales=1--16.
-The seven root bytes occupy reserved song space; all older field offsets and
-the =0x5000=-byte slot size are unchanged. Songs written before 1.31 initialize
-Song Root to Off and scenes to Song inheritance. Version 1.32 adds no new
-persistent fields: Hrm and Inv use existing event data0/data1. Older firmware cannot
-interpret these events or reproduce named-root playback. Retain song backups
-for any downgrade; fixed record size does not imply playback compatibility.
+Back up before installing and before saving migrated songs. Saved-song archives
+do not include firmware, unsaved RAM, global configuration or editable preset
+pattern definitions. Keep original archives on another drive.
 
-The conditional-gate build uses numeric firmware/song version 1.30, with
-display-only =johanwk-ch9-dev=. Event codes 2--5 add the four gates in the
-existing six-byte event records, preserving all field offsets and the
-=0x5000=-byte song size. No new persistent extension fields are needed.
-Older songs migrate through the existing loader; gate-containing songs
-are not backward compatible with firmware that does not implement gates.
-The 1.29 details below describe the preceding submitted feature set.
+The song is still 20480 bytes and each event six bytes. Fixed size does NOT
+mean backward compatibility. Scene PC, Euclidean settings and roots use
+previously reserved bytes; older songs receive safe defaults on load. In 1.35,
+the event delay byte gained meaning; old songs inherit shared step delay.
+1.36 adds Gli and CCi 34/35. Older firmware cannot interpret all these events
+or relative delays. Do not promise or expect faithful downgrade of 1.36 songs.
+Keep pre-upgrade originals for use with their original firmware.
 
+Host upload replaces saved flash, not the active RAM song: LOAD afterward;
+do not SAVE stale RAM over the uploaded song. Replacement is not atomic across
+the five flash sectors; interruption can damage the chosen slot. See the
+[[file:tools/carbon-backup/README.md][host-tool guide]] for supported profiles and recovery safeguards.
 
-- The work is based on upstream =master= commit =bd5f5d4=, which identifies itself
-  as firmware 1.27.
-- The numeric firmware/song version is 1.29. The display-only =johanwk= suffix
-  identifies this unofficial variant and does not change storage migration logic.
-- Version 1.28 adds 72 bytes for scene Program Change assignments.
-- Version 1.29 adds 72 bytes for Euclidean density and rotation.
-- Both additions use bytes from the existing reserved extension area. Reserved
-  padding is reduced by the same amount, so the song record size and all older
-  field offsets remain unchanged.
-- A compile-time assertion checks that the complete song structure still equals
-  the external-flash slot size.
-- Songs written by older firmware initialize the new fields to safe defaults when
-  loaded: scene programs =Off=, density 100%, rotation 0.
-- =PC= and =CCi= use previously unused event-type values in the existing step-event
-  structure, so they do not enlarge the song record.
+MIDI Remote CC16 spans all 23 track lengths. CC26 retains 17 Arp Speed choices
+but uses proportional scaling. Existing automation values may need adjustment.
 
-Old songs have loaded and played during hardware testing. Compatibility with older
-firmware after saving songs using the new features is not guaranteed. In
-particular, firmware 1.27 does not understand the new bar-relative step-length
-indices or the new step-event types. Back up songs before installing, and retain
-those backups if you may want to return to older firmware.
+* Individual note delays
 
-MIDI Remote CC 16 now spans all 23 track step lengths. CC 26 still selects only
-the original 17 Arp Speed choices, but its 0--127 scaling also changes from the
-old integer-division mapping to proportional scaling. Existing automation using
-specific CC 16/26 values may need adjustment.
+In Step Edit, all slots selected edits the shared step delay once. Select one
+Note slot to edit its override: Step inherits the shared delay, OFF explicitly
+means zero. An override replaces, rather than adds to, the shared delay.
+Use the Speed encoder in Step Edit to adjust delay. Absolute choices are
+retained; appended s1/8, s1/4, s1/3, s1/2, s2/3, s3/4, s7/8 are fractions of
+the actual current step interval. Rounding is to the nearest 96-PPQ tick, ties
+up; very short intervals can round to zero or the next boundary.
 
-* Code changes and size
-
-** Main code areas
-
-| Area                                     | Main responsibility in these changes                      |
-|------------------------------------------+-----------------------------------------------------------|
-| =src/seq/song.c=, =song.h=                   | New stored fields, migration, PC/CCi event types          |
-| =src/seq/seq_engine.c=                     | PC playback, scene PC, bar divisions, transient CCi state |
-| =src/seq/pattern.c=                        | Euclidean playback mask and transient effective values    |
-| =src/seq/midi_ctrl.c=                      | External CC 28/29 and shared CC value scaling             |
-| =src/gui/step_edit.c=                      | Editing and display of =PC= and =CCi= events                  |
-| =src/gui/panel.c=, =gui.c=                   | Euclidean controls, status and pattern display            |
-| =src/gui/panel_menu.c=                     | Scene Program Change menu entries                         |
-| =src/util/seq_utils.c=                     | New bar-relative step-length definitions                  |
-| =src/seq/arp.c=                            | Keeps new track-only lengths out of Arp Speed             |
-| =build-release.sh=, =makegen-run-release.sh= | Repeatable modern release build                           |
-
-The firmware changes span 20 files under =src/=. Much of the added code handles
-validation, UI behavior and compatibility rather than large tables or buffers.
-
-** Build size
-
-Historical comparison: accepted local 1.27 baseline versus development commit
-=d561f3e=, before the unofficial display identity was added:
-
-|                  | 1.27 baseline | Development build | Change |
-|------------------+---------------+-------------------+--------|
-| text             |        203000 |            208856 |  +5856 |
-| initialized data |         40952 |             40952 |      0 |
-| BSS              |         57560 |             57784 |   +224 |
-| =main.bin=         |        259944 |            265800 |  +5856 |
-
-The binary increase is about 5.9 kB, or about 2.3% of the baseline binary. The
-link succeeds with substantial flash space remaining. The fixed song record does
-not grow.
-
-The display-identity change will produce a different binary. Final-candidate
-build measurements and verification belong to the PR's build record, not the
-historical figures above.
-
-Previously tested development release build (not the final PR candidate):
-
-- commit: =d561f3e=;
-- =main.bin=: 265800 bytes;
-- SHA-256: =4286c9f270eaf9b0a87652f519dec56d2e7629c12ecf6e44e012be38472365e5=;
-- build result: successful;
-- build warnings: the existing notes-per-song =#warning= and the existing possible
-  =panel_menu.c= format overflow warning.
+Example: a quarter-note step with three Note slots at OFF, s1/3 and s2/3
+attacks at ticks 0, 32 and 64. Durations begin at each attack. Inv transforms
+all eligible notes together regardless of delay, keeping velocity/duration
+associations. Ratchets delay the whole train. Stop cancels unheard attacks;
+scene/reset/mute boundaries cancel pending attacks without claiming that all
+sounding tails end. Arp bypasses these delays; stopped audition is immediate.
+Live recording does not preserve arbitrary within-step timing.
 
 * Hardware use
 
@@ -821,7 +736,7 @@ high-water remain unmeasured.
 ** Earlier feature verification
 
 The following checklist records earlier 1.29 hardware use, not verification
-of every combination in the current 1.34 build.
+of every combination in the cumulative build.
 
 The firmware has been built, flashed and used on CARBON hardware over the past
 week, including the new features. No bugs were encountered during practical use.
@@ -843,20 +758,10 @@ Confirmed in hardware testing:
 - =CCi= 16 changes Step Length;
 - =CCi= 20 changes Motion Length.
 
-* Existing GitHub pull requests
-
-The current pull requests in the Kilpatrick Audio CARBON GitHub repository were
-not consulted while this work was designed or implemented. Their proposed features
-have not been incorporated into this firmware. There may therefore be overlap,
-different design choices or merge conflicts that would need review before any
-upstream submission.
-
-This was intentional independent work, not a rejection of those contributions.
-
-* Gli portamento (local 1.36 candidate)
+* Gli portamento
 
 Initial Gli operation tested by the user over MIDI and CV; CV provides the
-clearer audible reference. CCi35 extension not yet hardware-tested. Use
+clearer audible reference. This is not exhaustive CCi/arp/receiver coverage. Use
 monophonic lines and dedicated destinations.
 Gli follows Inv in the event-type cycle. It changes glide settings for eligible
 Note slots to its right on the same step; a later Gli replaces settings only
@@ -907,13 +812,12 @@ are NOT suppressed: shared MIDI channels still share synth controls, and shared
 CV outputs still have last-note priority. Prefer one track per destination.
 This is not polyphonic voice-leading or independent chord-note glide.
 
-Numeric song version1.36 and display1.36-jwk-gli3 identify this local change.
-Event code8 uses existing six-byte records; fixed song size remains20480 bytes.
-Back up before saving: older firmware does not understand Gli. Existing host
-JSON/import/restore tooling remains1.34/1.35-only; do not use it to edit or
-restore1.36 songs until separately updated. Raw backup remains the safe archive.
+Gli uses event code 8 in song format 1.36; six-byte events and the 20480-byte
+song size are unchanged. Older firmware does not understand Gli. Current
+host schema3 and the recommended upload/template workflow support community
+1.36; see the host-tool README for exact assertions and legacy restrictions.
 
-* Current-state pitch grid (1.36-jwk-grd1 candidate)
+* Current-state pitch grid
 
 The main8x8 grid retains its existing background colours and adds9x2pixel
 pitch strokes. Higher strokes mean higher effective pitches; strokes move
@@ -938,12 +842,12 @@ and glide trajectories are not drawn. Arp tracks omit strokes rather than
 pretend the chord input predicts arp output. Step Edit retains pitch strokes, with dark strokes on bright selection
 backgrounds. Other editing overlays retain their uncluttered display. Miniature track previews are unchanged.
 
-Only changed cells redraw. Physical readability, flicker and realtime cost
-remain to be checked on hardware; this candidate has host/build tests only.
+Only changed cells redraw. The user reports the grid works remarkably well.
+Worst-load responsiveness and realtime cost have not been measured.
 
-* Performance Grid: Straight timing (1.36-jwk-str1)
+* Performance Grid: Straight timing
 
-In the Clock menu, navigate to the final entry, Perform Grid, and select
+In the Clock menu, navigate to Perform Grid and select
 Straight. This global performance-session setting defaults Off on boot and
 is not saved in songs. Enabling it does not change any existing song values.
 
@@ -980,10 +884,10 @@ unrestricted. Latched CCi rate overrides retain priority over edited stored
 values; therefore Straight is not a guarantee that all playback is straight.
 No new persistent song fields or numeric song-version change.
 
-Host tests and release build pass. Next-bar timing and the controls still
-require hardware audition; no hardware verification claimed for this candidate.
+Performance modes have positive user hardware feedback. External-sync boundary
+timing and worst-load combinations still need representative candidate checks.
 
-* Performance Pitch ladder (1.36-jwk-prf2)
+* Performance Pitch ladder
 
 Clock menu -> Perform Pitch (after Perform Grid): Off, Octaves, Octaves+5ths.
 Independent of Straight timing, session-only, Off at boot. Enabling/changing
@@ -1016,9 +920,9 @@ use legacy revoicing. Existing root/scale quantization still follows transpose;
 fifth shifts can therefore change intervals. No new song fields or numeric
 version; custom degree selection is not implemented.
 
-Tests/build pass; hardware audition pending.
+Performance pitch has positive practical hardware feedback, not exhaustive coverage.
 
-* Performance snapshot (1.36-jwk-snp1)
+* Performance snapshot
 
 Clock menu has two new final entries:
 - Snapshot: turn Value right to capture (or replace) the RAM snapshot.
@@ -1055,10 +959,11 @@ preferences remain as currently selected. Global transport position is not
 reset. External clock still determines tempo while synced; clock-source
 changes follow the normal clock module policy, not seamless clock switching.
 
-Uses an additional20KB song copy plus small control state. Host tests/build
-pass; hardware recall timing, note cleanup and UI audition remain necessary.
+Uses an additional 20 KB song copy plus small control state. Snapshot/recall
+have positive practical hardware feedback. Busy-pattern timing, all routes and
+clock-source changes have not been exhaustively checked.
 
-** Snapshot performance shortcuts (1.36-jwk-snp2)
+** Snapshot performance shortcuts
 - Hold Clock FIRST, then press Record: capture/replace snapshot.
 - Hold Clock FIRST, then press Load: recall next bar (immediate if stopped).
 These chords are intercepted before ordinary Record/Load actions, regardless
@@ -1070,7 +975,7 @@ replacing menu contents. Clock alone now opens its menu on release; Shift+Clock
 still taps tempo on press. Pressing Record or Load BEFORE Clock retains its
 ordinary action and is not a snapshot shortcut. Menu capture/recall remain.
 
-** Queued performance values (1.36-jwk-snp3)
+** Queued performance values
 The normal track readout immediately shows pending targets as Tran:>+7 and
 Step:>1/4. The > disappears on application or cancellation; the displayed
 value then returns to the stored setting. Menus/edit displays are not
