@@ -1,4 +1,4 @@
-# Licensing and distribution checklist
+# Licensing and attribution
 
 Original CARBON and community source is GPL-3.0-or-later unless an individual
 file says otherwise. Preserve COPYING and every existing copyright/license
@@ -10,37 +10,28 @@ endorsement of this community firmware.
 The repository includes ST HAL, CMSIS and ST USB middleware with their own
 notices. HAL files include source/binary redistribution and non-endorsement
 conditions; CMSIS includes Arm notices and Drivers/CMSIS/Lib/license.txt. USB
-middleware headers refer to the MCD-ST Liberty SW License Agreement V2 at
-http://www.st.com/software_license_agreement_liberty_v2. These must not simply
-be relabeled GPL. Toolchain libraries linked from Newlib/libgcc also have
-applicable runtime notices.
-
-**Binary publication gate:** collect the applicable complete vendor/runtime
-license texts and required binary notices, verify the ST middleware terms and
-the combined distribution obligations, and include them with the binary. The
-header inspection here is not legal clearance of all upstream vendor terms.
-Do not infer that an upstream public repository removes these obligations.
+middleware headers refer to MCD-ST Liberty SW License Agreement V2. These
+components are not relabeled GPL by the community changes. Toolchain runtime
+libraries have their own terms. This summary does not resolve or certify
+compatibility of all third-party terms.
 
 Distribute the exact corresponding firmware source and build instructions
-alongside any approved firmware asset, with its source commit and checksum.
-The source package must retain original notices, not only this summary.
+alongside any firmware asset, with its source commit and checksum. Retain
+original notices in the source package and applicable notices with binaries.
 
 ## Host tool
 
 carbon-backup and the launcher are GPL-3.0-or-later. Cargo.lock pins dependencies.
 Direct dependencies: midir 0.10.4 (MIT), midly 0.5.3 (Unlicense), sha2 0.10.9,
-serde 1.0.229 and serde_json 1.0.154 (MIT OR Apache-2.0). The locked transitive
-metadata is predominantly MIT/Apache-2.0/Unlicense; unicode-ident additionally
-requires Unicode-3.0 terms. Platform dependencies vary. No host executable is
-proposed as a public asset yet. Before distributing one, collect actual linked
-dependency notices for that target, retain full license texts and provide
-corresponding tool source. `cargo metadata --locked --format-version 1` gives
-the locked inventory; declarations are not substitutes for the license texts.
+serde 1.0.229 and serde_json 1.0.154 (MIT OR Apache-2.0). Platform dependencies
+vary. The firmware package does not bundle a host executable; build the tool
+from corresponding source using the locked instructions. Dependency license
+texts remain part of their respective packages.
 
-## Content and publication scope
+## Content
 
-Do not ship downloaded music, personal backups, recovery archives, HTML exports,
-assistant transcripts or internal briefings. Bundled templates are normalized
-blank data with no musical notes; tests use generated fixtures. Private local
-files are not deleted during preparation. Inspect both the final tree and any
-newly published commits; a clean final tree alone does not audit history.
+Do not ship downloaded music, personal backups, recovery archives, personal
+HTML exports, assistant transcripts or internal briefings. Bundled templates
+are normalized blank data with no musical notes; tests use generated fixtures.
+Preserve upstream vendor documentation and notices. Inspect both the source
+tree and newly published history, not just the final working directory.

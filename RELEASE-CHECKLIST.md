@@ -12,7 +12,8 @@ disposable songs. Do not convert missing evidence into a confirmed defect.
 - [ ] Busy-pattern responsiveness checked; no measured interrupt/stack claim
       until instrumentation provides actual values.
 - [ ] New 1.36 interactive transfer/default-template hardware round-trip.
-- [ ] Binary distribution license/notice package complete (see LICENSING.md).
+- [ ] Preserve existing notices/attribution and include corresponding source
+      and build instructions with the firmware package.
 - [ ] Inspect exact source tree AND newly published history for private files.
 - [ ] Explicit approval of separate release branch/tag, assets and publication.
 

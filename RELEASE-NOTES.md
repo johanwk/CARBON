@@ -29,7 +29,8 @@ are not persistent backups. Host replacement is non-atomic and requires panel
 LOAD afterward. MIDI portamento is receiver-dependent; grid preview is current
 state, not prediction. Runtime interrupt and stack measurements are absent.
 The new 1.36 simple workflow and exact rc1 still need representative hardware
-acceptance. See RELEASE-CHECKLIST.md and LICENSING.md for publication gates.
+acceptance. See RELEASE-CHECKLIST.md for remaining technical checks and
+LICENSING.md for attribution.
 
 Use only the bootloader-preserving DFU procedure in README at **0x08020000**.
 Publish corresponding source/build instructions with any firmware binary.
