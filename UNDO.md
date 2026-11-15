@@ -1,4 +1,4 @@
-# One-level song undo - local 1.37-jwk-und1 candidate
+# One-level song undo - local 1.37-jwk-und2 candidate
 
 Not part of published 1.37 RC1. No song format change: schema4/1.37 storage
 remains unchanged. Firmware hardware acceptance is pending.
@@ -14,15 +14,19 @@ restored. Recording/arming and active panel song I/O refuse undo.
 
 ## What creates the undo point?
 
-- Clear current song, selected track regions, a step or one event slot.
+- Clear current song or selected track regions. Step/event clear inside Step
+  Edit shares the step-entry checkpoint rather than capturing again.
 - Copy current scene onto another scene (the existing overwrite operation;
   there is no separate clipboard paste command in this firmware).
 - Magic on selected regions, once before its first changed step.
-- Step Edit event-type changes, note/value/duration/delay/ratchet edits and
-  Scn mask toggles. Each dispatched encoder change is one operation, not an
-  entire knob-turn gesture. A no-op/bounded edit can still replace the point.
-- Step Edit keyboard chord replacement: one capture before the first note
-  of a chord; incoming CC edits capture separately when no chord is held.
+- Entering Step Edit or moving to a different step captures one checkpoint
+  for that entire step visit. All subsequent event-type, pitch, velocity,
+  duration, delay, ratchet, Scn, clear and keyboard/CC edits on that step share
+  it. Changing event slots, auditioning or additional knob turns do not
+  replace it. Undo after changing A through G to F restores the entry A.
+  Leaving/re-entering Step Edit, timeout, or switching track/scene begins a
+  new visit. Navigation alone replaces the old point, even without edits.
+  Further edits cancel a queued undo but keep the entry checkpoint.
 - Song Edit arrangement insertion/removal and parameter edits.
 - Step or realtime recording: once before the session's first song write,
   retaining that point across repeated loop/overdub writes and final flush.
@@ -64,7 +68,8 @@ Host tests exercise snapshot/undo independence, repeat/cancel, record/I/O
 guards, pending-note and output cleanup, PRNG continuity, production clock
 next-bar application, multi-track destructive-operation grouping, recording
 first-write/recycle/final-flush grouping, song load/save/clear lifetime and
-Clock/Run edge/release order. These are not hardware timing measurements.
+Clock/Run edge/release order, and Step Edit entry/slot/navigation/timeout
+transaction boundaries including multi-detent A-to-F restoration. These are not hardware timing measurements.
 
 Use backed-up/disposable songs for the first hardware check: Clear then undo,
 Magic then undo, scene copy, Step Edit and recording overdub, repeated undo,

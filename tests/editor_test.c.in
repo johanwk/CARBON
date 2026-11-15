@@ -5,8 +5,12 @@
 #include "../src/gui/step_edit.c"
 static struct track_event events[SEQ_TRACK_POLY];
 static struct midi_msg output[32];
-static int count, running, undo_captures, undo_busy;
-int seq_engine_undo_capture(void) {if(undo_busy)return -1;undo_captures++;return 0;}
+static int count, running, undo_captures, undo_busy, undo_cancelled;
+static struct track_event undo_events[SEQ_TRACK_POLY];
+int seq_engine_undo_capture(void) {if(undo_busy)return -1;undo_captures++;memcpy(undo_events,events,sizeof(events));return 0;}
+void seq_engine_undo_cancel(void) {undo_cancelled++;}
+int seq_ctrl_get_record_mode(void) {return SEQ_CTRL_RECORD_IDLE;}
+int song_snapshot_idle(void) {return !undo_busy;}
 static int bias_targets[SEQ_NUM_TRACKS] = {-1,-1,-1,-1,-1,-1};
 static int target_lengths[SEQ_NUM_TRACKS] = {64,64,64,64,64,64};
 static int current_scene;
@@ -26,6 +30,7 @@ void gui_set_status_override(int enable) {}
 int panel_menu_get_timeout(void) { return 100; }
 int song_get_step_length(int scene, int track) { return 0; }
 int song_get_ratchet_mode(int scene, int track, int step) { return 1; }
+void song_set_ratchet_mode(int scene,int track,int step,int mode) {}
 static int shared_delay, delay_writes;
 int song_get_start_delay(int scene, int track, int step) { return shared_delay; }
 void song_set_start_delay(int scene, int track, int step, int delay) { shared_delay=delay; delay_writes++; }
@@ -116,7 +121,36 @@ static void test_glide_editor(void) {
     step_edit_adjust_note(-1,0); assert(events[0].data0==29);
     assert(!count);
 }
+static void test_step_visit_undo(void) {
+    setup(); running=1;
+    events[0]=(struct track_event){.type=SONG_EVENT_NOTE,.data0=69,.data1=100,.length=24,.delay=255};
+    events[1]=(struct track_event){.type=SONG_EVENT_SCENE,.data0=63};
+    step_edit_set_enable(1);assert(undo_captures==1 && undo_events[0].data0==69);
+    for(int i=0;i<4;i++) step_edit_adjust_note(-1,0);
+    assert(events[0].data0==65 && undo_events[0].data0==69 && undo_captures==1);
+    step_edit_adjust_velocity(-1,0);step_edit_adjust_gate_time(1,0);
+    step_edit_adjust_start_delay(1,0);step_edit_adjust_ratchet_mode(1,0);
+    step_edit_adjust_cursor(1,1); // select another slot, same transaction
+    step_edit_toggle_scene(2);step_edit_adjust_note(1,1);step_edit_clear_step();
+    assert(undo_captures==1 && undo_events[1].type==SONG_EVENT_SCENE && undo_events[1].data0==63);
+    step_edit_adjust_cursor(0,0);step_edit_set_enable(1);assert(undo_captures==1); // audition not entry
+    step_edit_adjust_cursor(1,0);assert(undo_captures==2 && sedits.step_pos==1);
+    step_edit_adjust_cursor(-1,0);assert(undo_captures==3 && sedits.step_pos==0);
+    step_edit_set_enable(0);step_edit_set_enable(1);assert(undo_captures==4);
+    undo_busy=1;step_edit_adjust_cursor(1,0);assert(sedits.step_pos==0 && undo_captures==4);
+    step_edit_clear_step();assert(undo_captures==4);
+    undo_busy=0;sedits.edit_timeout=1;step_edit_timer_task();assert(!sedits.enable);
+    step_edit_set_enable(1);assert(undo_captures==5);
+    int data[1]={1};step_edit_handle_state_change(SCE_CTRL_FIRST_TRACK,data,1);assert(undo_captures==6);
+    step_edit_handle_state_change(SCE_ENG_CURRENT_SCENE,data,1);assert(undo_captures==7);
+    step_edit_set_enable(0);undo_busy=1;step_edit_set_enable(1);assert(!sedits.enable && undo_captures==7);
+    // Undo the complete A-to-F edit through the captured fixture, not the last semitone.
+    setup();running=1;events[0]=(struct track_event){.type=SONG_EVENT_NOTE,.data0=69,.data1=100};
+    step_edit_set_enable(1);for(int i=0;i<4;i++) step_edit_adjust_note(-1,0);
+    assert(events[0].data0==65);memcpy(events,undo_events,sizeof(events));assert(events[0].data0==69);
+}
 int main(void) {
+    test_step_visit_undo();
     setup();sedits.enable=1;events[0]=(struct track_event){.type=SONG_EVENT_NOTE,.data0=60,.data1=100};
     undo_busy=1;step_edit_clear_step();assert(events[0].type==SONG_EVENT_NOTE && !undo_captures);
     undo_busy=0;step_edit_clear_step();assert(!events[0].type && undo_captures==1);
@@ -125,7 +159,7 @@ int main(void) {
     step_edit_handle_input(&chord);chord.data0=64;step_edit_handle_input(&chord);
     assert(undo_captures==1); // one whole chord replacement, not per note
     chord.status=MIDI_NOTE_OFF;step_edit_handle_input(&chord);chord.data0=60;step_edit_handle_input(&chord);
-    chord.status=MIDI_NOTE_ON;step_edit_handle_input(&chord);assert(undo_captures==2);
+    chord.status=MIDI_NOTE_ON;step_edit_handle_input(&chord);assert(undo_captures==1); // same step visit
     setup(); sedits.enable=1; events[0].type=SONG_EVENT_PROGCHG;
     step_edit_adjust_note(1,1);
     assert(events[0].type==SONG_EVENT_SCENE && step_edit_scene_mask()==63);

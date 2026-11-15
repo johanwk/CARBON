@@ -59,6 +59,7 @@ struct step_edit_state {
     int track;  // selected edit track
     int step_pos;  // current step pos for editing
     int event_pos;  // the event edit pos or STEP_EDIT_EVENT_POS_ALL for global
+    int undo_captured; // one checkpoint for the entire visit to this step
     int cci_hint_timeout;  // milliseconds remaining for title help
     int cci_hint_controller;
     int cci_hint_value;
@@ -77,6 +78,16 @@ void step_edit_adjust_step(int change, int mode, int single, int shift);
 void step_edit_update_display(void);
 static void step_edit_update_title(void);
 static void step_edit_show_cci_hint(void);
+static int step_edit_prepare_undo(void) {
+    if(!song_snapshot_idle() || seq_ctrl_get_record_mode() != SEQ_CTRL_RECORD_IDLE) return -1;
+    if(!sedits.undo_captured) {
+        if(seq_engine_undo_capture() < 0) return -1;
+        sedits.undo_captured = 1;
+    }
+    // Further edits supersede a queued restore, but retain the entry checkpoint.
+    seq_engine_undo_cancel();
+    return 0;
+}
 void step_edit_play_step(void);
 void step_edit_stop_notes(void);
 void step_edit_send_note_on(int note, int velocity);
@@ -92,6 +103,7 @@ int step_edit_does_step_contain_event(int type, int data0);
 // init the step edit mode
 void step_edit_init(void) {
     sedits.enable = 0;
+    sedits.undo_captured = 0;
     sedits.edit_timeout = 0;
     sedits.cci_hint_timeout = 0;
     sedits.scene = 0;
@@ -167,10 +179,10 @@ void step_edit_handle_input(struct midi_msg *msg) {
     // handle incoming MIDI types
     switch(msg->status & 0xf0) {
         case MIDI_NOTE_ON:
+            if(step_edit_prepare_undo() < 0) return;
             sedits.edit_timeout = panel_menu_get_timeout();
             // if this is the first note we need to clear other notes off the step
             if(step_edit_get_num_recording_notes() == 0) {
-                if(seq_engine_undo_capture() < 0) return;
                 for(i = 0; i < SEQ_TRACK_POLY; i ++) {
                     // no data on step
                     if(song_get_step_event(sedits.scene, sedits.track,
@@ -202,7 +214,7 @@ void step_edit_handle_input(struct midi_msg *msg) {
             step_edit_remove_recording_note(msg->data0);
             break;
         case MIDI_CONTROL_CHANGE:
-            if(step_edit_get_num_recording_notes() == 0 && seq_engine_undo_capture() < 0) return;
+            if(step_edit_prepare_undo() < 0) return;
             sedits.edit_timeout = panel_menu_get_timeout();
             // add / edit the new CC
             event.type = SONG_EVENT_CC;
@@ -232,6 +244,8 @@ void step_edit_set_enable(int enable) {
         }
         // start editing from scratch
         else {
+            sedits.undo_captured = 0;
+            if(step_edit_prepare_undo() < 0) return;
             sedits.enable = 1;
             sedits.edit_timeout = panel_menu_get_timeout();
             sedits.scene = seq_ctrl_get_scene();
@@ -248,6 +262,7 @@ void step_edit_set_enable(int enable) {
     // stop edit - only if we're actually enabled
     else if(sedits.enable) {
         sedits.enable = 0;
+        sedits.undo_captured = 0;
         sedits.edit_timeout = 0;
         step_edit_stop_notes();
         gui_grid_set_overlay_enable(0);
@@ -267,7 +282,7 @@ void step_edit_toggle_scene(int scene) {
     struct track_event event;
     if(scene < 0 || scene >= SEQ_NUM_SCENES || step_edit_scene_mask() < 0) return;
     if(song_get_step_event(sedits.scene, sedits.track, sedits.step_pos, sedits.event_pos, &event) < 0) return;
-    if(seq_engine_undo_capture() < 0) return;
+    if(step_edit_prepare_undo() < 0) return;
     event.data0 ^= 1u << scene;
     song_set_step_event(sedits.scene, sedits.track, sedits.step_pos, sedits.event_pos, &event);
     sedits.edit_timeout = panel_menu_get_timeout();
@@ -296,6 +311,12 @@ void step_edit_adjust_cursor(int change, int shift) {
         else if(val >= SEQ_NUM_STEPS) {
             val = 0;
         }
+        if(val != sedits.step_pos) {
+            // Refuse navigation if we cannot protect the new step's entry state.
+            if(seq_engine_undo_capture() < 0) return;
+            sedits.undo_captured = 1;
+            step_edit_clear_recording_notes();
+        }
         // disable old step
         step_edit_stop_notes();
         gui_grid_set_overlay_color(sedits.step_pos, GUI_OVERLAY_BLANK);
@@ -317,7 +338,7 @@ void step_edit_adjust_note(int change, int shift) {
     if(shift && sedits.event_pos != STEP_EDIT_EVENT_POS_ALL &&
             song_get_step_event(sedits.scene, sedits.track, sedits.step_pos,
             sedits.event_pos, &event) != -1) {
-        if(seq_engine_undo_capture() < 0) return;
+        if(step_edit_prepare_undo() < 0) return;
         static const uint8_t types[] = {SONG_EVENT_NOTE, SONG_EVENT_CC,
             SONG_EVENT_INTERNAL_CC, SONG_EVENT_PROGCHG, SONG_EVENT_SCENE, SONG_EVENT_PROBABILITY,
             SONG_EVENT_EUCLIDEAN, SONG_EVENT_PRE, SONG_EVENT_NON_PRE, SONG_EVENT_HARMONY, SONG_EVENT_INVERSION, SONG_EVENT_GLIDE};
@@ -404,7 +425,7 @@ void step_edit_adjust_gate_time(int change, int shift) {
 
 // adjust the start delay
 void step_edit_adjust_start_delay(int change, int shift) {
-    if(change && seq_engine_undo_capture() < 0) return;
+    if(change && step_edit_prepare_undo() < 0) return;
     sedits.edit_timeout = panel_menu_get_timeout();
     step_edit_stop_notes();
     if(sedits.event_pos == STEP_EDIT_EVENT_POS_ALL) {
@@ -426,7 +447,7 @@ void step_edit_adjust_start_delay(int change, int shift) {
 
 // adjust the ratchet mode
 void step_edit_adjust_ratchet_mode(int change, int shift) {
-    if(change && seq_engine_undo_capture() < 0) return;
+    if(change && step_edit_prepare_undo() < 0) return;
     sedits.edit_timeout = panel_menu_get_timeout();
     song_set_ratchet_mode(sedits.scene, sedits.track, sedits.step_pos,
         seq_utils_clamp(song_get_ratchet_mode(sedits.scene, sedits.track,
@@ -439,7 +460,7 @@ void step_edit_adjust_ratchet_mode(int change, int shift) {
 
 // clear the current step
 void step_edit_clear_step(void) {
-    if(seq_engine_undo_capture() < 0) return;
+    if(step_edit_prepare_undo() < 0) return;
     sedits.cci_hint_timeout = 0;
     sedits.edit_timeout = panel_menu_get_timeout();
     step_edit_stop_notes();
@@ -494,7 +515,7 @@ static int step_edit_adjust_cci_value(int controller, int raw, int change) {
 
 // adjust all events on a step
 void step_edit_adjust_step(int change, int mode, int single, int shift) {
-    if(change && seq_engine_undo_capture() < 0) return;
+    if(change && step_edit_prepare_undo() < 0) return;
     int inhibit_preview = step_edit_scene_mask() >= 0;
     struct track_event event = {.delay = SEQ_START_DELAY_INHERIT};
     int i, start, num, temp;
