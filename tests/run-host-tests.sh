@@ -132,3 +132,9 @@ trap 'rm -rf "$TMP"' EXIT HUP INT TERM
     -ffunction-sections -fdata-sections -fsanitize=address,undefined \
     -Wno-deprecated-declarations tests/scene_mask_panel_test.c.in "$LINK_GC" -o "$TMP/scene-mask-panel"
 "$TMP/scene-mask-panel"
+
+"$CC" -x c -std=c11 -Wall -Wextra -Werror -Wno-deprecated-declarations \
+    -Wno-unused-parameter -Wno-sign-compare \
+    -ffunction-sections -fdata-sections -fsanitize=address,undefined \
+    tests/undo_ctrl_test.c.in src/util/seq_utils.c "$LINK_GC" -o "$TMP/undo-ctrl"
+"$TMP/undo-ctrl"

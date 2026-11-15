@@ -905,8 +905,9 @@ void gui_handle_state_change(int event_type, int *data, int data_len) {
             gui_update_song_mode();
             gui_update_clock_source(song_get_midi_clock_source());
             break;
+        case SCE_ENG_UNDO_RECALLED:
         case SCE_ENG_SNAPSHOT_RECALLED:
-            gui_notice("Snapshot recalled");
+            gui_notice(event_type == SCE_ENG_UNDO_RECALLED ? "Undo restored" : "Snapshot recalled");
             gui_update_tempo(song_get_tempo());
             gui_update_scene(seq_ctrl_get_scene());
             gui_update_song_mode();

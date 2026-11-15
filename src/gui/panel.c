@@ -424,7 +424,7 @@ static int panel_handle_scene_mask_input(int ctrl, int val) {
 void panel_handle_seq_input(int ctrl, int val) {
     if(panel_handle_scene_mask_input(ctrl, val)) return;
     int key = ctrl == PANEL_SW_CLOCK ? SNAP_CLOCK : ctrl == PANEL_SW_RECORD ? SNAP_RECORD :
-        ctrl == PANEL_SW_LOAD ? SNAP_LOAD : -1;
+        ctrl == PANEL_SW_LOAD ? SNAP_LOAD : ctrl == PANEL_SW_RUN_STOP ? SNAP_RUN : -1;
     enum snapshot_action action = snapshot_keys_event(&pstate.snapshot_keys, key, !!val, pstate.shift_state);
     switch(action) {
         case SNAP_CONSUME: return;
@@ -432,6 +432,12 @@ void panel_handle_seq_input(int ctrl, int val) {
         case SNAP_TAP: seq_ctrl_tap_tempo(); return;
         case SNAP_CAPTURE:
             gui_notice(seq_engine_snapshot_capture() == 0 ? "Snapshot captured" : "Snapshot busy/recording");
+            return;
+        case SNAP_UNDO:
+            if(!seq_engine_undo_status()) gui_notice("No undo");
+            else if(seq_engine_undo_recall() < 0) gui_notice("Undo busy/recording");
+            else gui_notice(seq_engine_undo_status() == 2 ? "Undo next bar" :
+                seq_ctrl_get_run_state() ? "Undo cancelled" : "Undo restored");
             return;
         case SNAP_RECALL:
             if(!seq_engine_snapshot_status()) gui_notice("No snapshot");

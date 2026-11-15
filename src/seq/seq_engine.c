@@ -134,7 +134,7 @@ struct seq_engine_state {
 struct seq_engine_state sestate;
 
 // Musical controls only: no active voice lists, countdowns or PRNG rewind.
-static struct {
+struct musical_checkpoint {
     int scene, kbtrans, live_mode;
     int16_t internal_cc[SEQ_NUM_TRACKS][14];
     int bias[SEQ_NUM_TRACKS];
@@ -143,9 +143,12 @@ static struct {
     int harmony_active, harmony_root;
     int8_t harmony_scale[SEQ_NUM_TRACKS];
     struct song_mode_state songmode;
-} musical_snapshot;
-static int snapshot_queued;
-static int seq_engine_snapshot_apply(void);
+};
+static struct musical_checkpoint musical_snapshot, musical_undo;
+static int snapshot_queued, undo_queued, record_undo_captured;
+static int seq_engine_checkpoint_apply(int undo);
+static void seq_engine_checkpoint_capture(struct musical_checkpoint *saved);
+static int seq_engine_record_undo(void);
 
 //
 // local functions
@@ -419,30 +422,58 @@ void seq_engine_snapshot_cancel(void) { snapshot_queued = 0; }
 int seq_engine_snapshot_capture(void) {
     if(seq_ctrl_get_record_mode() != SEQ_CTRL_RECORD_IDLE || song_snapshot_capture() < 0) return -1;
     snapshot_queued = 0;
-    musical_snapshot.scene = sestate.scene_current;
-    musical_snapshot.kbtrans = sestate.kbtrans;
-    musical_snapshot.live_mode = seq_ctrl_get_live_mode();
-    musical_snapshot.songmode = sestate.sngmode;
-    musical_snapshot.harmony_active = sestate.harmony_active;
-    musical_snapshot.harmony_root = sestate.harmony_root;
-    memcpy(musical_snapshot.internal_cc, sestate.internal_cc, sizeof(sestate.internal_cc));
-    memcpy(musical_snapshot.bias, sestate.bias_track_output, sizeof(sestate.bias_track_output));
-    memcpy(musical_snapshot.glide_duration, sestate.glide_duration, sizeof(sestate.glide_duration));
-    memcpy(musical_snapshot.glide_curve, sestate.glide_curve, sizeof(sestate.glide_curve));
-    memcpy(musical_snapshot.inversion, sestate.inversion, sizeof(sestate.inversion));
-    memcpy(musical_snapshot.compact, sestate.compact, sizeof(sestate.compact));
-    memcpy(musical_snapshot.harmony_scale, sestate.harmony_scale, sizeof(sestate.harmony_scale));
+    seq_engine_checkpoint_capture(&musical_snapshot);
     return 0;
+}
+static void seq_engine_checkpoint_capture(struct musical_checkpoint *saved) {
+    saved->scene = sestate.scene_current;
+    saved->kbtrans = sestate.kbtrans;
+    saved->live_mode = seq_ctrl_get_live_mode();
+    saved->songmode = sestate.sngmode;
+    saved->harmony_active = sestate.harmony_active;
+    saved->harmony_root = sestate.harmony_root;
+    memcpy(saved->internal_cc, sestate.internal_cc, sizeof(sestate.internal_cc));
+    memcpy(saved->bias, sestate.bias_track_output, sizeof(sestate.bias_track_output));
+    memcpy(saved->glide_duration, sestate.glide_duration, sizeof(sestate.glide_duration));
+    memcpy(saved->glide_curve, sestate.glide_curve, sizeof(sestate.glide_curve));
+    memcpy(saved->inversion, sestate.inversion, sizeof(sestate.inversion));
+    memcpy(saved->compact, sestate.compact, sizeof(sestate.compact));
+    memcpy(saved->harmony_scale, sestate.harmony_scale, sizeof(sestate.harmony_scale));
+}
+int seq_engine_undo_status(void) { return song_undo_available() ? (undo_queued ? 2 : 1) : 0; }
+void seq_engine_undo_cancel(void) { undo_queued = 0; }
+int seq_engine_undo_capture(void) {
+    if(seq_ctrl_get_record_mode() != SEQ_CTRL_RECORD_IDLE || song_undo_capture() < 0) return -1;
+    undo_queued = 0;
+    seq_engine_checkpoint_capture(&musical_undo);
+    return 0;
+}
+static int seq_engine_record_undo(void) {
+    if(record_undo_captured) return 0;
+    if(song_undo_capture() < 0) return -1;
+    undo_queued = snapshot_queued = 0;
+    seq_engine_checkpoint_capture(&musical_undo);
+    record_undo_captured = 1;
+    return 0;
+}
+int seq_engine_undo_recall(void) {
+    if(!song_undo_available() || !song_snapshot_idle() ||
+            seq_ctrl_get_record_mode() != SEQ_CTRL_RECORD_IDLE) return -1;
+    snapshot_queued = 0;
+    if(midi_clock_get_running()) { undo_queued = !undo_queued; return 0; }
+    return seq_engine_checkpoint_apply(1);
 }
 int seq_engine_snapshot_recall(void) {
     if(!song_snapshot_available() || !song_snapshot_idle() ||
             seq_ctrl_get_record_mode() != SEQ_CTRL_RECORD_IDLE) return -1;
+    undo_queued = 0;
     if(midi_clock_get_running()) {snapshot_queued = 1; return 0;}
-    return seq_engine_snapshot_apply();
+    return seq_engine_checkpoint_apply(0);
 }
-static int seq_engine_snapshot_apply(void) {
-    snapshot_queued = 0;
-    if(!song_snapshot_available() || !song_snapshot_idle() ||
+static int seq_engine_checkpoint_apply(int undo) {
+    const struct musical_checkpoint *saved = undo ? &musical_undo : &musical_snapshot;
+    snapshot_queued = undo_queued = 0;
+    if(!(undo ? song_undo_available() : song_snapshot_available()) || !song_snapshot_idle() ||
             seq_ctrl_get_record_mode() != SEQ_CTRL_RECORD_IDLE) return -1;
     // Release via the OLD routing before copying the saved song.
     for(int track=0;track<SEQ_NUM_TRACKS;track++) {
@@ -451,25 +482,25 @@ static int seq_engine_snapshot_apply(void) {
         seq_engine_live_stop_all_notes(track);
         outproc_stop_all_notes(track);
     }
-    if(song_snapshot_restore() < 0) return -1;
+    if((undo ? song_undo_restore() : song_snapshot_restore()) < 0) return -1;
     seq_engine_clear_internal_cc(); // also cancels pending performance edits
-    sestate.scene_current = sestate.scene_next = musical_snapshot.scene;
+    sestate.scene_current = sestate.scene_next = saved->scene;
     sestate.pitch_reference_valid = 0;
     // Restore controller-facing modes before restoring transient controls.
-    seq_ctrl_restore_snapshot_modes(musical_snapshot.live_mode, musical_snapshot.songmode.enable);
-    sestate.sngmode = musical_snapshot.songmode;
+    seq_ctrl_restore_snapshot_modes(saved->live_mode, saved->songmode.enable);
+    sestate.sngmode = saved->songmode;
     sestate.sngmode.beat_count = 0;
     sestate.beat_cross = 0;
-    sestate.kbtrans = musical_snapshot.kbtrans;
-    sestate.harmony_active = musical_snapshot.harmony_active;
-    sestate.harmony_root = musical_snapshot.harmony_root;
-    memcpy(sestate.internal_cc, musical_snapshot.internal_cc, sizeof(sestate.internal_cc));
-    memcpy(sestate.bias_track_output, musical_snapshot.bias, sizeof(sestate.bias_track_output));
-    memcpy(sestate.glide_duration, musical_snapshot.glide_duration, sizeof(sestate.glide_duration));
-    memcpy(sestate.glide_curve, musical_snapshot.glide_curve, sizeof(sestate.glide_curve));
-    memcpy(sestate.inversion, musical_snapshot.inversion, sizeof(sestate.inversion));
-    memcpy(sestate.compact, musical_snapshot.compact, sizeof(sestate.compact));
-    memcpy(sestate.harmony_scale, musical_snapshot.harmony_scale, sizeof(sestate.harmony_scale));
+    sestate.kbtrans = saved->kbtrans;
+    sestate.harmony_active = saved->harmony_active;
+    sestate.harmony_root = saved->harmony_root;
+    memcpy(sestate.internal_cc, saved->internal_cc, sizeof(sestate.internal_cc));
+    memcpy(sestate.bias_track_output, saved->bias, sizeof(sestate.bias_track_output));
+    memcpy(sestate.glide_duration, saved->glide_duration, sizeof(sestate.glide_duration));
+    memcpy(sestate.glide_curve, saved->glide_curve, sizeof(sestate.glide_curve));
+    memcpy(sestate.inversion, saved->inversion, sizeof(sestate.inversion));
+    memcpy(sestate.compact, saved->compact, sizeof(sestate.compact));
+    memcpy(sestate.harmony_scale, saved->harmony_scale, sizeof(sestate.harmony_scale));
     sestate.autolive = song_get_midi_autolive();
     seq_ctrl_refresh_snapshot_modules();
     seq_engine_recalc_params();
@@ -485,7 +516,7 @@ static int seq_engine_snapshot_apply(void) {
     }
     state_change_fire1(SCE_ENG_CURRENT_SCENE, sestate.scene_current);
     state_change_fire1(SCE_ENG_KBTRANS, sestate.kbtrans);
-    state_change_fire0(SCE_ENG_SNAPSHOT_RECALLED);
+    state_change_fire0(undo ? SCE_ENG_UNDO_RECALLED : SCE_ENG_SNAPSHOT_RECALLED);
     return 0;
 }
 
@@ -570,7 +601,7 @@ void seq_engine_run(uint32_t tick_count) {
 
     // position was reset
     if(tick_count == 0) {
-        snapshot_queued = 0;
+        snapshot_queued = undo_queued = 0;
         for(track = 0; track < SEQ_NUM_TRACKS; track ++) {
             conditional_reset(&sestate.conditions[track], track);
         }
@@ -597,8 +628,8 @@ void seq_engine_run(uint32_t tick_count) {
 
     // only process events if the clock is running
     if(midi_clock_get_running()) {
-        if(snapshot_queued && tick_count % (MIDI_CLOCK_PPQ * 4) == 0)
-            seq_engine_snapshot_apply();
+        if((snapshot_queued || undo_queued) && tick_count % (MIDI_CLOCK_PPQ * 4) == 0)
+            seq_engine_checkpoint_apply(undo_queued);
         // if we crossed a beat it might be time to change scenes
         if(sestate.beat_cross) {
             sestate.beat_cross = 0;
@@ -727,7 +758,7 @@ void seq_engine_run(uint32_t tick_count) {
 void seq_engine_set_run_state(int run) {
     int track, mapnum;
     if(!run) {
-        snapshot_queued = 0;
+        snapshot_queued = undo_queued = 0;
         memset(sestate.timing_pending, 0, sizeof(sestate.timing_pending));
         memset(sestate.pitch_pending, 0, sizeof(sestate.pitch_pending));
     }
@@ -1006,11 +1037,14 @@ void seq_engine_step_rec_pos_changed(int change) {
 
 // recording was started or stopped by the user
 void seq_engine_record_mode_changed(int oldval, int newval) {
+    undo_queued = 0;
+    if(oldval == SEQ_CTRL_RECORD_IDLE && newval != SEQ_CTRL_RECORD_IDLE) record_undo_captured = 0;
     switch(newval) {
         case SEQ_CTRL_RECORD_IDLE:
             if(oldval == SEQ_CTRL_RECORD_RT) {
                 seq_engine_record_write_tracks();  // try writing data if we canceled mid-way
             }
+            record_undo_captured = 0;
             seq_engine_live_stop_all_notes(sestate.first_track);
             gui_grid_set_overlay_enable(0);
             break;
@@ -2150,6 +2184,7 @@ void seq_engine_record_event(struct midi_msg *msg) {
                     if(trkevent.length < 1) {
                         trkevent.length = 1;
                     }
+                    if(seq_engine_record_undo() < 0) return;
                     song_add_step_event(sestate.scene_current,
                         sestate.first_track, sestate.record_pos, &trkevent);
                 }
@@ -2158,6 +2193,7 @@ void seq_engine_record_event(struct midi_msg *msg) {
                 // handle damper pedal for inserting rests - all notes must be released
                 if(msg->data0 == MIDI_CONTROLLER_DAMPER && msg->data1 == 127 &&
                         sestate.record_event_count == 0) {
+                    if(seq_engine_record_undo() < 0) return;
                     song_clear_step(sestate.scene_current,
                         sestate.first_track, sestate.record_pos);
                     // move ahead to skip step
@@ -2169,6 +2205,7 @@ void seq_engine_record_event(struct midi_msg *msg) {
                     trkevent.type = SONG_EVENT_CC;
                     trkevent.data0 = msg->data0;
                     trkevent.data1 = msg->data1;
+                    if(seq_engine_record_undo() < 0) return;
                     song_add_step_event(sestate.scene_current,
                         sestate.first_track, sestate.record_pos, &trkevent);
                 }
@@ -2261,6 +2298,8 @@ void seq_engine_record_write_tracks(void) {
     if(sestate.record_event_count == 0) {
         return;
     }
+
+    if(seq_engine_record_undo() < 0) return;
 
     // keep track of damper state
     damper_held = 0;
@@ -2590,7 +2629,7 @@ void seq_engine_arp_enable_changed(int scene, int track, int enable) {
 //
 // a song was loaded - time to reset stuff
 void seq_engine_song_loaded(int song) {
-    snapshot_queued = 0;
+    snapshot_queued = undo_queued = 0;
     song_snapshot_clear();
     sestate.pitch_reference_valid = 0;
     int track, mapnum;

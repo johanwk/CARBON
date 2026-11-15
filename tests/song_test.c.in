@@ -158,5 +158,15 @@ int main(void) {
     song_clear();assert(!song_snapshot_available() && song_snapshot_restore()==-1);
     assert(!song_snapshot_capture()); assert(!song_save(0)); song_timer_task();
     assert(song_snapshot_available()); assert(!song_load(0)); assert(!song_snapshot_available()); song_timer_task();
+    song_clear();song.tempo=123;
+    assert(!song_undo_capture());
+    song.tempo=140;assert(!song_snapshot_capture());
+    song_clear();assert(song_undo_available()); // clear must be undoable
+    assert(!song_undo_restore() && song.tempo==123);
+    song.tempo=200;assert(!song_undo_restore() && song.tempo==123);
+    assert(!song_save(0));song_timer_task();assert(song_undo_available());
+    songs.state=SONG_IO_STATE_SAVE;assert(song_undo_capture()==-1 && song_undo_restore()==-1);
+    songs.state=SONG_IO_STATE_IDLE;assert(!song_undo_restore());
+    assert(!song_load(0));assert(!song_undo_available());song_timer_task();
     puts("song tests passed"); return 0;
 }

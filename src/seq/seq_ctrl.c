@@ -279,7 +279,8 @@ int seq_ctrl_load_song(int song) {
     seq_ctrl_set_run_state(0);
     // start the loading process
     if(song_load(song) == -1) {
-        seq_ctrl_clear_song();  // clear if song couldn't be loaded
+        song_undo_clear();
+        song_clear();  // failed load is not a user undoable Clear operation
     }
     return 0;
 }
@@ -294,6 +295,7 @@ int seq_ctrl_save_song(int song) {
     seq_ctrl_set_record_mode(SEQ_CTRL_RECORD_IDLE);  // stop recording
     seq_ctrl_set_run_lockout(0);  // lock out UI and MIDI
     seq_ctrl_set_run_state(0);
+    seq_engine_undo_cancel(); // save keeps the undo point, not a queued restore
     song_save(song);  // start the saving process
     return 0;
 }
@@ -302,6 +304,7 @@ int seq_ctrl_save_song(int song) {
 void seq_ctrl_clear_song(void) {
     seq_ctrl_set_record_mode(SEQ_CTRL_RECORD_IDLE);  // stop recording
     seq_ctrl_set_run_lockout(0);  // lock out UI and MIDI
+    if(seq_engine_undo_capture() < 0) return;
     seq_ctrl_set_run_state(0);
     song_clear();
 }
@@ -329,6 +332,7 @@ void seq_ctrl_copy_scene(int dest_scene) {
         return;
     }
     seq_ctrl_set_record_mode(SEQ_CTRL_RECORD_IDLE);  // stop recording
+    if(dest_scene == seq_engine_get_current_scene() || seq_engine_undo_capture() < 0) return;
     song_copy_scene(dest_scene, seq_engine_get_current_scene());
 }
 
@@ -506,6 +510,7 @@ void seq_ctrl_set_record_mode(int mode) {
     if(mode == sstate.record_mode) {
         return;
     }
+    seq_engine_undo_cancel();
     oldmode = sstate.record_mode;
     newmode = mode;
     // recycle mode
@@ -1403,6 +1408,7 @@ void seq_ctrl_flip_arp_enable(void) {
 
 // make magic on tracks - affects the current active tracks / region
 void seq_ctrl_make_magic(void) {
+    int captured = 0;
     int track, i, start, len, step, temp;
     struct track_event event = {.delay = SEQ_START_DELAY_INHERIT};
     seq_ctrl_set_record_mode(SEQ_CTRL_RECORD_IDLE);  // stop recording
@@ -1418,6 +1424,10 @@ void seq_ctrl_make_magic(void) {
         for(i = 0; i < len; i ++) {
             // figure out if we touch this note or not
             if(song_get_magic_chance() > (rand() % SONG_MAGIC_CHANCE_MAX)) {
+                if(!captured) {
+                    if(seq_engine_undo_capture() < 0) return;
+                    captured = 1;
+                }
                 step = (start + i) & (SEQ_NUM_STEPS - 1);
                 song_clear_step(seq_engine_get_current_scene(), track, step);
                 // make a new random note
@@ -1442,6 +1452,7 @@ void seq_ctrl_make_magic(void) {
 
 // clear tracks - affects the current active tracks / region
 void seq_ctrl_make_clear(void) {
+    int captured = 0;
     int track, i, start, len, step;
     seq_ctrl_set_record_mode(SEQ_CTRL_RECORD_IDLE);  // stop recording
     // process currently selected tracks
@@ -1454,6 +1465,10 @@ void seq_ctrl_make_clear(void) {
         len = song_get_motion_length(seq_engine_get_current_scene(), track);
         // check each step
         for(i = 0; i < len; i ++) {
+            if(!captured) {
+                if(seq_engine_undo_capture() < 0) return;
+                captured = 1;
+            }
             step = (start + i) & (SEQ_NUM_STEPS - 1);
             song_clear_step(seq_engine_get_current_scene(), track, step);
         }

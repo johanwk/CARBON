@@ -24,6 +24,7 @@
 #include "../gfx.h"
 #include "../config.h"
 #include "../seq/song.h"
+#include "../seq/seq_engine.h"
 #include "../util/log.h"
 #include "../util/panel_utils.h"
 #include "../util/seq_utils.h"
@@ -95,6 +96,7 @@ void song_edit_set_enable(int enable) {
 void song_edit_adjust_cursor(int change, int shift) {
     // insert an entry before the current one and push everything down
     if(shift) {
+        if(seq_engine_undo_capture() < 0) return;
         song_add_song_list_entry(sngedits.edit_pos);
     }
     // adjust the cursor position
@@ -107,6 +109,7 @@ void song_edit_adjust_cursor(int change, int shift) {
 
 // adjust the scene
 void song_edit_adjust_scene(int change, int shift) {
+    if(change && seq_engine_undo_capture() < 0) return;
     int scene = song_get_song_list_scene(sngedits.edit_pos);
     // current slot is empty
     if(scene == SONG_LIST_SCENE_NULL) {
@@ -126,6 +129,7 @@ void song_edit_adjust_length(int change, int shift) {
     if(song_get_song_list_scene(sngedits.edit_pos) == SONG_LIST_SCENE_NULL) {
         return;
     }
+    if(change && seq_engine_undo_capture() < 0) return;
     song_set_song_list_length(sngedits.edit_pos,
         seq_utils_clamp(song_get_song_list_length(sngedits.edit_pos) + change,
             SEQ_SONG_LIST_MIN_LENGTH, SEQ_SONG_LIST_MAX_LENGTH));
@@ -138,6 +142,7 @@ void song_edit_adjust_kbtrans(int change, int shift) {
     if(song_get_song_list_scene(sngedits.edit_pos) == SONG_LIST_SCENE_NULL) {
         return;
     }
+    if(change && seq_engine_undo_capture() < 0) return;
     song_set_song_list_kbtrans(sngedits.edit_pos,
         seq_utils_clamp(song_get_song_list_kbtrans(sngedits.edit_pos) + change,
             SEQ_TRANSPOSE_MIN, SEQ_TRANSPOSE_MAX));
@@ -146,6 +151,7 @@ void song_edit_adjust_kbtrans(int change, int shift) {
 
 // remove the current step
 void song_edit_remove_step(void) {
+    if(seq_engine_undo_capture() < 0) return;
     song_remove_song_list_entry(sngedits.edit_pos);
     song_edit_update_display();
 }

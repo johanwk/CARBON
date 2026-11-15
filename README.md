@@ -1,5 +1,9 @@
 # CARBON community firmware
 
+**Local development:** one-level song undo, identity `1.37-jwk-und1`.
+See [UNDO.md](UNDO.md) for controls, scope and pending hardware checks.
+This feature is not in the published 1.37 RC1 described below.
+
 Unofficial firmware for the Kilpatrick Audio CARBON hardware sequencer.
 Not an official Kilpatrick Audio release. Installation is at your own risk.
 

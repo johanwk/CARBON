@@ -132,6 +132,11 @@ struct seq_step_preview {
 void seq_engine_preview_step(int track, int step, struct seq_step_preview *preview);
 
 // One RAM snapshot: capture immediately; recall next bar or now if stopped.
+// Capture before one destructive operation; non-recording callers only.
+int seq_engine_undo_capture(void);
+int seq_engine_undo_recall(void);
+void seq_engine_undo_cancel(void);
+int seq_engine_undo_status(void); // 0=empty, 1=ready, 2=queued
 int seq_engine_snapshot_capture(void);
 int seq_engine_snapshot_recall(void);
 void seq_engine_snapshot_cancel(void);

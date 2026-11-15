@@ -172,6 +172,18 @@ struct song_state {
     int loadsave_song;  // which song number is loading or saving
 };
 struct song_state songs;
+static struct song_data undo_song;
+static int undo_valid;
+int song_undo_available(void) { return undo_valid; }
+void song_undo_clear(void) { undo_valid = 0; }
+int song_undo_capture(void) {
+    if(!song_snapshot_idle()) return -1;
+    memcpy(&undo_song, &song, sizeof(song)); undo_valid = 1; return 0;
+}
+int song_undo_restore(void) {
+    if(!undo_valid || !song_snapshot_idle()) return -1;
+    memcpy(&song, &undo_song, sizeof(song)); return 0;
+}
 static struct song_data snapshot_song;
 static int snapshot_valid;
 int song_snapshot_idle(void) { return songs.state == SONG_IO_STATE_IDLE; }
@@ -405,6 +417,7 @@ int song_load(int song_num) {
         return -1;
     }
     song_snapshot_clear();
+    song_undo_clear();
     songs.loadsave_song = song_num;  // which song we are loading
     songs.state = SONG_IO_STATE_LOAD;
     return 0;

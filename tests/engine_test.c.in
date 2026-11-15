@@ -17,6 +17,7 @@ static int running = 1, live_mode, selected;
 
 #ifndef CARBON_TEST_CLOCK
 int midi_clock_get_running(void) { return running; }
+uint32_t midi_clock_get_tick_pos(void) {return 0;}
 #endif
 int seq_ctrl_get_run_state(void) { return midi_clock_get_running(); }
 int seq_ctrl_get_live_mode(void) { return live_mode; }
@@ -45,6 +46,9 @@ void metronome_run(int tick) {}
 void arp_run(int tick) {}
 #endif
 void step_edit_run(uint32_t tick) {}
+void gui_grid_clear_overlay(void) {}
+void gui_grid_set_overlay_enable(int enable) {}
+void gui_grid_set_overlay_color(int step,int color) {}
 #ifndef CARBON_TEST_PITCH
 void outproc_pitch_changed(int scene, int track) {}
 void outproc_root_changed(void) {}
@@ -100,6 +104,7 @@ int song_get_song_list_length(int entry) { return 0; }
 int song_get_song_list_kbtrans(int entry) { return 0; }
 int song_add_step_event(int scene, int track, int step, struct track_event *e) { return 0; }
 void song_clear_step_event(int scene, int track, int step, int slot) {}
+void song_clear_step(int scene,int track,int step) {}
 int song_set_step_event(int scene, int track, int step, int slot, struct track_event *e) { return 0; }
 
 
@@ -168,7 +173,19 @@ void state_change_fire2(int event, int a, int b) {}
 /* Use the production MIDI CC conversion helpers and MIDI message utilities
  * via separate compilation; only external song/hardware services are fixtures.
  */
+static int undo_test_valid, undo_captures;
+static struct track_event undo_events[6][6];
 static int snapshot_test_valid, snapshot_test_busy;
+int song_undo_available(void) {return undo_test_valid;}
+void song_undo_clear(void) {undo_test_valid=0;}
+int song_undo_capture(void) {
+    if(snapshot_test_busy) return -1;
+    memcpy(undo_events,fixture,sizeof(undo_events));undo_test_valid=1;undo_captures++;return 0;
+}
+int song_undo_restore(void) {
+    if(snapshot_test_busy || !undo_test_valid) return -1;
+    memcpy(fixture,undo_events,sizeof(undo_events));return 0;
+}
 static struct track_event snapshot_events[6][6];
 int song_snapshot_available(void) {return snapshot_test_valid;}
 int song_snapshot_idle(void) {return !snapshot_test_busy;}
@@ -187,6 +204,7 @@ static void setup(void) {
     int t;
     test_record_mode=SEQ_CTRL_RECORD_IDLE;
     snapshot_test_valid=snapshot_test_busy=snapshot_queued=0;
+    undo_test_valid=undo_captures=undo_queued=record_undo_captured=0;
     memset(timing_step,0,sizeof(timing_step)); memset(timing_arp,0,sizeof(timing_arp));
     memset(&sestate, 0, sizeof(sestate));
     memset(fixture, 0, sizeof(fixture));
@@ -780,7 +798,32 @@ static void test_scene_gates(void) {
         assert(output_count==(pass?3:1)); // Note Off remains independent
     }
 }
+static void test_recording_undo_boundary(void) {
+    setup();
+    seq_engine_record_write_tracks();assert(!undo_captures); // empty take
+    test_record_mode=SEQ_CTRL_RECORD_RT;
+    sestate.first_track=0;sestate.record_pos=0;sestate.record_event_count=1;
+    sestate.record_events[0].msg=(struct midi_msg){.status=MIDI_NOTE_ON,.data0=60,.data1=100};
+    sestate.record_events[0].tick_pos=0;sestate.record_events[0].tick_len=12;
+    seq_engine_record_write_tracks();assert(undo_captures==1);
+    seq_engine_record_write_tracks();assert(undo_captures==1); // repeated loop writes same session
+    seq_engine_record_mode_changed(SEQ_CTRL_RECORD_RT,SEQ_CTRL_RECORD_IDLE);
+    assert(undo_captures==1 && !record_undo_captured); // final flush not a new point
+    seq_engine_record_mode_changed(SEQ_CTRL_RECORD_IDLE,SEQ_CTRL_RECORD_ARM);
+    assert(undo_captures==1); // arming alone doesn't destroy prior undo
+    snapshot_test_busy=1;seq_engine_record_write_tracks();assert(undo_captures==1);
+    snapshot_test_busy=0;seq_engine_record_write_tracks();assert(undo_captures==2);
+    setup();test_record_mode=SEQ_CTRL_RECORD_STEP;sestate.first_track=0;
+    struct midi_msg msg={.status=MIDI_NOTE_ON,.data0=60,.data1=100};
+    seq_engine_record_event(&msg);assert(undo_captures==1);
+    msg.status=MIDI_NOTE_OFF;seq_engine_record_event(&msg);
+    msg.status=MIDI_NOTE_ON;seq_engine_record_event(&msg);assert(undo_captures==1);
+    seq_engine_record_mode_changed(SEQ_CTRL_RECORD_STEP,SEQ_CTRL_RECORD_IDLE);
+    seq_engine_record_mode_changed(SEQ_CTRL_RECORD_IDLE,SEQ_CTRL_RECORD_ARM);
+    sestate.record_event_count=0;seq_engine_record_event(&msg);assert(undo_captures==2);
+}
 int main(void) {
+    test_recording_undo_boundary();
     test_scene_gates();
     test_straight_timing();
     test_delayed_ratchets();

@@ -1,0 +1,45 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later */
+#include <assert.h>
+#include <stdio.h>
+#include <string.h>
+#include "../src/seq/seq_ctrl.c"
+static int captures, mutations, busy, clears, copied, clock_running;
+static int undo_enabled;
+int seq_engine_undo_capture(void) {if(busy)return -1;captures++;undo_enabled=1;return 0;}
+void seq_engine_undo_cancel(void) {}
+int seq_engine_get_current_scene(void) {return 0;}
+void song_copy_scene(int dest,int src) {assert(undo_enabled);copied++;}
+int song_get_motion_start(int scene,int track) {return 0;}
+int song_get_motion_length(int scene,int track) {return 4;}
+int song_get_magic_chance(void) {return 100;}
+int song_get_magic_range(void) {return 0;}
+int song_get_step_length(int scene,int track) {return 10;}
+void song_clear_step(int scene,int track,int step) {assert(undo_enabled);mutations++;}
+int song_set_step_event(int scene,int track,int step,int slot,struct track_event *event) {assert(undo_enabled);mutations++;return 0;}
+void song_clear(void) {assert(undo_enabled);clears++;}
+void midi_clock_request_stop(void) {clock_running=0;}
+void midi_clock_request_continue(void) {clock_running=1;}
+int pattern_edit_get_enable(void) {return 0;}
+int song_edit_get_enable(void) {return 0;}
+int step_edit_get_enable(void) {return 0;}
+void pattern_edit_set_enable(int value) {}
+void song_edit_set_enable(int value) {}
+void step_edit_set_enable(int value) {}
+void seq_engine_record_mode_changed(int old,int value) {}
+void seq_engine_live_mode_changed(int value) {}
+void state_change_fire0(int event) {}
+void state_change_fire1(int event,int value) {}
+void state_change_fire2(int event,int a,int b) {}
+void panel_handle_input(int ctrl,int val) {}
+void log_error(char *fmt,...) {assert(0);}
+int main(void) {
+ memset(&sstate,0,sizeof(sstate));sstate.track_select[0]=sstate.track_select[2]=1;
+ seq_ctrl_make_clear();assert(captures==1 && mutations==8);
+ seq_ctrl_make_magic();assert(captures==2 && mutations==24);
+ seq_ctrl_copy_scene(2);assert(captures==3 && copied==1);
+ seq_ctrl_copy_scene(0);assert(captures==3 && copied==1);
+ seq_ctrl_clear_song();assert(captures==4 && clears==1);
+ busy=1;seq_ctrl_make_clear();seq_ctrl_make_magic();seq_ctrl_copy_scene(2);seq_ctrl_clear_song();
+ assert(captures==4 && mutations==24 && copied==1 && clears==1);
+ puts("undo destructive controller boundaries passed");return 0;
+}

@@ -35,6 +35,7 @@ enum STATE_CHANGE_EVENT_CLASS {
 // event types
 enum STATE_CHANGE_EVENT {
     // song events
+    SCE_ENG_UNDO_RECALLED = SCEC_ENG + 0x101,
     SCE_ENG_SNAPSHOT_RECALLED = SCEC_ENG + 0x100, // GUI-only full RAM restoration
     SCE_SONG_CLEARED = SCEC_SONG,  // arg0 = song_num
     SCE_SONG_LOADED,  // arg0 = song_num
