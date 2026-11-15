@@ -149,7 +149,26 @@ static void test_step_visit_undo(void) {
     step_edit_set_enable(1);for(int i=0;i<4;i++) step_edit_adjust_note(-1,0);
     assert(events[0].data0==65);memcpy(events,undo_events,sizeof(events));assert(events[0].data0==69);
 }
+static void test_undo_preserves_editor(void) {
+    setup(); running=1;
+    events[0]=(struct track_event){.type=SONG_EVENT_NOTE,.data0=69,.data1=100};
+    step_edit_set_enable(1);
+    sedits.track=2;sedits.step_pos=7;sedits.event_pos=3;
+    int captures=undo_captures;
+    assert(step_edit_suspend_for_undo() && !sedits.enable);
+    // The real engine delivers scene notifications while the editor is closed.
+    int scene[1]={0};step_edit_handle_state_change(SCE_ENG_CURRENT_SCENE,scene,1);
+    assert(!sedits.enable && undo_captures==captures);
+    running=0;step_edit_resume_after_undo();
+    assert(sedits.enable && sedits.track==2 && sedits.step_pos==7 && sedits.event_pos==3);
+    assert(sedits.undo_captured && !count && undo_captures==captures);
+    // Empty selected slot can be edited after undo; same entry checkpoint.
+    running=1;step_edit_adjust_note(1,0);assert(undo_captures==captures);
+    assert(step_edit_suspend_for_undo());step_edit_resume_after_undo();assert(undo_captures==captures);
+    step_edit_set_enable(0);assert(!step_edit_suspend_for_undo());
+}
 int main(void) {
+    test_undo_preserves_editor();
     test_step_visit_undo();
     setup();sedits.enable=1;events[0]=(struct track_event){.type=SONG_EVENT_NOTE,.data0=60,.data1=100};
     undo_busy=1;step_edit_clear_step();assert(events[0].type==SONG_EVENT_NOTE && !undo_captures);

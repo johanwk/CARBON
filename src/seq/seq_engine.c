@@ -475,6 +475,7 @@ static int seq_engine_checkpoint_apply(int undo) {
     snapshot_queued = undo_queued = 0;
     if(!(undo ? song_undo_available() : song_snapshot_available()) || !song_snapshot_idle() ||
             seq_ctrl_get_record_mode() != SEQ_CTRL_RECORD_IDLE) return -1;
+    int resume_step_edit = undo ? step_edit_suspend_for_undo() : 0;
     // Release via the OLD routing before copying the saved song.
     for(int track=0;track<SEQ_NUM_TRACKS;track++) {
         seq_engine_track_stop_all_notes(track);
@@ -482,7 +483,10 @@ static int seq_engine_checkpoint_apply(int undo) {
         seq_engine_live_stop_all_notes(track);
         outproc_stop_all_notes(track);
     }
-    if((undo ? song_undo_restore() : song_snapshot_restore()) < 0) return -1;
+    if((undo ? song_undo_restore() : song_snapshot_restore()) < 0) {
+        if(resume_step_edit) step_edit_resume_after_undo();
+        return -1;
+    }
     seq_engine_clear_internal_cc(); // also cancels pending performance edits
     sestate.scene_current = sestate.scene_next = saved->scene;
     sestate.pitch_reference_valid = 0;
@@ -517,6 +521,9 @@ static int seq_engine_checkpoint_apply(int undo) {
     state_change_fire1(SCE_ENG_CURRENT_SCENE, sestate.scene_current);
     state_change_fire1(SCE_ENG_KBTRANS, sestate.kbtrans);
     state_change_fire0(undo ? SCE_ENG_UNDO_RECALLED : SCE_ENG_SNAPSHOT_RECALLED);
+    // Resume after scene/UI notifications, which normally re-enter the editor
+    // and capture a fresh undo point. Preserve the current step/slot instead.
+    if(resume_step_edit) step_edit_resume_after_undo();
     return 0;
 }
 

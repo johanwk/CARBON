@@ -47,6 +47,10 @@ int step_edit_get_enable(void);
 // start and stop step edit mode
 void step_edit_set_enable(int enable);
 
+// Temporarily close for undo cleanup, then redraw without capture or audition.
+int step_edit_suspend_for_undo(void);
+void step_edit_resume_after_undo(void);
+
 // Selected scene-mask editor: -1 when inactive; buttons toggle without audition.
 int step_edit_scene_mask(void);
 void step_edit_toggle_scene(int scene);

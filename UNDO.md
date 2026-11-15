@@ -1,4 +1,4 @@
-# One-level song undo - local 1.37-jwk-und2 candidate
+# One-level song undo - local 1.37-jwk-und3 candidate
 
 Not part of published 1.37 RC1. No song format change: schema4/1.37 storage
 remains unchanged. Firmware hardware acceptance is pending.
@@ -49,8 +49,12 @@ recording cancels queued undo. Requesting snapshot recall supersedes queued
 undo and vice versa; the two stored buffers remain separate.
 
 Restoration uses old-route sequence/live/arp/note/pedal cleanup, cancels
-pending attacks and performance edits, restores controls, exits editing and
-restarts tracks. Conditional history/cycle restart; probability streams are
+pending attacks and performance edits, restores controls and restarts tracks.
+If Step Edit is active when undo applies, it resumes on the same track, step
+and event slot after cleanup, without audition or a new undo capture. Further
+edits retain the original step-entry checkpoint. Undo outside Step Edit does
+not open it; other edit modes and manual snapshot recall retain their existing
+exit behavior. Conditional history/cycle restart; probability streams are
 not rewound. Song mode restarts its captured entry rather than its beat.
 External patches, arbitrary synth CC state and global preset patterns are not
 captured. Transport position is not reset; clock-source changes follow normal
@@ -69,7 +73,9 @@ guards, pending-note and output cleanup, PRNG continuity, production clock
 next-bar application, multi-track destructive-operation grouping, recording
 first-write/recycle/final-flush grouping, song load/save/clear lifetime and
 Clock/Run edge/release order, and Step Edit entry/slot/navigation/timeout
-transaction boundaries including multi-detent A-to-F restoration. These are not hardware timing measurements.
+transaction boundaries including multi-detent A-to-F restoration. Tests also
+cover staying in Step Edit after immediate/next-bar undo, preserving cursor
+and checkpoint without audition, and not opening an inactive editor. These are not hardware timing measurements.
 
 Use backed-up/disposable songs for the first hardware check: Clear then undo,
 Magic then undo, scene copy, Step Edit and recording overdub, repeated undo,

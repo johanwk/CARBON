@@ -46,6 +46,9 @@ void metronome_run(int tick) {}
 void arp_run(int tick) {}
 #endif
 void step_edit_run(uint32_t tick) {}
+static int edit_active, edit_resumes;
+int step_edit_suspend_for_undo(void) {int active=edit_active;edit_active=0;return active;}
+void step_edit_resume_after_undo(void) {edit_active=1;edit_resumes++;}
 void gui_grid_clear_overlay(void) {}
 void gui_grid_set_overlay_enable(int enable) {}
 void gui_grid_set_overlay_color(int step,int color) {}
@@ -202,6 +205,7 @@ void seq_ctrl_refresh_snapshot_modules(void) {}
 void seq_ctrl_restore_snapshot_modes(int live, int songmode) {}
 static void setup(void) {
     int t;
+    edit_active=edit_resumes=0;
     test_record_mode=SEQ_CTRL_RECORD_IDLE;
     snapshot_test_valid=snapshot_test_busy=snapshot_queued=0;
     undo_test_valid=undo_captures=undo_queued=record_undo_captured=0;

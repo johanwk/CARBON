@@ -271,6 +271,28 @@ void step_edit_set_enable(int enable) {
     }
 }
 
+int step_edit_suspend_for_undo(void) {
+    int enabled = sedits.enable;
+    if(enabled) step_edit_set_enable(0); // release preview notes through OLD routes
+    return enabled;
+}
+
+void step_edit_resume_after_undo(void) {
+    // Undo already restored the entry checkpoint. Do not capture it again or
+    // call adjust_cursor/set_enable, which would audition while stopped.
+    sedits.enable = 1;
+    sedits.undo_captured = 1;
+    sedits.scene = seq_ctrl_get_scene();
+    sedits.edit_timeout = panel_menu_get_timeout();
+    sedits.cci_hint_timeout = 0;
+    step_edit_clear_recording_notes();
+    gui_grid_clear_overlay();
+    gui_grid_set_overlay_enable(1);
+    gui_grid_set_overlay_color(sedits.step_pos, GUI_OVERLAY_HIGH);
+    gui_set_status_override(1);
+    step_edit_update_display();
+}
+
 int step_edit_scene_mask(void) {
     struct track_event event;
     if(!sedits.enable || sedits.event_pos < 0 || sedits.event_pos >= SEQ_TRACK_POLY) return -1;
