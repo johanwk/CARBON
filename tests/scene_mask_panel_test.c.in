@@ -1,0 +1,47 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later */
+#include <assert.h>
+#include <stdio.h>
+#include <string.h>
+#include "../src/gui/panel.c"
+static int mask=-1, menu=PANEL_MENU_NONE, toggles, writes;
+static int leds[PANEL_LED_NUM_LEDS];
+int step_edit_scene_mask(void) {return mask;}
+void step_edit_toggle_scene(int scene) {assert(scene>=0 && scene<6); mask^=1<<scene; toggles++;}
+int panel_menu_get_mode(void) {return menu;}
+void panel_if_set_led(int led,uint8_t value) {leds[led]=value;writes++;}
+void panel_if_blink_led(int led,uint8_t off,uint8_t on) {leds[led]=-1;writes++;}
+void log_error(char *fmt,...) {assert(0);}
+int main(void) {
+ memset(&pstate,0,sizeof(pstate)); memset(pstate.led_physical,255,sizeof(pstate.led_physical));
+ pstate.bl_power_state=PANEL_POWER_STATE_ON;
+ for(int i=0;i<6;i++) panel_update_track_led(i,i==2);
+ for(int m=0;m<64;m++) {
+  mask=m;
+  for(int i=0;i<6;i++) {
+   panel_set_led(PANEL_LED_1+i,pstate.led_state[PANEL_LED_1+i]);
+   assert(leds[PANEL_LED_1+i]==(m&(1<<i)?255:0));
+   int n=writes;panel_set_led(PANEL_LED_1+i,pstate.led_state[PANEL_LED_1+i]);assert(n==writes);
+  }
+ }
+ // Normal desired state continues updating underneath mask; restored on exit.
+ panel_update_track_led(2,0);panel_update_track_led(4,1);mask=-1;
+ for(int i=0;i<6;i++) {panel_set_led(PANEL_LED_1+i,pstate.led_state[PANEL_LED_1+i]);assert(leds[PANEL_LED_1+i]==(i==4?255:0));}
+ for(int i=0;i<6;i++) {
+  mask=0;pstate.shift_state=pstate.scene_state=1;int n=toggles;
+  assert(panel_handle_scene_mask_input(PANEL_SW_1+i,1));assert(mask==(1<<i));
+  assert(panel_handle_scene_mask_input(PANEL_SW_1+i,1));assert(toggles==n+1);
+  mask=-1;assert(panel_handle_scene_mask_input(PANEL_SW_1+i,0));
+  assert(!panel_handle_scene_mask_input(PANEL_SW_1+i,1));
+  mask=0;assert(!panel_handle_scene_mask_input(PANEL_SW_1+i,0));
+ }
+ mask=63;pstate.bl_power_state=PANEL_POWER_STATE_STANDBY;
+ for(int i=0;i<6;i++) {panel_set_led(PANEL_LED_1+i,0);assert(!leds[PANEL_LED_1+i]);}
+ pstate.bl_power_state=PANEL_POWER_STATE_ON;
+ menu=PANEL_MENU_CLOCK;assert(!panel_handle_scene_mask_input(PANEL_SW_1,1));
+ assert(!panel_handle_scene_mask_input(PANEL_SW_1,0));menu=PANEL_MENU_NONE;
+ for(int pair=0;pair<4;pair++) for(int row=0;row<13;row++) {
+  unsigned expected=row>=2 && row<=8 ? ((pair&1?14:0)|(pair&2?112:0)):0;
+  assert(scene_mask_glyph_row(pair+1,row)==expected);
+ }
+ puts("scene mask panel/LED/glyph tests passed");return 0;
+}

@@ -105,6 +105,19 @@ int main(void) {
     assert(state.random == saved && !state.history && !state.cycle);
     conditional_seed(&state, 0, UINT32_C(0x9e3779b9));
     assert(state.random != 0); // zero-state protection
+    for(int mask=0;mask<64;mask++) for(int scene=0;scene<6;scene++) for(int history=0;history<2;history++) {
+        state.history=history; saved=state.random;
+        visit=(struct conditional_visit){.scene=scene};
+        gate=(struct track_event){.type=SONG_EVENT_SCENE,.data0=mask};
+        assert(!conditional_slot(&state,&visit,&gate));
+        assert(visit.blocked==!(mask&(1<<scene)) && !visit.contributed);
+        assert(conditional_slot(&state,&visit,&note)==!!(mask&(1<<scene)));
+        conditional_commit(&state,&visit);
+        assert(state.history==history && state.random==saved);
+        gate=(struct track_event){.type=SONG_EVENT_PROBABILITY,.data0=100};
+        conditional_slot(&state,&visit,&gate);
+        assert((state.random!=saved)==!!(mask&(1<<scene)));
+    }
     puts("conditional tests passed");
     return 0;
 }

@@ -115,10 +115,26 @@ static void test_glide_editor(void) {
     assert(!count);
 }
 int main(void) {
+    setup(); sedits.enable=1; events[0].type=SONG_EVENT_PROGCHG;
+    step_edit_adjust_note(1,1);
+    assert(events[0].type==SONG_EVENT_SCENE && step_edit_scene_mask()==63);
+    for(int mask=0;mask<64;mask++) {
+        events[0].data0=mask; step_edit_update_display();
+        for(int pair=0;pair<3;pair++) assert(rows[2][3+pair]==1+((mask>>(pair*2))&3));
+        assert(strlen(rows[0])<=28 && strstr(rows[0],"Keys toggle"));
+        for(int scene=0;scene<6;scene++) {
+            step_edit_toggle_scene(scene); assert(step_edit_scene_mask()==(mask^(1<<scene)));
+            step_edit_toggle_scene(scene); assert(step_edit_scene_mask()==mask);
+        }
+    }
+    assert(!count); step_edit_adjust_note(1,0); step_edit_adjust_velocity(1,0); assert(!count);
+    sedits.event_pos=-1; assert(step_edit_scene_mask()==-1);
+    step_edit_toggle_scene(0); assert(events[0].data0==63);
+    sedits.event_pos=0; sedits.enable=0; assert(step_edit_scene_mask()==-1);
     test_glide_editor();
     int i;
     static const uint8_t types[] = {SONG_EVENT_NOTE, SONG_EVENT_CC,
-        SONG_EVENT_INTERNAL_CC, SONG_EVENT_PROGCHG, SONG_EVENT_PROBABILITY,
+        SONG_EVENT_INTERNAL_CC, SONG_EVENT_PROGCHG, SONG_EVENT_SCENE, SONG_EVENT_PROBABILITY,
         SONG_EVENT_EUCLIDEAN, SONG_EVENT_PRE, SONG_EVENT_NON_PRE, SONG_EVENT_HARMONY, SONG_EVENT_INVERSION, SONG_EVENT_GLIDE};
     {
         char label[16];
@@ -129,11 +145,11 @@ int main(void) {
         assert(!strcmp(label, "16 PPQ"));
     }
     setup(); events[0].type = SONG_EVENT_NOTE;
-    for(i = 1; i <= 11; i ++) {
+    for(i = 1; i <= 12; i ++) {
         step_edit_adjust_note(1, 1);
-        assert(events[0].type == types[i % 11]);
+        assert(events[0].type == types[i % 12]);
     }
-    for(i = 10; i >= 0; i --) {
+    for(i = 11; i >= 0; i --) {
         step_edit_adjust_note(-1, 1); assert(events[0].type == types[i]);
     }
     events[0] = (struct track_event){.type = SONG_EVENT_PROBABILITY, .data0 = 50};

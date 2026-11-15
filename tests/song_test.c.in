@@ -135,6 +135,17 @@ int main(void) {
     assert(!song_load(0)); song_timer_task();
     assert(!song_get_step_event(0,0,0,2,&actual));
     assert(actual.type==SONG_EVENT_INTERNAL_CC && actual.data0==35 && actual.data1==127);
+    for(int mask=0;mask<64;mask++) {
+        actual=(struct track_event){.type=SONG_EVENT_SCENE,.data0=mask};
+        assert(!song_set_step_event(0,0,0,3,&actual));
+        assert(!song_save(0));song_timer_task();memset(&song,0,sizeof(song));
+        assert(!song_load(0));song_timer_task();
+        assert(!song_get_step_event(5,0,0,3,&actual));
+        assert(actual.type==SONG_EVENT_SCENE && actual.data0==mask);
+    }
+    actual.data0=64;assert(song_set_step_event(0,0,0,3,&actual)==-1);
+    assert(song_add_step_event(0,0,0,&actual)==-1);
+    actual.data0=63;actual.data1=1;assert(song_set_step_event(0,0,0,3,&actual)==-1);
     assert(!song_snapshot_available());
     assert(!song_snapshot_capture());
     struct song_data expected_snapshot=song;

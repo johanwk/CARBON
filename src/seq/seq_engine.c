@@ -1350,7 +1350,7 @@ static void seq_engine_prepare_visits(struct seq_engine_step_visit *visits) {
 
 // Ordered gates and control resolution share one event snapshot with playback.
 static void seq_engine_prepare_step(int track, struct seq_engine_step_visit *visit) {
-    struct conditional_visit gates = {0};
+    struct conditional_visit gates = {.scene = sestate.scene_current};
     struct track_event *event;
     int i, bias_note_found = 0;
     visit->prepared = 1;

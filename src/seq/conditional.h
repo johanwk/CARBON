@@ -6,6 +6,7 @@
 #define CONDITIONAL_H
 
 #include "song.h"
+#include "../config.h"
 
 struct conditional_state {
     uint32_t random;
@@ -14,6 +15,7 @@ struct conditional_state {
 };
 
 struct conditional_visit {
+    uint8_t scene;  // active scene sampled at visit preparation, zero-based
     uint8_t blocked;
     uint8_t contributed;
     uint8_t any_true;
@@ -83,6 +85,10 @@ static inline int conditional_slot(struct conditional_state *state,
     int pass;
     if(visit->blocked || event->type == SONG_EVENT_NULL) return 0;
     switch(event->type) {
+        case SONG_EVENT_SCENE:
+            visit->blocked = visit->scene >= SEQ_NUM_SCENES ||
+                !(event->data0 & (1u << visit->scene));
+            return 0; // context gate: no probability draw or Pre contribution
         case SONG_EVENT_PROBABILITY:
             pass = conditional_probability(state, event->data0);
             break;

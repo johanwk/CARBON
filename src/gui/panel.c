@@ -20,6 +20,7 @@
  */
 #include "panel.h"
 #include "snapshot_keys.h"
+#include "scene_mask_ui.h"
 #include "gui.h"
 #include "panel_menu.h"
 #include "pattern_edit.h"
@@ -67,6 +68,8 @@ struct panel_key_queue {
 //
 struct panel_state {
     struct snapshot_keys snapshot_keys;
+    struct scene_mask_keys scene_keys;
+    uint8_t led_physical[PANEL_LED_NUM_LEDS];
     int8_t shift_state;  // shift button state
     int16_t shift_tap_timeout;  // shift timeout
     int8_t scene_state;  // scene button state
@@ -117,6 +120,8 @@ void panel_show_euclidean_status(void);
 void panel_init(void) {
     int i;
 
+    pstate.scene_keys = (struct scene_mask_keys){0};
+    for(i=0;i<PANEL_LED_NUM_LEDS;i++) pstate.led_physical[i] = 0xff;
     // panel input queue
     pstate.key_queue_inp = 0;
     pstate.key_queue_outp = 0;
@@ -168,6 +173,9 @@ void panel_timer_task(void) {
     gui_notice_tick();
     // handle panel input
     panel_handle_key_queue();
+    // Reapply normal desired LEDs through the temporary mask overlay.
+    for(int i=0;i<SEQ_NUM_TRACKS;i++)
+        panel_set_led(PANEL_LED_1+i, pstate.led_state[PANEL_LED_1+i]);
 
     // handle beat LED
     if(pstate.beat_led_timeout) {
@@ -228,6 +236,14 @@ void panel_set_led(int led, int state) {
         return;
     }
     pstate.led_state[led] = state;
+    if(led >= PANEL_LED_1 && led < PANEL_LED_1 + SEQ_NUM_TRACKS) {
+        int mask = pstate.bl_power_state == PANEL_POWER_STATE_ON &&
+            panel_menu_get_mode() == PANEL_MENU_NONE ? step_edit_scene_mask() : -1;
+        if(mask >= 0)
+            state = mask & (1u << (led-PANEL_LED_1)) ? PANEL_LED_STATE_ON : PANEL_LED_STATE_OFF;
+        if(pstate.led_physical[led] == state) return;
+        pstate.led_physical[led] = state;
+    }
     switch(state) {
         case PANEL_LED_STATE_DIM:
             panel_if_set_led(led, 0x10);
@@ -395,7 +411,18 @@ void panel_handle_key_queue(void) {
 }
 
 // handle the sequencer input (normal running mode)
+static int panel_handle_scene_mask_input(int ctrl, int val) {
+    int mask_active = panel_menu_get_mode() == PANEL_MENU_NONE && step_edit_scene_mask() >= 0;
+    int mask_action = scene_mask_key(&pstate.scene_keys, ctrl-PANEL_SW_1, !!val, mask_active);
+    if(mask_action) {
+        if(mask_action == 2) step_edit_toggle_scene(ctrl-PANEL_SW_1);
+        return 1; // before track, mute, scene select or Shift+scene copy
+    }
+    return 0;
+}
+
 void panel_handle_seq_input(int ctrl, int val) {
+    if(panel_handle_scene_mask_input(ctrl, val)) return;
     int key = ctrl == PANEL_SW_CLOCK ? SNAP_CLOCK : ctrl == PANEL_SW_RECORD ? SNAP_RECORD :
         ctrl == PANEL_SW_LOAD ? SNAP_LOAD : -1;
     enum snapshot_action action = snapshot_keys_event(&pstate.snapshot_keys, key, !!val, pstate.shift_state);

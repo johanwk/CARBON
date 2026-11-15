@@ -19,6 +19,7 @@
  *
  */
 #include "step_edit.h"
+#include "scene_mask_ui.h"
 #include "../seq/conditional.h"
 #include "../seq/glide.h"
 #include "gui.h"
@@ -253,6 +254,23 @@ void step_edit_set_enable(int enable) {
     }
 }
 
+int step_edit_scene_mask(void) {
+    struct track_event event;
+    if(!sedits.enable || sedits.event_pos < 0 || sedits.event_pos >= SEQ_TRACK_POLY) return -1;
+    if(song_get_step_event(sedits.scene, sedits.track, sedits.step_pos, sedits.event_pos, &event) < 0 ||
+            event.type != SONG_EVENT_SCENE) return -1;
+    return event.data0 & 63;
+}
+void step_edit_toggle_scene(int scene) {
+    struct track_event event;
+    if(scene < 0 || scene >= SEQ_NUM_SCENES || step_edit_scene_mask() < 0) return;
+    if(song_get_step_event(sedits.scene, sedits.track, sedits.step_pos, sedits.event_pos, &event) < 0) return;
+    event.data0 ^= 1u << scene;
+    song_set_step_event(sedits.scene, sedits.track, sedits.step_pos, sedits.event_pos, &event);
+    sedits.edit_timeout = panel_menu_get_timeout();
+    step_edit_update_display(); // no preview/Note On when toggling a mask
+}
+
 // adjust the cursor position
 void step_edit_adjust_cursor(int change, int shift) {
     int val;
@@ -297,19 +315,22 @@ void step_edit_adjust_note(int change, int shift) {
             song_get_step_event(sedits.scene, sedits.track, sedits.step_pos,
             sedits.event_pos, &event) != -1) {
         static const uint8_t types[] = {SONG_EVENT_NOTE, SONG_EVENT_CC,
-            SONG_EVENT_INTERNAL_CC, SONG_EVENT_PROGCHG, SONG_EVENT_PROBABILITY,
+            SONG_EVENT_INTERNAL_CC, SONG_EVENT_PROGCHG, SONG_EVENT_SCENE, SONG_EVENT_PROBABILITY,
             SONG_EVENT_EUCLIDEAN, SONG_EVENT_PRE, SONG_EVENT_NON_PRE, SONG_EVENT_HARMONY, SONG_EVENT_INVERSION, SONG_EVENT_GLIDE};
         int index;
-        for(index = 0; index < 11; index ++) {
+        for(index = 0; index < 12; index ++) {
             if(types[index] == event.type) break;
         }
-        index = (index + (change > 0 ? 1 : 10)) % 11;
+        index = (index + (change > 0 ? 1 : 11)) % 12;
         event.type = types[index];
         event.delay = SEQ_START_DELAY_INHERIT;
         event.data0 = 0;
         event.data1 = 0;
         event.length = 0;
         switch(event.type) {
+            case SONG_EVENT_SCENE:
+                event.data0 = 63; // start transparent: all scenes pass
+                break;
             case SONG_EVENT_GLIDE:
                 event.data0 = 4; // 1/16
                 event.data1 = GLIDE_LINEAR;
@@ -466,7 +487,7 @@ static int step_edit_adjust_cci_value(int controller, int raw, int change) {
 
 // adjust all events on a step
 void step_edit_adjust_step(int change, int mode, int single, int shift) {
-    int inhibit_preview = 0;
+    int inhibit_preview = step_edit_scene_mask() >= 0;
     struct track_event event = {.delay = SEQ_START_DELAY_INHERIT};
     int i, start, num, temp;
 
@@ -835,6 +856,15 @@ static void step_edit_cci_value_title(char *title, int controller, int raw) {
 
 static void step_edit_update_title(void) {
     char title[GFX_LABEL_LEN];
+    int mask = step_edit_scene_mask();
+    if(mask >= 0) {
+        char scenes[7];
+        for(int i=0;i<6;i++) scenes[i] = mask & (1u << i) ? '1'+i : '-';
+        scenes[6] = 0;
+        snprintf(title, sizeof(title), "Scn: %s Keys toggle", scenes);
+        gui_set_status_text(0, title);
+        return;
+    }
     const char *name = step_edit_cci_name(sedits.cci_hint_controller);
     struct track_event event = {.delay = SEQ_START_DELAY_INHERIT};
     if(sedits.event_pos >= 0 && song_get_step_event(sedits.scene, sedits.track,
@@ -985,6 +1015,12 @@ void step_edit_update_display(void) {
                 gui_set_status_text_part(2, xpos, 4, tempstr);
                 sprintf(tempstr, "%-3d", event.data1);
                 gui_set_status_text_part(3, xpos, 4, tempstr);
+                break;
+            case SONG_EVENT_SCENE:
+                gui_set_status_text_part(1, xpos, 4, "Scn");
+                scene_mask_text(event.data0, tempstr);
+                gui_set_status_text_part(2, xpos, 4, tempstr);
+                gui_set_status_text_part(3, xpos, 4, "---");
                 break;
             case SONG_EVENT_GLIDE:
                 gui_set_status_text_part(1, xpos, 4, "Gli");

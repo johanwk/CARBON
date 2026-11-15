@@ -25,10 +25,10 @@
 
 // global
 #define CARBON_VERSION_MAJOR 1
-#define CARBON_VERSION_MINOR 36
+#define CARBON_VERSION_MINOR 37
 #define CARBON_VERSION_MAJMIN ((CARBON_VERSION_MAJOR << 16) | CARBON_VERSION_MINOR)
 // Display-only community identity; numeric versions remain authoritative for storage.
-#define CARBON_VERSION_VARIANT "jwk-rc1"
+#define CARBON_VERSION_VARIANT "jwk-scn1"
 
 // memory mapping
 // - while not actual config data this is a nice place to mention it

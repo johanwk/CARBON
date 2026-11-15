@@ -757,7 +757,31 @@ static void test_straight_timing(void) {
     assert(sestate.internal_cc[0][0]==5 && sestate.internal_cc[0][10]==2);
     assert(sestate.step_size[0]==seq_utils_step_len_to_ticks(5));
 }
+static void test_scene_gates(void) {
+    for(int mask=0;mask<64;mask++) for(int scene=0;scene<6;scene++) {
+        setup(); enabled[0]=1; sestate.clock_div_count[0]=0;
+        sestate.scene_current=scene; sestate.scene_next=(scene+1)%6;
+        sestate.bias_track_map[1]=0; sestate.conditions[0].history=1;
+        uint32_t random=sestate.conditions[0].random;
+        put(0,0,SONG_EVENT_CC,7,100);
+        put(0,1,SONG_EVENT_SCENE,mask,0);
+        put(0,2,SONG_EVENT_INTERNAL_CC,MIDI_CTRL_CC_TRACK_MUTE,127);
+        put(0,3,SONG_EVENT_NOTE,64,100);
+        put(0,4,SONG_EVENT_HARMONY,2,SONG_HARMONY_ROOT_C);
+        struct seq_engine_step_visit visits[SEQ_NUM_TRACKS]={0};
+        seq_engine_prepare_visits(visits);
+        int pass=!!(mask&(1<<scene));
+        assert(visits[0].slots==(pass?29:1));
+        assert(sestate.internal_cc[1][2]==(pass?1:-1));
+        assert(sestate.conditions[0].random==random && sestate.conditions[0].history==1);
+        seq_engine_track_play_step(0,0,&visits[0]);
+        assert(output_count==(pass?2:1)); // CC before gate always executes
+        seq_engine_track_manage_notes(0);
+        assert(output_count==(pass?3:1)); // Note Off remains independent
+    }
+}
 int main(void) {
+    test_scene_gates();
     test_straight_timing();
     test_delayed_ratchets();
     test_note_delays();

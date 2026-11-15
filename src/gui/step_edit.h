@@ -47,6 +47,10 @@ int step_edit_get_enable(void);
 // start and stop step edit mode
 void step_edit_set_enable(int enable);
 
+// Selected scene-mask editor: -1 when inactive; buttons toggle without audition.
+int step_edit_scene_mask(void);
+void step_edit_toggle_scene(int scene);
+
 // adjust the cursor position
 void step_edit_adjust_cursor(int change, int shift);
 

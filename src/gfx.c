@@ -92,6 +92,7 @@
  *
  */
 #include "gfx.h"
+#include "gui/scene_mask_ui.h"
 #include "config.h"
 #include <string.h>
 #include "debug.h"
@@ -347,6 +348,9 @@ uint16_t gfx_color_32to16(uint32_t color) {
 
 // get a row from a font
 uint32_t gfx_get_font_row(int font, char ch, int row) {
+    unsigned code = (unsigned char)ch;
+    if(code >= 1 && code <= 4) return scene_mask_glyph_row(code, row);
+    if(code < 32 || code > 126) return 0;
     switch(font) {
         case GFX_FONT_SMALLTEXT_8X10:
             return font_smalltext_8x10_bitmap[(int)ch - 32][row];              

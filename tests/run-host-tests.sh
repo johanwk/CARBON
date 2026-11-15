@@ -126,3 +126,9 @@ trap 'rm -rf "$TMP"' EXIT HUP INT TERM
 "$CC" -x c -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined \
     tests/snapshot_keys_test.c.in -o "$TMP/snapshot-keys"
 "$TMP/snapshot-keys"
+
+"$CC" -x c -std=c11 -Wall -Wextra -Werror \
+    -Wno-unused-parameter -Wno-sign-compare \
+    -ffunction-sections -fdata-sections -fsanitize=address,undefined \
+    -Wno-deprecated-declarations tests/scene_mask_panel_test.c.in "$LINK_GC" -o "$TMP/scene-mask-panel"
+"$TMP/scene-mask-panel"
