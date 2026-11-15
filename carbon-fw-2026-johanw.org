@@ -1,12 +1,12 @@
-#+title: CARBON community firmware 1.36 - user guide
+#+title: CARBON community firmware 1.37 - user guide
 #+author: Johan W. Kluwer
 
 * Introduction
 
 This unofficial/community firmware builds on Kilpatrick Audio CARBON 1.27
 (upstream master bd5f5d4). It is not an official Kilpatrick Audio release or
-a claim of manufacturer support. Candidate identity: =1.36-jwk-rc1=; numeric
-song format: 1.36. See [[file:README.md][Start here]] for installation, recovery and
+a claim of manufacturer support. Candidate identity: =1.37-jwk-rc1=; numeric
+song format: 1.37. See [[file:README.md][Start here]] for installation, recovery and
 release status, and the [[https://www.kilpatrickaudio.com/?p=carbon][official CARBON documentation]] for basic operation.
 
 The additions are Program Change per step/scene, Euclidean density/rotation,
@@ -20,6 +20,19 @@ This cumulative candidate includes the work submitted in PRs #10, #11 and
 #12 plus later additions. It does not expand those publication branches.
 Features have differing hardware coverage; see Hardware use and the release
 checklist. No worst-case interrupt time or stack high-water is claimed.
+
+* Scene gates (Scn, 1.37)
+
+Scn passes later event slots on its step only in selected active scenes.
+It does not draw probability or contribute to Pre history. In Step Edit,
+select one Scn slot: buttons 1--6 toggle allowed scenes, with matching LEDs
+and a three-cell paired-bar mask. Normal track/scene/mute/copy actions are
+intercepted for those presses. All scenes enabled is the default.
+
+See [[file:SCENE-GATES.md][Scene gate controls and compatibility]] for details and
+[[file:tools/carbon-backup/README.md][the host guide]] for schema4 JSON support.
+User hardware feedback confirms Scn works as intended; not every combination
+is hardware-tested. Earlier 1.36 firmware cannot interpret Scn events.
 
 * Building from source
 
@@ -231,7 +244,7 @@ The additions have practical hardware acceptance, with coverage varying by featu
 1. Enter Step Edit and select the step.
 2. Use Shift + Motion Start to select one event slot rather than all slots.
 3. Use Shift + Transpose to cycle the event type:
-   =Note -> CC -> CCi -> PC -> Prb -> Euc -> Pre -> !Pr -> Hrm -> Inv -> Gli -> Note=.
+   =Note -> CC -> CCi -> PC -> Scn -> Prb -> Euc -> Pre -> !Pr -> Hrm -> Inv -> Gli -> Note=.
 4. Select =PC=.
 5. Use Transpose to choose program 1--128.
 
@@ -684,8 +697,8 @@ The song is still 20480 bytes and each event six bytes. Fixed size does NOT
 mean backward compatibility. Scene PC, Euclidean settings and roots use
 previously reserved bytes; older songs receive safe defaults on load. In 1.35,
 the event delay byte gained meaning; old songs inherit shared step delay.
-1.36 adds Gli and CCi 34/35. Older firmware cannot interpret all these events
-or relative delays. Do not promise or expect faithful downgrade of 1.36 songs.
+1.36 adds Gli and CCi 34/35; 1.37 adds Scn scene gates. Older firmware cannot interpret all these events
+or relative delays. Do not promise or expect faithful downgrade of 1.37 songs.
 Keep pre-upgrade originals for use with their original firmware.
 
 Host upload replaces saved flash, not the active RAM song: LOAD afterward;
@@ -815,7 +828,7 @@ This is not polyphonic voice-leading or independent chord-note glide.
 Gli uses event code 8 in song format 1.36; six-byte events and the 20480-byte
 song size are unchanged. Older firmware does not understand Gli. Current
 host schema3 and the recommended upload/template workflow support community
-1.36; see the host-tool README for exact assertions and legacy restrictions.
+1.36/1.37; see the host-tool README for exact assertions and legacy restrictions.
 
 * Current-state pitch grid
 

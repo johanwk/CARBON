@@ -27,7 +27,7 @@ an archive, copy a token, select ports or supply firmware/stopped flags.
 Each command asks you to stop CARBON and leave it undisturbed. Type
 `download 37` or `replace 37` at the prompt; anything else cancels before
 connecting. Upload also states the supported firmware: currently the installed
-1.37-jwk-scn1 for 1.37 sources, or 1.36-jwk-rc1 (also 1.36-jwk-snp3) for 1.36 sources. The tool cannot detect
+1.37-jwk-rc1 (or compatible 1.37-jwk-scn1) for 1.37 sources, or 1.36-jwk-rc1 (also 1.36-jwk-snp3) for 1.36 sources. The tool cannot detect
 firmware or stop playback automatically. The prompt replaces the old switches;
 confirm only if its conditions are true. Piped input cannot authorize a transfer.
 
@@ -70,7 +70,7 @@ It is a blank starting song derived from a verified song36 capture. Its example
 notes and arrangement were removed. Outputs are disabled until conversion
 sets them; calibration offsets are zero. It is not a backup of your device.
 
-The development default is schema4/profile `carbon-1.37-scene-gates`.
+The default is schema4/profile `carbon-1.37-scene-gates`.
 It contains no Notes, Scn, Gli or CCi events. For RC1, supply the retained
 `tools/carbon-backup/templates/default-1.36.json` explicitly to `convert`;
 templates are not implicitly migrated. Confirm the source-matching firmware
@@ -97,7 +97,7 @@ The following capture procedure is optional, not required for the default.
 
 ### Create your template
 
-1. On CARBON running community firmware 1.37-jwk-scn1, load a song you are willing to save again.
+1. On CARBON running community firmware 1.37-jwk-rc1 (or compatible 1.37-jwk-scn1), load a song you are willing to save again.
    Back it up first if you need to preserve its old saved version.
 2. Save that song using the panel.
 3. Stop playback. Do not edit, save or load anything during the backup.
@@ -316,7 +316,7 @@ with diagnostics. Bar1starts at time0; pickups are not inferred. A mid-bar meter
 change starts a new numbered bar. MIDI60is C4; CARBON uses96ticks per quarter.
 The planner still uses floating-point timing coordinates.
 
-Recommended development JSON uses schema4/profile `carbon-1.37-scene-gates`.
+Recommended JSON uses schema4/profile `carbon-1.37-scene-gates`.
 Schema3/1.36 remains supported including simple upload. Offline tools also
 read schemas1/2; simple upload rejects those older sources.
 The JSON format is a prototype. Each song archive contains a manifest and a
@@ -338,7 +338,7 @@ Use the public release checklist for candidate verification status.
 
 | Source | JSON profile | Simple upload prompt / advanced assertion |
 |---|---|---|
-| 1.37 | schema4 / `carbon-1.37-scene-gates` | 1.37-jwk-scn1 / `--firmware-community-1.37` |
+| 1.37 | schema4 / `carbon-1.37-scene-gates` | 1.37-jwk-rc1 (or compatible 1.37-jwk-scn1) / `--firmware-community-1.37` |
 | 1.36 | schema3 / `carbon-1.36-glide` | 1.36-jwk-rc1 or snp3 / `--firmware-community-1.36` |
 | 1.35 | schema2 / `carbon-1.35-note-delay` | advanced only: 1.35-jwk-dly1 / `--firmware-9c91ab0` |
 | 1.34 | schema1 / `carbon-1.34-shared-events` | offline editing only |
@@ -349,7 +349,7 @@ from the validated source: this does NOT detect installed firmware. Confirm
 that the named compatible firmware is installed. Unsupported or mismatched
 profiles fail before MIDI access. No automatic migration/downgrade is performed.
 
-MIDI import defaults to the blank 1.37 template in this development branch;
+MIDI import defaults to the blank 1.37 template in this release;
 explicit 1.35/1.36 templates remain supported. Conversion replaces the shared
 event bank, including any Scn events in a custom template. It does not invent
 scene-specific arrangements. RC1's published branch/tools remain unchanged.

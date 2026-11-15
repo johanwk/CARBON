@@ -1,6 +1,6 @@
-# Scene gates - 1.37-jwk-scn1 development
+# Scene gates - community 1.37 RC1
 
-Local follow-up to community 1.36 RC1; not part of that published release.
+Added in community 1.37; not part of the earlier 1.36 RC1 release.
 The user reports Scn gates work as intended on hardware. This is practical
 acceptance, not exhaustive interaction coverage. No other musical features added.
 
@@ -41,13 +41,13 @@ current-state potential-note preview, not a scene/probability prediction.
 
 Event code 9; data0 is a six-bit scene mask (0..63), data1 reserved zero.
 Six-byte events and 20480-byte song layout are unchanged. Numeric song version
-is 1.37, distinguishing these songs from RC1; identity is 1.37-jwk-scn1.
+is 1.37, distinguishing these songs from RC1; release identity is 1.37-jwk-rc1.
 Back up originals before saving. Older firmware cannot interpret Scn; do not
 expect faithful downgrade. No migration of existing event codes is needed.
 
 Host tools now support schema4/profile carbon-1.37-scene-gates and Scn
 parameters such as `scenes: [1,3,6]`. Simple upload prompts for installed
-1.37-jwk-scn1; advanced restore uses --firmware-community-1.37. Earlier profiles
+1.37-jwk-rc1 (or compatible 1.37-jwk-scn1); advanced restore uses --firmware-community-1.37. Earlier profiles
 remain supported with their matching assertions. No implicit migration occurs.
 See tools/carbon-backup/README.md for workflow and transfer safeguards.
 

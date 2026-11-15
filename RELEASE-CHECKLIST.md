@@ -1,4 +1,4 @@
-# Community 1.36-rc1 verification checklist
+# Community 1.37-rc1 verification checklist
 
 Community release-candidate test targets. The maintainer has approved limited
 prerelease publication to obtain wider user feedback, reporting no failures in
@@ -14,7 +14,7 @@ for an assistant to flash hardware or write songs.
       community prerelease; they are not marked tested.
 - [ ] Busy-pattern responsiveness checked; no measured interrupt/stack claim
       until instrumentation provides actual values.
-- [ ] New 1.36 interactive transfer/default-template hardware round-trip.
+- [ ] New 1.37 interactive transfer/default-template hardware round-trip.
 - [ ] Preserve existing notices/attribution and include corresponding source
       and build instructions with the firmware package.
 - [ ] Inspect exact source tree AND newly published history for private files.
@@ -22,6 +22,8 @@ for an assistant to flash hardware or write songs.
 
 ## Representative hardware checks - pending for rc1
 
+- [ ] Scn mask/LED editing, scene-dependent playback and save/reload in a
+      disposable song; check held-key release when leaving the editor.
 - [ ] Boot, correct System identity and familiar pre-upgrade song playback.
 - [ ] Save/reload a disposable song with Note delays, Gli and new control events.
 - [ ] Internal clock, then external MIDI sync; MIDI and CV/gate output.
@@ -41,10 +43,14 @@ for an assistant to flash hardware or write songs.
       Record duration/tempo/routes, audible jitter/dropouts and UI behavior.
 - [ ] Snapshot clock-source changes examined separately; do not promise
       seamless internal/external switching or restored synth patches.
-- [ ] Explicitly approved spare-slot 1.36 simple upload: recovery file verified,
+- [ ] Explicitly approved spare-slot 1.37 simple upload: recovery file verified,
       full readback match, panel LOAD and playback. Do not save stale RAM.
 
-## Recorded prior hardware evidence (not rc1 verification)
+## Recorded practical hardware evidence
+
+The user reports Scn scene gates work as intended on 1.37-jwk-scn1. That
+is positive practical acceptance, not an exhaustive button/LED or transfer
+test matrix. The rc1 identity change does not add musical behavior.
 
 User reports accept glide over MIDI/CV (CV clearer), effective pitch-grid preview,
 performance modes, snapshot/recall and snp3 queued-target readouts. Earlier

@@ -1,6 +1,6 @@
 # Building the unofficial CARBON firmware
 
-These instructions describe community candidate `1.36-jwk-rc1`. This is
+These instructions describe community candidate `1.37-jwk-rc1`. This is
 unofficial firmware, not a Kilpatrick Audio release. See also the
 [user guide](carbon-fw-2026-johanw.org).
 

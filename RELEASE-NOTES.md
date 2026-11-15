@@ -1,50 +1,54 @@
-# CARBON community-1.36-rc1 prerelease
+# CARBON community-1.37-rc1 prerelease
 
-Unofficial CARBON firmware, not a Kilpatrick Audio release. Feature set frozen.
-System identity: `1.36-jwk-rc1`; numeric song version: 1.36.
-Use the accompanying build record for
-the exact commit, checksum, toolchain, sizes and logs, never a filename alone.
+Unofficial CARBON firmware, not a Kilpatrick Audio release.
+System identity: `1.37-jwk-rc1`; numeric song version: 1.37.
+Use the accompanying build record for exact source, checksum and toolchain.
 
-## Contents
+## New since community 1.36 RC1
 
-Cumulative Program Change, Euclidean/bar-relative timing, ordered conditions,
-CCi, roots/Hrm, Inv/Compact, individual delays, curved glide, current-state
-grid preview, protected performance edits, RAM snapshots and queued readouts.
-Includes backup/JSON/MIDI import tooling. See README and the user guide.
+- Scn gates: later slots on a step execute only in selected active scenes.
+  No probability draw or contribution to Pre history.
+- Scn sits between PC and Prb in the event-type cycle. New gates pass all scenes.
+- Selecting one Scn slot takes over buttons 1--6 and their LEDs for mask editing.
+  Three paired-bar glyphs show the mask; the title spells out scene membership.
+  Buttons do not select tracks, mute, select/copy scenes; captured releases
+  remain consumed when leaving the editor.
+- JSON schema4/profile `carbon-1.37-scene-gates`, readable `scenes: [1,3,6]`,
+  validation/view/restore support and a blank 1.37 MIDI-import template.
+  Simple upload names the required 1.36/1.37 firmware from the source; advanced
+  1.37 restore uses `--firmware-community-1.37`. No automatic firmware detection.
 
-Compared with snp3 (25dab50), preparation changes the display identity and
-documentation, aligns the simple host workflow/default template to 1.36, adds
-host compatibility tests and cross-language layout checks, and improves build
-identity logging/host-source exclusion checks. No new musical features.
+See [SCENE-GATES.md](SCENE-GATES.md) and the [host guide](tools/carbon-backup/README.md).
+All earlier community features remain included. This RC freezes the feature set.
 
-Simple upload now requires schema3/1.36; its prompt asserts this community
-release. Advanced restore uses `--firmware-community-1.36`; legacy assertions
-remain explicitly scoped. All target/approval/backup/base/readback protections
-are retained. No migration of real songs is inferred from changing a suffix.
+## Evidence and limitations
 
-## Limitations and installation
+The user reports Scn gates work as intended on 1.37-jwk-scn1 and no failures in
+current practical use. This RC changes its display identity, not musical
+behavior. Host tests cover all64 masks across six scenes, editor/LED/key
+ownership, persistence, JSON round-trips and simulated transfer protections.
 
-Back up first. New songs/events are not faithfully downgradable. RAM snapshots
-are not persistent backups. Host replacement is non-atomic and requires panel
-LOAD afterward. MIDI portamento is receiver-dependent; grid preview is current
-state, not prediction. Runtime interrupt and stack measurements are absent.
-The maintainer reports no failures in current practical testing and has chosen
-a release candidate so other users can try it and report problems. This does
-not establish every checklist item as passed. Busy-load measurements and the
-new 1.36 simple-upload hardware round-trip remain community test targets.
-See RELEASE-CHECKLIST.md for coverage gaps and LICENSING.md for attribution.
+Practical feedback is not exhaustive validation. Busy-load CPU and stack
+high-water are unmeasured. The new 1.37 host transfer has fake-device coverage,
+not a hardware upload result. Optional remote LCD clients need glyph support.
+MIDI portamento remains synth-dependent; grid preview is not prediction;
+RAM snapshots are not persistent backups. See RELEASE-CHECKLIST.md.
 
-Report problems to https://github.com/johanwk/CARBON/issues with firmware
-identity, steps to reproduce, clock source, MIDI/CV routes and connected synth.
-Use disposable/backed-up songs; only share song files you have permission to
-publish, and avoid private backups. Reports of successful setups are welcome.
+Back up before installing or saving migrated songs. Older firmware, including
+1.36 RC1, cannot interpret Scn; faithful downgrade is not supported. Host song
+replacement is non-atomic across sectors and requires panel LOAD afterward,
+not saving stale RAM. All target/approval/recovery/readback safeguards remain.
 
-Use only the bootloader-preserving DFU procedure in README at **0x08020000**.
-Publish corresponding source/build instructions with any firmware binary.
+Use the README's dfu-util procedure at **0x08020000** to preserve the factory
+bootloader. Never use stock dfu.sh, 0x08000000 or mass erase for this image.
 
-## Relationship to upstream submissions
+## Contributing and previous releases
 
-At preparation, PR #10 is open at fc00313, #11 at c7c4a02, #12 at 998fead;
-all target upstream master and none is merged. The cumulative release descends
-from #12 and adds later work. It uses a separate release branch/tag, not
-an expansion of those narrower PRs. Their heads remain unchanged.
+Report issues at https://github.com/johanwk/CARBON/issues with identity,
+reproduction steps, clock source, routes and synth setup. Share only files you
+have permission to publish. Successful setup reports are welcome too.
+
+The 1.36 release/tag and upstream PR #10/#11/#12 branches are unchanged.
+1.37 is a separate cumulative prerelease; it does not depend on upstream
+review or merger. Corresponding source and build instructions accompany it.
+Existing license and attribution notices are preserved.

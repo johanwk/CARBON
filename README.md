@@ -1,14 +1,10 @@
 # CARBON community firmware
 
-**Development branch:** scene gates (`1.37-jwk-scn1`) are a local follow-up,
-not part of the 1.36 RC1 described below. See [SCENE-GATES.md](SCENE-GATES.md)
-for controls, hardware feedback and 1.37 JSON/tool support.
-
 Unofficial firmware for the Kilpatrick Audio CARBON hardware sequencer.
 Not an official Kilpatrick Audio release. Installation is at your own risk.
 
-**Community release candidate:** `community-1.36-rc1`, System identity
-`1.36-jwk-rc1`. See the [fork releases page](https://github.com/johanwk/CARBON/releases)
+**Community release candidate:** `community-1.37-rc1`, System identity
+`1.37-jwk-rc1`. See the [fork releases page](https://github.com/johanwk/CARBON/releases)
 for the binary, checksum and build record. This prerelease invites wider
 real-world testing; it is not a claim of exhaustive production validation.
 Official updater binaries do not contain these community additions.
@@ -16,7 +12,7 @@ Official updater binaries do not contain these community additions.
 ## What it adds
 
 Program Change per step/scene; Euclidean density/rotation and unusual bar
-divisions; ordered conditional events; Bias-routed internal controls (CCi);
+divisions; ordered conditional events including scene-mask gates; Bias-routed internal controls (CCi);
 roots and Hrm harmony; Inv/Compact voicing; individual note delays; curved
 CV glide and synth-dependent MIDI portamento; current-state pitch/delay grid;
 manual performance timing/pitch protection with next-bar target readouts;
@@ -47,7 +43,11 @@ Do not assume every firmware feature was tested with every device.
    `sha256sum main.bin` (Linux); the checksum must match that release.
 3. Install [dfu-util](https://dfu-util.sourceforge.net/). On macOS with Homebrew:
    `brew install dfu-util`; on Debian/Ubuntu: `sudo apt install dfu-util`.
-   Other platforms, USB permissions and drivers are not validated here.
+   Fedora: `sudo dnf install dfu-util`. Windows: extract the Windows package
+   linked from the dfu-util website. In DFU mode, use
+   [Zadig](https://zadig.akeo.ie/) to install WinUSB for **STM32 BOOTLOADER,
+   USB ID 0483:df11** only; do not replace CARBON's normal MIDI driver.
+   Windows/Linux instructions have not been CARBON-tested in this project.
 4. Stop playback, disconnect sensitive outputs if appropriate, and use reliable
    power and USB. Enter STM32 ROM DFU by holding the power button while applying
    power. Run `dfu-util -l`; confirm `0483:df11`, alt 0, Internal Flash.
@@ -59,6 +59,17 @@ dfu-util -d 0483:df11 -a 0 \
   --dfuse-address 0x08020000:leave \
   -D main.bin
 ```
+
+On Linux, prefix dfu-util commands with `sudo` if USB access is denied.
+On Windows PowerShell, place main.bin beside the extracted dfu-util.exe:
+
+```powershell
+Get-FileHash .\main.bin -Algorithm SHA256
+.\dfu-util.exe -l
+.\dfu-util.exe -d 0483:df11 -a 0 --dfuse-address 0x08020000:leave -D .\main.bin
+```
+
+Confirm the same USB ID/alt setting and release checksum before flashing.
 
 **0x08020000 is essential: it preserves the factory bootloader. Never use
 stock `dfu.sh`, development images, mass erase, or 0x08000000 for this release.**
@@ -77,10 +88,12 @@ application at 0x08020000. Do not erase or replace the bootloader as a shortcut.
 A firmware reflash does not repair a partially replaced saved song. Retain
 recovery archives and inspect/plan a supported song restore before retrying.
 Returning to older firmware requires its matching application and pre-upgrade
-songs; faithful downgrade of 1.36 songs is not supported.
+songs; faithful downgrade of 1.37 songs is not supported.
 
 ## Everyday starting points
 
+- Scn: select a Scn slot in Step Edit, then buttons 1--6 toggle allowed scenes
+  with matching LEDs. See [scene gates](SCENE-GATES.md).
 - Shift+Pattern: density; Shift+Transpose: Euclidean rotation in normal mode.
 - Clock menu: Perform Grid (Straight) and Perform Pitch (Octaves/Octaves+5ths).
   These protect manual gestures, not all automation. Running edits apply next
@@ -107,7 +120,7 @@ songs; faithful downgrade of 1.36 songs is not supported.
   lossless. Worst-case interrupt time and stack headroom are unmeasured.
 - The maintainer reports no failures in current practical testing. Coverage
   is not exhaustive: busy-load measurements and a hardware round-trip of the
-  new 1.36 simple-upload workflow remain useful community test targets.
+  new 1.37 simple-upload workflow remain useful community test targets.
 
 ## Build and contribute
 
