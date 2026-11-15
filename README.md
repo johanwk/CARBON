@@ -2,7 +2,7 @@
 
 **Development branch:** scene gates (`1.37-jwk-scn1`) are a local follow-up,
 not part of the 1.36 RC1 described below. See [SCENE-GATES.md](SCENE-GATES.md)
-for controls, test status and the current 1.37 host-tool limitation.
+for controls, hardware feedback and 1.37 JSON/tool support.
 
 Unofficial firmware for the Kilpatrick Audio CARBON hardware sequencer.
 Not an official Kilpatrick Audio release. Installation is at your own risk.

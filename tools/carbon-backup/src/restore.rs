@@ -12,9 +12,9 @@ pub fn validate_hardware_target(slot:usize,backup:&Value)->Result<(),String>{
 
 /// User assertion, not a device capability query. Checked before opening MIDI.
 pub fn validate_hardware_source(data:&[u8],firmware:&str)->Result<(),String>{
-    if !["--firmware-9c91ab0","--firmware-1.36-gli3","--firmware-community-1.36"].contains(&firmware){return Err("Require --firmware-community-1.36 (see README for legacy assertions)".into());}
+    if !["--firmware-9c91ab0","--firmware-1.36-gli3","--firmware-community-1.36","--firmware-community-1.37"].contains(&firmware){return Err("Require --firmware-community-1.36 or --firmware-community-1.37 (see README)".into());}
     validate_source(data)?;
-    let version=if firmware=="--firmware-9c91ab0"{35}else{36};
+    let version=if firmware=="--firmware-9c91ab0"{35}else if firmware=="--firmware-community-1.37"{37}else{36};
     if data[..4]!=[version,0,1,0]{return Err("Source version must match asserted firmware; no implicit migration".into());}
     crate::song::validate(data)
 }
@@ -46,12 +46,13 @@ pub fn diff(before:&[u8],after:&[u8])->Result<Value,String>{
 }
 /// Validate implemented event encodings. Unused bytes remain opaque.
 pub fn validate_source(data:&[u8])->Result<(),String>{
-    if data.len()!=SONG_SIZE || !([34,35,36].contains(&data[0]) && data[1..4]==[0,1,0]) || data[SONG_SIZE-4..]!=[0x47,0x4e,0x4f,0x53]{return Err("Source must be complete1.34/1.35/1.36 SONG image".into());}
+    if data.len()!=SONG_SIZE || !([34,35,36,37].contains(&data[0]) && data[1..4]==[0,1,0]) || data[SONG_SIZE-4..]!=[0x47,0x4e,0x4f,0x53]{return Err("Source must be complete 1.34/1.35/1.36/1.37 SONG image".into());}
     for (i,e) in data[1824..15648].chunks_exact(6).enumerate(){
         let valid=match e[0] {
             0|4|5=>true,
-            1=>((16..=29).contains(&e[1]) && e[2]<=127) || (data[0]==36 && ((e[1]==34 && e[2]<=8)||(e[1]==35 && e[2]<=127))),
-            8=>data[0]==36 && e[1]<=8 && e[2]<=127,
+            1=>((16..=29).contains(&e[1]) && e[2]<=127) || (data[0]>=36 && ((e[1]==34 && e[2]<=8)||(e[1]==35 && e[2]<=127))),
+            8=>data[0]>=36 && e[1]<=8 && e[2]<=127,
+            9=>data[0]==37 && e[1]<=63 && e[2]==0,
             2=>e[1]<=100,3=>e[1]<=27 && e[2]<=7,
             6=>e[1]<=16 && e[2]<=13,7=>e[1]<=5 && e[2]<=1,
             0x90=>e[1]<=127 && e[2]<=127 && (data[0]==34 || e[3]<=103 || e[3]==255),

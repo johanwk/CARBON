@@ -1,7 +1,8 @@
 # Scene gates - 1.37-jwk-scn1 development
 
 Local follow-up to community 1.36 RC1; not part of that published release.
-Hardware acceptance is pending. No musical features other than Scn are added.
+The user reports Scn gates work as intended on hardware. This is practical
+acceptance, not exhaustive interaction coverage. No other musical features added.
 
 ## Use
 
@@ -44,10 +45,11 @@ is 1.37, distinguishing these songs from RC1; identity is 1.37-jwk-scn1.
 Back up originals before saving. Older firmware cannot interpret Scn; do not
 expect faithful downgrade. No migration of existing event codes is needed.
 
-Current host JSON/edit/import/upload tools support through 1.36 and reject
-1.37 sources. Do not override profile/version checks. Raw backup-song/bank
-can still archive saved bytes; this is not a supported 1.37 restore workflow.
-Host Scn support is a separate follow-up.
+Host tools now support schema4/profile carbon-1.37-scene-gates and Scn
+parameters such as `scenes: [1,3,6]`. Simple upload prompts for installed
+1.37-jwk-scn1; advanced restore uses --firmware-community-1.37. Earlier profiles
+remain supported with their matching assertions. No implicit migration occurs.
+See tools/carbon-backup/README.md for workflow and transfer safeguards.
 
 The local LCD renderer supports four private ASCII control glyph codes for
 the mask, without changing existing font characters. An optional remote-LCD
@@ -59,7 +61,8 @@ Host tests cover all64 masks x6 scenes, history/random continuity, blocked
 Bias CCi, ordinary events before/after gates, Note Off, all-mask save/reload,
 editor type cycling/toggles, glyph rows, LED overlay/restoration and key release
 ownership including Shift/Scene and menu exclusion. Existing suites also pass.
-No physical LED/readability/button or playback results are claimed yet.
+User hardware feedback confirms Scn works as intended; individual button/LED
+edge cases were not enumerated. The new host 1.37 upload remains hardware-unverified.
 
 Suggested hardware check: disposable song with Scn followed by Note or CCi;
 toggle six keys, verify LEDs/three-cell mask/title, switch slots and scenes,

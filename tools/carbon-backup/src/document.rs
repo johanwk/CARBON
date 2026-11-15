@@ -11,7 +11,7 @@ pub fn validate_text(text:&str)->Result<String,String>{
   doc["schema_version"],doc["firmware_profile"].as_str().ok_or("Missing firmware profile")?,data.len(),hash(&data)))
 }
 
-const TYPES:[(u8,&str);12]=[(0,"Empty"),(1,"CCi"),(2,"Prb"),(3,"Euc"),(4,"Pre"),(5,"NotPre"),(6,"Hrm"),(7,"Inv"),(8,"Gli"),(0x90,"Note"),(0xb0,"CC"),(0xc0,"PC")];
+const TYPES:[(u8,&str);13]=[(0,"Empty"),(1,"CCi"),(2,"Prb"),(3,"Euc"),(4,"Pre"),(5,"NotPre"),(6,"Hrm"),(7,"Inv"),(8,"Gli"),(9,"Scn"),(0x90,"Note"),(0xb0,"CC"),(0xc0,"PC")];
 fn keys(v:&Value,expected:&[&str])->Result<(),String>{let m=v.as_object().ok_or("Expected object")?;if m.len()!=expected.len()||m.keys().any(|k|!expected.contains(&k.as_str())){return Err(format!("Missing/unknown fields; expected{expected:?}"));}Ok(())}
 fn num(v:&Value,max:u64)->Result<u64,String>{let n=v.as_u64().ok_or("Unsigned integer required")?;if n>max{return Err("Integer out of range".into());}Ok(n)}
 fn integer(v:&Value,min:i64,max:i64)->Result<i64,String>{let n=v.as_i64().ok_or("Integer required")?;if n<min||n>max{return Err("Integer out of range".into());}Ok(n)}
@@ -26,6 +26,7 @@ fn parameters(e:&[u8])->Value{match e[0]{
  0|4|5=>json!({}),1|0xb0=>json!({"controller":e[1],"value":e[2]}),2=>json!({"percent":e[1]}),
  3=>json!({"pair_index":e[1],"rotation":e[2]}),6=>json!({"scale_choice":e[1],"root_choice":e[2]}),
  8=>json!({"duration_choice":e[1],"curve":e[2]}),
+ 9=>json!({"scenes":(1..=6).filter(|s|e[1] & (1 << (s-1)) != 0).collect::<Vec<_>>()}),
  7=>json!({"rotations":e[1],"compact":e[2]!=0}),0xc0=>json!({"program":e[1]}),
  _=>json!({"pitch":e[1],"velocity":e[2],"length_ticks":u16::from_le_bytes([e[4],e[5]])})}}
 pub fn export(data:&[u8],slot:usize)->Result<Value,String>{
@@ -37,7 +38,7 @@ pub fn export(data:&[u8],slot:usize)->Result<Value,String>{
  let o=1056+2*(t*64+s);let mut step=json!({"step":s+1,"delay_ticks":data[o],"ratchet":data[o+1],"events":events});if data[0]>=35{step.as_object_mut().unwrap().remove("delay_ticks");step["delay"]=delay_json(data[o]);}steps.push(step);}
  tracks.push(json!({"track":t+1,"steps":steps}));}
  let list=(0..64).map(|i|{let o=48+6*i;json!({"entry":i+1,"scene_code":data[o] as i8,"length_beats":i16::from_le_bytes([data[o+2],data[o+3]]),"transpose":data[o+4] as i8})}).collect::<Vec<_>>();
- Ok(json!({"format":"carbon-song","schema_version":if data[0]==36{3}else if data[0]>=35{2}else{1},"firmware_profile":if data[0]==36{"carbon-1.36-glide"}else if data[0]>=35{"carbon-1.35-note-delay"}else{"carbon-1.34-shared-events"},
+ Ok(json!({"format":"carbon-song","schema_version":if data[0]==37{4}else if data[0]==36{3}else if data[0]>=35{2}else{1},"firmware_profile":if data[0]==37{"carbon-1.37-scene-gates"}else if data[0]==36{"carbon-1.36-glide"}else if data[0]>=35{"carbon-1.35-note-delay"}else{"carbon-1.34-shared-events"},
  "metadata":{"title":"","description":"","extensions":{}},"dependencies":[],
  "provenance":{"capture_slot":slot,"raw_sha256":hash(data),"raw_hex":data.iter().map(|v|format!("{v:02x}")).collect::<String>()},
  "settings":song::export_fields(data)?,"song_list":list,"shared_tracks":tracks}))
@@ -51,8 +52,9 @@ pub fn export_archive(manifest:&Value,data:&[u8],slot:usize)->Result<Value,Strin
 }
 pub fn import(doc:&Value)->Result<(usize,Vec<u8>),String>{
  keys(doc,&["format","schema_version","firmware_profile","metadata","dependencies","provenance","settings","song_list","shared_tracks"])?;
+ let scene_gates=doc["schema_version"]==4 && doc["firmware_profile"]=="carbon-1.37-scene-gates";
  let glide=doc["schema_version"]==3 && doc["firmware_profile"]=="carbon-1.36-glide";
- let modern=glide || (doc["schema_version"]==2 && doc["firmware_profile"]=="carbon-1.35-note-delay");
+ let modern=scene_gates || glide || (doc["schema_version"]==2 && doc["firmware_profile"]=="carbon-1.35-note-delay");
  if doc["format"]!="carbon-song"||(!modern && (doc["schema_version"]!=1||doc["firmware_profile"]!="carbon-1.34-shared-events")){return Err("Unsupported schema/firmware capability profile".into());}
  keys(&doc["metadata"],&["title","description","extensions"])?;
  if !doc["metadata"]["title"].is_string()||!doc["metadata"]["description"].is_string()||!doc["metadata"]["extensions"].is_object(){return Err("Invalid metadata".into());}
@@ -63,7 +65,7 @@ pub fn import(doc:&Value)->Result<(usize,Vec<u8>),String>{
  if text.len()!=SONG_SIZE*2 || !text.bytes().all(|b|b.is_ascii_hexdigit()){return Err("Invalid raw hex".into());}
  let mut data=(0..text.len()).step_by(2).map(|i|u8::from_str_radix(&text[i..i+2],16).unwrap()).collect::<Vec<_>>();
  if prov["raw_sha256"]!=hash(&data){return Err("Provenance hash mismatch".into());}
- if data[0] != (if glide{36}else if modern{35}else{34}){return Err("Profile must match provenance version; migrate explicitly".into());}
+ if data[0] != (if scene_gates{37}else if glide{36}else if modern{35}else{34}){return Err("Profile must match provenance version; migrate explicitly".into());}
  restore::validate_source(&data)?;song::validate(&data)?;song::apply_fields(&mut data,&doc["settings"])?;
  let list=doc["song_list"].as_array().ok_or("Missing song list")?;if list.len()!=64{return Err("Exactly64 list entries required".into());}
  for(i,e)in list.iter().enumerate(){keys(e,&["entry","scene_code","length_beats","transpose"])?;if num(&e["entry"],64)?!=i as u64+1{return Err("List positions duplicate/out of order".into());}
@@ -76,9 +78,16 @@ pub fn import(doc:&Value)->Result<(usize,Vec<u8>),String>{
  let events=step["events"].as_array().ok_or("Missing slots")?;if events.len()!=6{return Err("Exactly6 ordered slots required".into());}
  for(p,event)in events.iter().enumerate(){keys(event,&["slot","kind","parameters"])?;if num(&event["slot"],6)?!=p as u64+1{return Err("Slot identity/order mismatch".into());}
  let kind=event["kind"].as_str().ok_or("Missing kind")?;let code=TYPES.iter().find(|(_,name)|*name==kind).ok_or("Unknown event kind")?.0;let params=&event["parameters"];let o=1824+((t*64+s)*6+p)*6;data[o]=code;
- let names:&[&str]=match code{0|4|5=>&[],1|0xb0=>&["controller","value"],2=>&["percent"],3=>&["pair_index","rotation"],6=>&["scale_choice","root_choice"],7=>&["rotations","compact"],8=>&["duration_choice","curve"],0xc0=>&["program"],_=>&["pitch","velocity","length_ticks"]};
+ let names:&[&str]=match code{0|4|5=>&[],1|0xb0=>&["controller","value"],2=>&["percent"],3=>&["pair_index","rotation"],6=>&["scale_choice","root_choice"],7=>&["rotations","compact"],8=>&["duration_choice","curve"],9=>&["scenes"],0xc0=>&["program"],_=>&["pitch","velocity","length_ticks"]};
  if params.get("delay_ticks").is_some(){return Err("Independent note delays require future firmware; not silently quantized".into());}let mut expected=names.to_vec();if modern && code==0x90{expected.push("delay");data[o+3]=delay_code(&params["delay"],true)?;}keys(params,&expected)?;
- for(n,name)in names.iter().enumerate(){match *name{"length_ticks"=>data[o+4..o+6].copy_from_slice(&(num(&params[*name],65535)? as u16).to_le_bytes()),"compact"=>data[o+2]=params[*name].as_bool().ok_or("Compact must be boolean")? as u8,_=>data[o+1+n]=num(&params[*name],255)? as u8}}
+ for(n,name)in names.iter().enumerate(){match *name{"scenes"=>{
+ if !scene_gates{return Err("Scn requires schema4 / carbon-1.37-scene-gates".into());}
+ let scenes=params[*name].as_array().ok_or("Scn scenes must be an array")?;
+ let mut mask=0u8;
+ for value in scenes {let scene=num(value,6)?;if scene==0{return Err("Scene numbers must be 1..6".into());}
+ let bit=1u8 << (scene-1);if mask & bit != 0{return Err("Duplicate scene number".into());}mask|=bit;}
+ data[o+1]=mask;data[o+2]=0;
+ },"length_ticks"=>data[o+4..o+6].copy_from_slice(&(num(&params[*name],65535)? as u16).to_le_bytes()),"compact"=>data[o+2]=params[*name].as_bool().ok_or("Compact must be boolean")? as u8,_=>data[o+1+n]=num(&params[*name],255)? as u8}}
  }}}
  restore::validate_source(&data)?;song::validate(&data)?;Ok((slot,data))
 }
@@ -90,6 +99,40 @@ pub fn import(doc:&Value)->Result<(usize,Vec<u8>),String>{
  for i in 0..384{d[1056+2*i]=0;d[1057+2*i]=1;}for i in 0..2304{d[1824+6*i]=0;}
  d[15648]=0;d[15649]=100;d[15650]=255;d[15654..15662].fill(0);d[15662]=1;d[15663]=0;d[15664]=12;d[15665]=100;d[15738..15774].fill(100);d[15774..15810].fill(0);d[15810]=255;d[15811..15817].fill(254);
  d[1830..1836].copy_from_slice(&[0x90,48,96,255,106,0]);d}
+ #[test]fn scene_gate_137_roundtrip_and_validation(){
+  let mut raw=fixture();raw[0]=37;
+  raw[1824..1830].copy_from_slice(&[9,0,0,123,45,67]);
+  raw[1836..1842].copy_from_slice(&[8,4,64,255,0,0]);
+  raw[1842..1848].copy_from_slice(&[1,34,8,255,0,0]);
+  raw[1848..1854].copy_from_slice(&[1,35,127,255,0,0]);
+  for mask in 0..64 {
+   raw[1825]=mask;let doc=export(&raw,19).unwrap();
+   assert_eq!(doc["schema_version"],4);assert_eq!(doc["firmware_profile"],"carbon-1.37-scene-gates");
+   let event=&doc["shared_tracks"][0]["steps"][0]["events"][0];
+   assert_eq!(event["kind"],"Scn");
+   assert_eq!(event["parameters"]["scenes"],json!((1..=6).filter(|s|mask & (1 << (s-1))!=0).collect::<Vec<_>>()));
+   assert_eq!(import(&doc).unwrap().1,raw);
+   restore::validate_hardware_source(&raw,"--firmware-community-1.37").unwrap();
+   assert!(restore::validate_hardware_source(&raw,"--firmware-community-1.36").is_err());
+  }
+  raw[1825]=0;let base=export(&raw,19).unwrap();let mut doc=base.clone();
+  doc["shared_tracks"][0]["steps"][0]["events"][0]["parameters"]["scenes"]=json!([6,1,3]);
+  let after=import(&doc).unwrap().1;assert_eq!(after[1825],37);
+  assert_eq!(raw.iter().zip(&after).enumerate().filter_map(|(i,(a,b))|(a!=b).then_some(i)).collect::<Vec<_>>(),vec![1825]);
+  let plan=restore::Plan::new(19,raw.clone(),after.clone(),restore::Mode::Patch).unwrap();
+  assert_eq!(plan.summary()["sector_indices"],json!([0]));
+  assert_eq!(plan.summary()["diff"]["event_changes"].as_array().unwrap().len(),1);
+  assert!(crate::view::render(&after,&crate::view::Options{track:Some(1),first_step:1,last_step:1,..Default::default()}).unwrap().contains("scenes 1,3,6"));
+  for bad in [json!([0]),json!([7]),json!([1,1]),json!([-1]),json!([1.5]),json!([true]),json!(["1"]),json!(null),json!(63)] {
+   let mut d=base.clone();d["shared_tracks"][0]["steps"][0]["events"][0]["parameters"]["scenes"]=bad;assert!(import(&d).is_err());
+  }
+  let mut d=base.clone();d["shared_tracks"][0]["steps"][0]["events"][0]["parameters"]["mask"]=json!(0);assert!(import(&d).is_err());
+  for version in [34,35,36,38] {let mut bad=raw.clone();bad[0]=version;assert!(export(&bad,19).is_err());}
+  for (mask,reserved) in [(64,0),(255,0),(0,1)]{let mut bad=raw.clone();bad[1825]=mask;bad[1826]=reserved;assert!(export(&bad,19).is_err());}
+  let mut d=base;d["schema_version"]=json!(3);d["firmware_profile"]=json!("carbon-1.36-glide");assert!(import(&d).is_err());
+  let mut old=fixture();old[0]=36;let mut d=export(&old,19).unwrap();
+  d["shared_tracks"][0]["steps"][0]["events"][0]=json!({"slot":1,"kind":"Scn","parameters":{"scenes":[1]}});assert!(import(&d).is_err());
+ }
  #[test]fn glide_136_roundtrip(){
   let mut raw=fixture();raw[0]=36;
   raw[1824..1830].copy_from_slice(&[8,4,32,255,0,0]);

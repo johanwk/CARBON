@@ -32,11 +32,12 @@ fn detail(e:&[u8])->(&'static str,String){let a=e[1];let b=e[2];let len=u16::fro
  3=>("Euc",format!("pair index {a}  rotation {b}")),4=>("Pre",String::new()),5=>("!Pre",String::new()),
  6=>("Hrm",format!("scale choice {a}  root choice {b}")),7=>("Inv",format!("rotations {a}  Compact {}",if b==0{"Off"}else{"On"})),
  8=>("Gli",format!("duration choice {a}  curve {b}")),
+ 9=>("Scn",format!("scenes {} (later slots only)",if a==0{"none".into()}else{(1..=6).filter(|s|a & (1 << (s-1)) != 0).map(|s|s.to_string()).collect::<Vec<_>>().join(",")})),
  _=>("Unknown",format!("raw type {} data {a}/{b} length {len}",e[0]))}}
 pub fn render(data:&[u8],opts:&Options)->Result<String,String>{
  if data.len()!=SONG_SIZE{return Err("Wrong song size".into());}
  let version=u32::from_le_bytes(data[..4].try_into().unwrap());
- if version!=0x10022 && version!=0x10023 && version!=0x10024{return Err("View currently requires1.34 image; no implicit legacy migration".into());}
+ if version!=0x10022 && version!=0x10023 && version!=0x10024 && version!=0x10025{return Err("View requires a 1.34..1.37 image; no implicit migration".into());}
  crate::restore::validate_source(data)?;crate::song::validate(data)?;
  if opts.first_step<1||opts.last_step>64||opts.first_step>opts.last_step||opts.track.is_some_and(|t|!(1..=6).contains(&t)){return Err("Invalid view selection".into());}
  if opts.grid{return render_grid(data,opts);}

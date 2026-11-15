@@ -21,12 +21,18 @@ pub fn arguments(args:&[String])->Result<(bool,usize,String),String>{
 }
 
 
+pub fn firmware_assertion(raw:&[u8])->Result<&'static str,String>{
+ match raw.first(){Some(36)=>Ok("--firmware-community-1.36"),Some(37)=>Ok("--firmware-community-1.37"),_=>Err("Simple upload requires a 1.36 or 1.37 source".into())}
+}
+pub fn firmware_description(raw:&[u8])->Result<&'static str,String>{
+ match firmware_assertion(raw)? {"--firmware-community-1.37"=>Ok("1.37-jwk-scn1 (scene gates)"),_=>Ok("1.36-jwk-rc1 (or compatible 1.36-jwk-snp3)")}
+}
 pub fn validate_upload(text:&str)->Result<Vec<u8>,String>{
     let doc=crate::json::parse(text)?;
     let (_,raw)=document::import(&doc)?;
     // The simple UI includes this firmware assertion in its confirmation text.
     // It is not inferred from stored song versions and is not a capability query.
-    restore::validate_hardware_source(&raw,"--firmware-community-1.36")?;
+    restore::validate_hardware_source(&raw,firmware_assertion(&raw)?)?;
     Ok(raw)
 }
 pub fn confirmation(action:&str,slot:usize,line:&str)->bool{
@@ -49,7 +55,7 @@ pub fn download<D:Device>(device:&mut D,slot:usize,approved:bool)->Result<Value,
 pub fn upload<D:Device,F:FnMut(&[u8])->Result<(),String>>(device:&mut D,slot:usize,raw:Vec<u8>,approved:bool,save_backup:F)->Result<String,String>{
     if !approved{return Err("Cancelled".into());}
     song_range(slot)?;
-    restore::validate_hardware_source(&raw,"--firmware-community-1.36")?;
+    restore::validate_hardware_source(&raw,firmware_assertion(&raw)?)?;
     let result=hash(&raw);
     let before=read_pair(device,slot)?;
     let plan=Plan::new(slot,before,raw,Mode::Replace)?;
@@ -94,6 +100,18 @@ pub fn upload<D:Device,F:FnMut(&[u8])->Result<(),String>>(device:&mut D,slot:usi
         assert_eq!(parse(&["upload","x.json","37"]).unwrap(),(true,37,"x.json".into()));
         for xs in [vec!["backup","song","37"],vec!["upload","song","37","x.json","extra"],vec!["backup","track","37","x.json"]]{assert!(parse(&xs).is_err());}
     }
+    #[test]fn scene_gate_transfer(){
+ let mut raw=fixture();raw[0]=37;raw[1824..1830].copy_from_slice(&[9,37,0,255,0,0]);
+ let doc=document::export(&raw,37).unwrap();assert_eq!(validate_upload(&doc.to_string()).unwrap(),raw);
+ assert!(firmware_description(&raw).unwrap().contains("1.37-jwk-scn1"));
+ assert!(firmware_description(&fixture()).unwrap().contains("1.36-jwk-rc1"));
+ let mut d=device();let backed=d.backed.clone();upload(&mut d,37,raw.clone(),true,|before|{assert_eq!(before,fixture());backed.set(true);Ok(())}).unwrap();
+ assert_eq!(d.data,raw);assert_eq!(d.writes,325);
+ assert_eq!(document::import(&download(&mut d,37,true).unwrap()).unwrap().1,raw);
+ let mut d=device();assert!(upload(&mut d,37,raw.clone(),false,|_|panic!()).is_err());assert_eq!(d.reads,0);
+ assert!(upload(&mut d,37,raw.clone(),true,|_|Err("disk full".into())).is_err());assert_eq!(d.writes,0);
+ d.stale=true;d.reads=0;assert!(upload(&mut d,37,raw,true,|_|panic!()).is_err());assert_eq!(d.writes,0);
+}
     #[test]fn community_source_guards(){
  let mut raw=fixture();
  raw[1824..1830].copy_from_slice(&[8,4,64,255,0,0]);
