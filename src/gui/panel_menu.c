@@ -622,9 +622,11 @@ void panel_menu_update_display(void) {
 // display the swing menu
 static void panel_menu_display_timing_value(int kind) {
     char value[32];
-    panel_utils_step_len_to_str(value, seq_engine_timing_value(seq_ctrl_get_scene(),
-        seq_ctrl_get_first_track(), kind));
-    if(seq_engine_timing_pending(seq_ctrl_get_first_track(), kind)) strcat(value, " next bar");
+    int choice = seq_engine_timing_value(seq_ctrl_get_scene(), seq_ctrl_get_first_track(), kind);
+    if(kind && choice == SEQ_UTILS_ARP_CHORD) strcpy(value, "Chord");
+    else panel_utils_step_len_to_str(value, choice);
+    if(seq_engine_timing_pending(seq_ctrl_get_first_track(), kind))
+        strcat(value, kind && choice == SEQ_UTILS_ARP_CHORD ? " >bar" : " next bar");
     gui_set_menu_value(value);
 }
 

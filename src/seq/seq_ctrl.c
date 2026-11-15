@@ -1318,8 +1318,18 @@ void seq_ctrl_adjust_arp_speed(int change) {
     int track, val;
     if(!change) return;
     int current = seq_engine_timing_value(seq_engine_get_current_scene(), sstate.first_track, 1);
-    val = seq_engine_straight_enabled() ? seq_engine_straight_choice(current, change)
-        : seq_utils_clamp(current + change, 0, SEQ_UTILS_ARP_SPEEDS - 1);
+    // Chord is a mode endpoint, not a rhythmic division. Straight still skips
+    // triplet/dotted rates but permits entering/leaving Chord at the slow end.
+    if(seq_engine_straight_enabled()) {
+        val=current;
+        int moves=seq_utils_clamp(change,-128,128), dir=moves>0?1:-1;
+        if(moves<0) moves=-moves;
+        while(moves--) {
+            if(val==SEQ_UTILS_ARP_CHORD) val=dir<0?SEQ_UTILS_STEP_WHOLE:SEQ_UTILS_ARP_CHORD;
+            else if(val==SEQ_UTILS_STEP_WHOLE && dir>0) val=SEQ_UTILS_ARP_CHORD;
+            else val=seq_engine_straight_choice(val,dir);
+        }
+    } else val=seq_utils_clamp(current + change, 0, SEQ_UTILS_ARP_SPEEDS - 1);
     for(track = 0; track < SEQ_NUM_TRACKS; track++)
         if(sstate.track_select[track]) seq_engine_adjust_timing(track, 1, val);
 }

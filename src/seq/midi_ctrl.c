@@ -164,8 +164,8 @@ int midi_ctrl_internal_cc_to_value(int controller, int value, int motion_length)
         case MIDI_CTRL_CC_ARP_TYPE:
             return seq_utils_clamp(value >> 3, 0, ARP_NUM_TYPES - 1);
         case MIDI_CTRL_CC_ARP_SPEED:
-            return seq_utils_clamp((value * SEQ_UTILS_ARP_SPEEDS) >> 7,
-                0, SEQ_UTILS_ARP_SPEEDS - 1);
+            return seq_utils_clamp((value * SEQ_UTILS_STANDARD_STEP_LENS) >> 7,
+                0, SEQ_UTILS_STANDARD_STEP_LENS - 1);
         case MIDI_CTRL_CC_ARP_GATE_TIME:
             return seq_utils_clamp((value << 2) + 1,
                 ARP_GATE_TIME_MIN, ARP_GATE_TIME_MAX);
@@ -341,8 +341,8 @@ void midi_ctrl_handle_midi_msg(struct midi_msg *msg) {
                 break;
             case MIDI_CTRL_CC_ARP_SPEED:
                 seq_ctrl_set_arp_speed(track,
-                    seq_utils_clamp((msg->data1 * SEQ_UTILS_ARP_SPEEDS) >> 7,
-                    0, SEQ_UTILS_ARP_SPEEDS - 1));
+                    seq_utils_clamp((msg->data1 * SEQ_UTILS_STANDARD_STEP_LENS) >> 7,
+                    0, SEQ_UTILS_STANDARD_STEP_LENS - 1));
                 break;
             case MIDI_CTRL_CC_ARP_GATE_TIME:
                 seq_ctrl_set_arp_gate_time(track,

@@ -837,7 +837,9 @@ static void step_edit_cci_value_title(char *title, int controller, int raw) {
             return;
         case MIDI_CTRL_CC_STEP_LENGTH:
         case MIDI_CTRL_CC_ARP_SPEED:
-            panel_utils_step_len_to_str(value, decoded);
+            if(controller == MIDI_CTRL_CC_ARP_SPEED && decoded == SEQ_UTILS_ARP_CHORD)
+                strcpy(value, "Chord");
+            else panel_utils_step_len_to_str(value, decoded);
             label = controller == MIDI_CTRL_CC_STEP_LENGTH ? "Step length" : "Arp speed";
             break;
         case MIDI_CTRL_CC_TRACK_TRANSPOSE:

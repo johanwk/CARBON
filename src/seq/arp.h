@@ -48,6 +48,8 @@ void arp_set_type(int track, int type);
 
 // set the arp speed
 void arp_set_speed(int track, int speed);
+int arp_chord_enabled(int track);
+void arp_play_chord(int track, const int *notes, int count, int velocity, int gate_ticks);
 
 // set the arp gate time - ticks
 void arp_set_gate_time(int track, int time);

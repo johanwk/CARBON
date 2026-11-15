@@ -44,6 +44,8 @@ void seq_ctrl_reset_pos(void) {}
 void metronome_run(int tick) {}
 #ifndef CARBON_TEST_PITCH
 void arp_run(int tick) {}
+int arp_chord_enabled(int track) {return 0;}
+void arp_play_chord(int track,const int *notes,int count,int velocity,int gate_ticks) {}
 #endif
 void step_edit_run(uint32_t tick) {}
 static int edit_active, edit_resumes;

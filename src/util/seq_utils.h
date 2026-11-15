@@ -28,7 +28,8 @@
 // track lengths are appended and deliberately excluded from arp speed choices.
 #define SEQ_UTILS_STANDARD_STEP_LENS 17
 #define SEQ_UTILS_STEP_LENS 23  // enumerated track step lengths
-#define SEQ_UTILS_ARP_SPEEDS SEQ_UTILS_STANDARD_STEP_LENS
+#define SEQ_UTILS_ARP_CHORD 17 // arp-only mode, NOT track bar division 17
+#define SEQ_UTILS_ARP_SPEEDS 18
 #define SEQ_UTILS_STEP_32ND_T 0
 #define SEQ_UTILS_STEP_32ND 1
 #define SEQ_UTILS_STEP_16TH_T 2

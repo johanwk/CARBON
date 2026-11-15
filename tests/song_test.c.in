@@ -168,5 +168,9 @@ int main(void) {
     songs.state=SONG_IO_STATE_SAVE;assert(song_undo_capture()==-1 && song_undo_restore()==-1);
     songs.state=SONG_IO_STATE_IDLE;assert(!song_undo_restore());
     assert(!song_load(0));assert(!song_undo_available());song_timer_task();
+    song_set_arp_speed(0,0,SEQ_UTILS_ARP_CHORD);
+    song_save(0);song_timer_task();memset(&song,0,sizeof(song));
+    song_load(0);song_timer_task();assert(song_get_arp_speed(0,0)==SEQ_UTILS_ARP_CHORD);
+    assert(sizeof(song)==20480);
     puts("song tests passed"); return 0;
 }

@@ -35,7 +35,49 @@ static void live(int status, int note, int value) {
     seq_engine_live_send_msg(0, &msg);
 }
 // Hrm + delayed MIDI phrase investigation: production engine/output path.
+static void test_arp_chords(void) {
+    for(int type=0;type<ARP_NUM_TYPES;type++) {
+        init();test_scale=SCALE_CHROMATIC;test_transpose=0;outproc_root_changed();
+        sestate.arp_enable[0]=1;arp_set_arp_enable(0,1);arp_set_type(0,type);arp_set_speed(0,SEQ_UTILS_ARP_CHORD);
+        for(int notes=1;notes<=6;notes++) {
+            wires=0;int input[6]={60,64,67,71,74,77};
+            arp_play_chord(0,input,notes,100,24);
+            assert(astate[0].playing_note_count>=1 && astate[0].playing_note_count<=4);
+            int voices=astate[0].playing_note_count;
+            for(int i=0;i<voices;i++) {
+                int pitch=astate[0].playing_notes[i];assert(pitch>=60 && pitch<=72);
+                for(int j=0;j<i;j++) assert(astate[0].playing_notes[j]!=pitch);
+            }
+            int count=wires;arp_run(100);assert(wires==count); // attack tick not charged as gate time
+            for(int t=1;t<24;t++) {arp_run(100+t);assert(wires==count);}
+            arp_run(124);assert(wires==count+2*voices && !astate[0].playing_note_count);
+        }
+    }
+    init();test_scale=SCALE_CHROMATIC;test_transpose=0;outproc_root_changed();
+    sestate.arp_enable[0]=1;arp_set_arp_enable(0,1);arp_set_type(0,ARP_TYPE_UP4);arp_set_speed(0,SEQ_UTILS_ARP_CHORD);
+    int input[1]={60};arp_play_chord(0,input,1,100,48);
+    assert(astate[0].playing_note_count==2 && astate[0].playing_notes[0]==60 && astate[0].playing_notes[1]==72);
+    arp_set_speed(0,SEQ_UTILS_STEP_16TH);assert(!astate[0].playing_note_count && !arp_chord_enabled(0));
+    arp_set_speed(0,SEQ_UTILS_ARP_CHORD);
+    // Production step path: collect eligible Notes together, ignore stored
+    // delays/lengths, and use step interval times gate scale.
+    sestate.step_size[0]=96;sestate.gate_time[0]=64;
+    struct seq_engine_step_visit v={.slots=7};
+    v.events[0]=(struct track_event){.type=SONG_EVENT_NOTE,.data0=60,.data1=80,.length=1,.delay=103};
+    v.events[1]=(struct track_event){.type=SONG_EVENT_NOTE,.data0=64,.data1=100,.length=200,.delay=0};
+    v.events[2]=(struct track_event){.type=SONG_EVENT_NOTE,.data0=67,.data1=100,.length=200,.delay=0};
+    arp_set_type(0,ARP_TYPE_UP1);wires=0;seq_engine_track_play_step(0,0,&v);
+    assert(wires==6 && astate[0].playing_note_count==3 && astate[0].play_note_timeout==48);
+    for(int i=0;i<6;i++) assert(wire[i].status==MIDI_NOTE_ON && wire[i].data1==80);
+    for(int i=0;i<SEQ_ENGINE_MAX_NOTES;i++) assert(!sestate.track_active_notes[0][i].note.msg.status);
+    seq_engine_track_stop_all_notes(0);assert(!astate[0].playing_note_count && wires==12);
+    // Gate-masked chord input never enters the collected group.
+    v.slots=1;seq_engine_track_play_step(0,0,&v);assert(astate[0].playing_note_count==1);
+    arp_set_type(0,ARP_TYPE_UP2);assert(!astate[0].playing_note_count);
+    seq_engine_track_play_step(0,0,&v);arp_set_arp_enable(0,0);assert(!astate[0].playing_note_count);
+}
 static void test_harmony_delayed_phrase(void) {
+    test_arp_chords();
     init(); test_root=SONG_ROOT_OFF; test_scale=SCALE_CHROMATIC;
     test_transpose=0; outproc_root_changed();
     enabled[0]=1; sestate.clock_div_count[0]=0; sestate.step_size[0]=96;

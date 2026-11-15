@@ -46,6 +46,7 @@ struct arp_state {
     int type;  // arp type
     int gate_time;  // arp gate time
     int step_size;  // arp step size in ticks
+    int chord_mode, chord_fresh;
     int16_t held_notes[ARP_MAX_HELD_NOTES];  // held notes
     int8_t held_order[ARP_MAX_HELD_NOTES];  // held note order
     int8_t held_velo;  // held note velocity
@@ -83,6 +84,45 @@ void arp_timeout_notes(int track);
 int arp_find_label(int track, int label);
 void arp_take_snapshot(int track);
 
+// Synchronous, bounded collection uses the production arp interpreter.
+static int chord_collect_track = -1, chord_bass, chord_count;
+static int chord_notes[4];
+static void arp_collect_chord_note(int note) {
+    // Keep generated pitch classes but fold octave doubles into one octave.
+    int distance=note-chord_bass;
+    int pitch_class=((distance % 12)+12)%12;
+    note=chord_bass + (pitch_class ? pitch_class : distance>0 ? 12 : 0);
+    for(int i=0;i<chord_count;i++) if(chord_notes[i]==note) return;
+    if(chord_count<4) chord_notes[chord_count++]=note;
+}
+int arp_chord_enabled(int track) {
+    return track>=0 && track<SEQ_NUM_TRACKS && astate[track].arp_enable && astate[track].chord_mode;
+}
+void arp_play_chord(int track, const int *notes, int count, int velocity, int gate_ticks) {
+    if(!arp_chord_enabled(track) || count<=0 || count>SEQ_TRACK_POLY) return;
+    arp_stop_all_notes(track);
+    struct arp_state saved = astate[track];
+    arp_clear_input(track);
+    chord_bass=notes[0];chord_count=0;
+    for(int i=0;i<count;i++) {
+        if(notes[i]<chord_bass) chord_bass=notes[i];
+        astate[track].held_notes[i]=notes[i];
+        astate[track].held_order[i]=i+1;
+    }
+    astate[track].held_note_count=count;
+    arp_reset_program(track);
+    chord_collect_track=track;
+    // At most 16 ordinary arp advances, each bounded by ARP_MAX_LOOP_COUNT.
+    // This is a musical sample, not an unbounded attempt to finish a cycle.
+    for(int i=0;i<16 && chord_count<4;i++) arp_execute_step(track);
+    chord_collect_track=-1;
+    astate[track]=saved;
+    astate[track].held_velo=velocity;
+    for(int i=0;i<chord_count;i++) arp_start_note(track,chord_notes[i]);
+    astate[track].play_note_timeout=gate_ticks<1?1:gate_ticks;
+    astate[track].chord_fresh=1;
+}
+
 // init the arp
 void arp_init(void) {
     int track, i;
@@ -97,6 +137,7 @@ void arp_init(void) {
         astate[track].playing_note_count = 0;
         astate[track].play_note_timeout = 0;
         astate[track].gate_time = 1;
+        astate[track].chord_mode = astate[track].chord_fresh = 0;
 
         // reset stuff
         arp_set_seq_enable(0);
@@ -119,6 +160,13 @@ void arp_run(int tick_count) {
             astate[track].seq_clock_count = 0;
         }
 
+        // Sequenced Chord attacks are batched after the step's eligible slots.
+        // Never free-run the arp program in this mode (including live input).
+        if(arp_chord_enabled(track)) {
+            if(astate[track].chord_fresh) astate[track].chord_fresh=0;
+            else arp_timeout_notes(track);
+            continue;
+        }
         // run when arp is enabled
         if(astate[track].arp_enable) {
             // run the step
@@ -276,6 +324,7 @@ void arp_set_type(int track, int type) {
         log_error("ast - type invalid: %d", type);
         return;
     }
+    if(astate[track].chord_mode) arp_stop_all_notes(track);
     astate[track].type = type;
     arp_reset_program(track);
     arp_progs_load(track, astate[track].type);  // load program
@@ -298,7 +347,14 @@ void arp_set_speed(int track, int speed) {
         log_error("ass - speed invalid: %d", speed);
         return;
     }
-    astate[track].step_size = seq_utils_step_len_to_ticks(speed);
+    int chord = speed == SEQ_UTILS_ARP_CHORD;
+    if(chord != astate[track].chord_mode) {
+        arp_clear_input(track);
+        arp_reset_program(track);
+        astate[track].chord_fresh=0;
+    }
+    astate[track].chord_mode=chord;
+    astate[track].step_size = chord ? 1 : seq_utils_step_len_to_ticks(speed);
 }
 
 // set the gate time - ticks
@@ -517,7 +573,7 @@ void arp_execute_step(int track) {
                 astate[track].pc ++;
                 return;  // we need to return here to pause execution
             case AP_PLAY_NOTE_AND_WAIT:
-                arp_stop_all_notes(track);
+                if(chord_collect_track != track) arp_stop_all_notes(track);
                 arp_start_note(track, astate[track].x + astate[track].note_offset);
                 astate[track].pc ++;
                 return;  // we need to return here to pause execution
@@ -808,6 +864,7 @@ int arp_find_random_note(int track, int note) {
 
 // start a note playing
 void arp_start_note(int track, int note) {
+    if(chord_collect_track == track) {arp_collect_chord_note(note);return;}
     struct midi_msg msg;
     int i;
     // Preserve legacy arp octave wrapping; named roots retain signed pitch.

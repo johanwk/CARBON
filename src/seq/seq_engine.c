@@ -1506,6 +1506,8 @@ void seq_engine_track_play_step(int track, int step,
         const struct seq_engine_step_visit *visit) {
     int i, temp, count = 0;
     int pitches[SEQ_TRACK_POLY], slots[SEQ_TRACK_POLY], voiced[SEQ_TRACK_POLY];
+    int chord = sestate.arp_enable[track] && arp_chord_enabled(track);
+    int chord_input[SEQ_TRACK_POLY], chord_count=0, chord_velocity=0;
     struct track_event event;
     struct midi_msg msg;
 
@@ -1538,6 +1540,13 @@ void seq_engine_track_play_step(int track, int step,
                 case SONG_EVENT_NOTE:
                     temp = seq_engine_step_pitch_input(track, voiced[i]);
                     if(temp == -32768) continue;
+                    if(chord) {
+                        if(event.data1 && chord_count<SEQ_TRACK_POLY) {
+                            if(!chord_count) chord_velocity=event.data1;
+                            chord_input[chord_count++]=temp;
+                        }
+                        break;
+                    }
                     midi_utils_enc_note_on(&msg, 0, 0, temp, event.data1);
                     seq_engine_track_start_note(track, step, event.length,
                         seq_utils_delay_ticks(event.delay == SEQ_START_DELAY_INHERIT
@@ -1570,6 +1579,8 @@ void seq_engine_track_play_step(int track, int step,
             }
         }
     }
+    if(chord_count) arp_play_chord(track,chord_input,chord_count,chord_velocity,
+        (sestate.step_size[track] * sestate.gate_time[track]) >> 7);
 }
 
 // start a note on a track playback - also figures out ratcheting and start delay
@@ -1766,6 +1777,7 @@ static void seq_engine_track_cancel_pending(int track) {
 }
 
 void seq_engine_track_stop_all_notes(int track) {
+    if(arp_chord_enabled(track)) arp_stop_all_notes(track);
     struct midi_msg msg;
     int note;
     for(note = 0; note < SEQ_ENGINE_MAX_NOTES; note ++) {
