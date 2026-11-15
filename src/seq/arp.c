@@ -22,6 +22,7 @@
 #include "arp_progs.h"
 #include "seq_engine.h"
 #include "song.h"
+#include "scale.h"
 #include "../config.h"
 #include "../midi/midi_protocol.h"
 #include "../midi/midi_utils.h"
@@ -85,15 +86,53 @@ int arp_find_label(int track, int label);
 void arp_take_snapshot(int track);
 
 // Synchronous, bounded collection uses the production arp interpreter.
-static int chord_collect_track = -1, chord_bass, chord_count;
+static int chord_collect_track = -1, chord_count;
 static int chord_notes[4];
 static void arp_collect_chord_note(int note) {
-    // Keep generated pitch classes but fold octave doubles into one octave.
-    int distance=note-chord_bass;
-    int pitch_class=((distance % 12)+12)%12;
-    note=chord_bass + (pitch_class ? pitch_class : distance>0 ? 12 : 0);
     for(int i=0;i<chord_count;i++) if(chord_notes[i]==note) return;
     if(chord_count<4) chord_notes[chord_count++]=note;
+}
+// Range is encoded in groups of four except the repeat family.
+static int arp_chord_range(int type) {
+    if(type < ARP_TYPE_REPEAT1_0) return type % 4 + 1;
+    if(type >= ARP_TYPE_UP_LOW1) return (type-ARP_TYPE_UP_LOW1) % 4 + 1;
+    return 1; // Repeat ratios are rhythms, not octave ranges.
+}
+static void arp_single_note_chord(int track, int note) {
+    int scene=seq_engine_get_current_scene();
+    int root=seq_engine_get_effective_root(scene);
+    int scale=seq_engine_get_effective_tonality(scene,track);
+    int transpose=root>=0 ? seq_engine_get_internal_cc(track,17,song_get_transpose(scene,track)) : 0;
+    // Build in the same scale domain as output, then remove the transpose
+    // already applied here. Output applies its normal transformation once.
+    int shifted=note+transpose;
+    int pc=((shifted-(root>=0?root:0))%12+12)%12;
+    int anchor=shifted-pc+scale_quantize(pc,scale);
+    int third=4, fifth=7;
+    if(scale!=SCALE_CHROMATIC) {
+        int degree=0;third=fifth=12;
+        for(int offset=1;offset<12;offset++) {
+            int p=((anchor+offset-(root>=0?root:0))%12+12)%12;
+            if(scale_quantize(p,scale)==p) {
+                degree++;
+                if(degree==2) third=offset;
+                if(degree==4) fifth=offset;
+            }
+        }
+    }
+    int type=astate[track].type, range=arp_chord_range(type);
+    int down=(type>=ARP_TYPE_DOWN1 && type<=ARP_TYPE_DOWN4) || type>=ARP_TYPE_DOWN_HIGH1;
+    int offsets[4]={0,third,fifth,12};
+    if(range==2) {offsets[1]=fifth;offsets[2]=12;offsets[3]=12+fifth;}
+    if(range==3) {offsets[1]=fifth;offsets[2]=12;offsets[3]=24;}
+    if(range==4) {offsets[1]=12;offsets[2]=24;offsets[3]=36;}
+    if(down) {
+        if(range==1) {offsets[1]=fifth-12;offsets[2]=third-12;offsets[3]=-12;}
+        if(range==2) {offsets[1]=fifth-12;offsets[2]=-12;offsets[3]=fifth-24;}
+        if(range==3) {offsets[1]=fifth-12;offsets[2]=-12;offsets[3]=-24;}
+        if(range==4) {offsets[1]=-12;offsets[2]=-24;offsets[3]=-36;}
+    }
+    for(int i=0;i<4;i++) arp_collect_chord_note(anchor-transpose+offsets[i]);
 }
 int arp_chord_enabled(int track) {
     return track>=0 && track<SEQ_NUM_TRACKS && astate[track].arp_enable && astate[track].chord_mode;
@@ -103,9 +142,10 @@ void arp_play_chord(int track, const int *notes, int count, int velocity, int ga
     arp_stop_all_notes(track);
     struct arp_state saved = astate[track];
     arp_clear_input(track);
-    chord_bass=notes[0];chord_count=0;
+    chord_count=0;
+    int single=1;
     for(int i=0;i<count;i++) {
-        if(notes[i]<chord_bass) chord_bass=notes[i];
+        if(notes[i]!=notes[0]) single=0;
         astate[track].held_notes[i]=notes[i];
         astate[track].held_order[i]=i+1;
     }
@@ -114,7 +154,9 @@ void arp_play_chord(int track, const int *notes, int count, int velocity, int ga
     chord_collect_track=track;
     // At most 16 ordinary arp advances, each bounded by ARP_MAX_LOOP_COUNT.
     // This is a musical sample, not an unbounded attempt to finish a cycle.
-    for(int i=0;i<16 && chord_count<4;i++) arp_execute_step(track);
+    if(single && song_get_track_type(track)!=SONG_TRACK_TYPE_DRUM)
+        arp_single_note_chord(track,notes[0]);
+    else for(int i=0;i<16 && chord_count<4;i++) arp_execute_step(track);
     chord_collect_track=-1;
     astate[track]=saved;
     astate[track].held_velo=velocity;
@@ -868,7 +910,10 @@ void arp_start_note(int track, int note) {
     struct midi_msg msg;
     int i;
     // Preserve legacy arp octave wrapping; named roots retain signed pitch.
-    if(seq_engine_get_effective_root(seq_engine_get_current_scene()) < 0 ||
+    if(astate[track].chord_mode) {
+        // Chord octaves must not wrap from one end of MIDI range to the other.
+        if(note<0 || note>127) return;
+    } else if(seq_engine_get_effective_root(seq_engine_get_current_scene()) < 0 ||
             song_get_track_type(track) == SONG_TRACK_TYPE_DRUM) note &= 0x7f;
     for(i = 0; i < ARP_MAX_PLAYING_NOTES; i ++) {
         if(astate[track].playing_notes[i] == ARP_NOTE_SLOT_FREE) {

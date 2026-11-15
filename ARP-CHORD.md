@@ -1,6 +1,6 @@
 # Arp Speed: Chord - first local prototype
 
-Identity: 1.38-jwk-chd1. Built on the tested undo/Scn development work, not
+Identity: 1.38-jwk-chd2. Built on the tested undo/Scn development work, not
 part of a published RC. Hardware musical acceptance is pending.
 
 ## Try it
@@ -11,31 +11,51 @@ Start with one note and compare Up 1, Up 4 and Random 4, then try a few input
 notes. Polyphonic MIDI/Bitwig is the clearest reference; mono CV cannot play
 a chord. Existing poly CV allocation has its usual hardware voice limits.
 
-This is a pragmatic compact chord generator, not harmonic analysis.
+This is a pragmatic range-based chord generator, not harmonic analysis.
 
-## First-pass musical rule
+## Revised musical rule (chd2)
 
-- Run the selected, existing arp program from its start against the current
-  step's eligible input notes, collecting generated notes instead of sending.
-- Sample at most 16 ordinary arp advances (including rests); stop once four
-  distinct compact pitches are collected. Each advance retains the existing
-  100-instruction bound. This is not a promise to enumerate a complete cycle.
-- Fold generated pitches by octaves into the lowest input note through one
-  octave above it. Retain the first four distinct pitches in generation order.
-  Exact duplicates disappear; upper octave doubles collapse to one upper
-  octave. Unlike Inv Compact, octave-doubling spacing is NOT preserved here.
-- Send the resulting group on the same sequencer tick, using the first
-  eligible input note's velocity. MIDI messages are serialized on the wire.
-- Use one common duration: actual step interval times track Gate Time, minimum
-  one tick. Ignore input note lengths/delays/ratchets and the Arp Gate setting.
-  A new chord cuts off any previous chord before retriggering.
+Compaction is removed. For a single distinct melodic input pitch, fill a
+four-note voicing according to the arp's octave-range number. In C major,
+starting at C4:
 
-C4 through Up 4 generates octave material which compacts to C4+C5, not
-C4+C5+C6+C7. C4 through Up 1 remains one note. No thirds/fifths are invented
-if the arp does not generate them. Wider input collections compress; random
-arps sample their existing random program, so successive results can vary.
-Normal output root/scale/transpose processing still follows generation and
-may merge pitches or suppress out-of-range notes.
+| Range | Up / Up-Down / Order / Random / Up-Low | Down / Down-High |
+|---|---|---|
+| 1 | C4 E4 G4 C5 | C4 G3 E3 C3 |
+| 2 | C4 G4 C5 G5 | C4 G3 C3 G2 |
+| 3 | C4 G4 C5 C6 | C4 G3 C3 C2 |
+| 4 | C4 C5 C6 C7 | C4 C3 C2 C1 |
+
+Third and fifth mean the third/fifth available scale notes counted upward
+from the quantized starting note, using effective Hrm/root/scale and normal
+transpose ordering. D in C major therefore gives D F A D, not D F# A D.
+Downward voicings use those same pitch classes below the starting note,
+not a negative third/fifth that would invent a different chord. Root Off
+retains C-based scale processing and subsequent stored transpose.
+
+Chromatic has no diatonic third/fifth, so use a major third/perfect fifth
+as the simple fallback. Scales with fewer than five notes per octave use
+the octave for a missing degree; duplicates are removed, so fewer than four
+notes can result. Repeated identical input pitches count as one note. Drum
+tracks do not receive this harmonic fill.
+
+Repeat types have rhythmic ratios rather than octave ranges: they use the
+range-1 fill. Single-note Random/Order/Up-Down use the upward voicing of their
+range; this first rule does not randomly change its orientation per step.
+
+With multiple distinct input pitches, run the selected existing arp program
+from its start, collecting the first four distinct generated pitches without
+octave folding. Sample at most 16 ordinary advances, each bounded by the
+existing 100-instruction limit. This is not a complete-cycle enumeration;
+with enough input notes, different ranges may still share the first four.
+Random multi-note arps retain their existing randomness.
+
+Send the group on the same sequencer tick, using the first eligible input
+note's velocity. MIDI messages are serialized on the wire. Use one duration:
+actual step interval times track Gate Time, minimum one tick. Input note
+lengths/delays/ratchets and Arp Gate are ignored. A new chord releases the
+previous chord before retriggering. Out-of-range pitches are omitted, not
+wrapped. Normal output harmony/transpose still applies and can merge pitches.
 
 ## Scope and limitations
 
@@ -60,7 +80,7 @@ Current host JSON/upload tools support through1.37 and reject1.38; raw saved
 song/bank backup remains available. No implicit profile edits or downgrade.
 
 Tests exercise all37 built-in types with one through six notes, <=4 outputs,
-compact range/deduplication, common gate time and note cleanup, production
+single-note range voicings, scale degrees and deduplication, common gate time and note cleanup, production
 step batching, speed/type/disable transitions, UI label distinction, Straight
 endpoint and song save/reload. Existing suites pass. Bounded work is not a
 measured worst-case interrupt budget: busy six-track hardware timing still

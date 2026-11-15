@@ -35,7 +35,64 @@ static void live(int status, int note, int value) {
     seq_engine_live_send_msg(0, &msg);
 }
 // Hrm + delayed MIDI phrase investigation: production engine/output path.
+static void test_chord_range_fill(void) {
+    const int up[4][4]={{60,64,67,72},{60,67,72,79},{60,67,72,84},{60,72,84,96}};
+    const int down[4][4]={{60,55,52,48},{60,55,48,43},{60,55,48,36},{60,48,36,24}};
+    for(int direction=0;direction<2;direction++) for(int range=0;range<4;range++) {
+        init();test_root=0;test_scale=SCALE_MAJOR;test_transpose=0;outproc_root_changed();
+        sestate.arp_enable[0]=1;arp_set_arp_enable(0,1);
+        arp_set_type(0,(direction?ARP_TYPE_DOWN1:ARP_TYPE_UP1)+range);arp_set_speed(0,SEQ_UTILS_ARP_CHORD);
+        int note=60;arp_play_chord(0,&note,1,100,24);
+        assert(astate[0].playing_note_count==4 && wires==8);
+        for(int i=0;i<4;i++) {int expected=direction?down[range][i]:up[range][i];
+            assert(astate[0].playing_notes[i]==expected);assert(wire[2*i].data0==expected);}
+        arp_stop_all_notes(0);assert(wires==16);
+    }
+    // Chord is relative to the starting scale note, not always the global tonic.
+    init();test_root=0;test_scale=SCALE_MAJOR;test_transpose=0;outproc_root_changed();
+    sestate.arp_enable[0]=1;arp_set_arp_enable(0,1);arp_set_type(0,ARP_TYPE_UP1);arp_set_speed(0,SEQ_UTILS_ARP_CHORD);
+    int d=62;arp_play_chord(0,&d,1,100,24);int dminor[4]={62,65,69,74};
+    for(int i=0;i<4;i++) assert(wire[2*i].data0==dminor[i]);
+    // Named-root transpose is applied once before selecting scale degrees.
+    test_transpose=2;outproc_root_changed();wires=0;arp_stop_all_notes(0);wires=0;
+    int c=60;arp_play_chord(0,&c,1,100,24);
+    for(int i=0;i<4;i++) assert(wire[2*i].data0==dminor[i]);
+    // Minor and Chromatic fallback.
+    for(int scale=0;scale<2;scale++) {
+        init();test_root=0;test_scale=scale?SCALE_NAT_MINOR:SCALE_CHROMATIC;test_transpose=0;outproc_root_changed();
+        sestate.arp_enable[0]=1;arp_set_arp_enable(0,1);arp_set_type(0,ARP_TYPE_UP1);arp_set_speed(0,SEQ_UTILS_ARP_CHORD);
+        arp_play_chord(0,&c,1,100,24);assert(wire[2].data0==(scale?63:64));assert(wire[4].data0==67);
+    }
+    // All scales/roots and representative edge pitches stay bounded and release.
+    for(int scale=0;scale<SCALE_NUM_TONALITIES;scale++) for(int root=-1;root<12;root++)
+    for(int note=0;note<=127;note+=13) {
+        init();test_root=root;test_scale=scale;test_transpose=0;outproc_root_changed();
+        sestate.arp_enable[0]=1;arp_set_arp_enable(0,1);arp_set_speed(0,SEQ_UTILS_ARP_CHORD);
+        for(int type=ARP_TYPE_UP1;type<=ARP_TYPE_DOWN4;type++) {
+            arp_set_type(0,type);wires=0;arp_play_chord(0,&note,1,100,24);
+            assert(astate[0].playing_note_count<=4);
+            for(int i=0;i<wires;i++) {
+                assert(wire[i].data0>=0 && wire[i].data0<=127);
+                if(root>=0) assert(scale_quantize_root(wire[i].data0,scale,root)==wire[i].data0);
+            }
+            arp_stop_all_notes(0);assert(!astate[0].playing_note_count);
+        }
+    }
+    // Multiple input notes retain generated register, without octave folding.
+    init();test_root=0;test_scale=SCALE_CHROMATIC;test_transpose=0;outproc_root_changed();
+    sestate.arp_enable[0]=1;arp_set_arp_enable(0,1);arp_set_type(0,ARP_TYPE_UP4);arp_set_speed(0,SEQ_UTILS_ARP_CHORD);
+    int two[2]={60,64};arp_play_chord(0,two,2,100,24);int raw[4]={60,64,72,76};
+    for(int i=0;i<4;i++) assert(wire[2*i].data0==raw[i]);
+    // MIDI limits omit notes, never wrap into a distant register.
+    for(int direction=0;direction<2;direction++) {
+        arp_set_type(0,direction?ARP_TYPE_DOWN4:ARP_TYPE_UP4);wires=0;
+        int note=direction?0:127;arp_play_chord(0,&note,1,100,24);
+        assert(astate[0].playing_note_count==1 && astate[0].playing_notes[0]==note);
+        arp_stop_all_notes(0);
+    }
+}
 static void test_arp_chords(void) {
+    test_chord_range_fill();
     for(int type=0;type<ARP_NUM_TYPES;type++) {
         init();test_scale=SCALE_CHROMATIC;test_transpose=0;outproc_root_changed();
         sestate.arp_enable[0]=1;arp_set_arp_enable(0,1);arp_set_type(0,type);arp_set_speed(0,SEQ_UTILS_ARP_CHORD);
@@ -45,7 +102,7 @@ static void test_arp_chords(void) {
             assert(astate[0].playing_note_count>=1 && astate[0].playing_note_count<=4);
             int voices=astate[0].playing_note_count;
             for(int i=0;i<voices;i++) {
-                int pitch=astate[0].playing_notes[i];assert(pitch>=60 && pitch<=72);
+                int pitch=astate[0].playing_notes[i];assert(pitch>=0 && pitch<=127);
                 for(int j=0;j<i;j++) assert(astate[0].playing_notes[j]!=pitch);
             }
             int count=wires;arp_run(100);assert(wires==count); // attack tick not charged as gate time
@@ -56,7 +113,8 @@ static void test_arp_chords(void) {
     init();test_scale=SCALE_CHROMATIC;test_transpose=0;outproc_root_changed();
     sestate.arp_enable[0]=1;arp_set_arp_enable(0,1);arp_set_type(0,ARP_TYPE_UP4);arp_set_speed(0,SEQ_UTILS_ARP_CHORD);
     int input[1]={60};arp_play_chord(0,input,1,100,48);
-    assert(astate[0].playing_note_count==2 && astate[0].playing_notes[0]==60 && astate[0].playing_notes[1]==72);
+    assert(astate[0].playing_note_count==4 && astate[0].playing_notes[0]==60 &&
+        astate[0].playing_notes[1]==72 && astate[0].playing_notes[2]==84 && astate[0].playing_notes[3]==96);
     arp_set_speed(0,SEQ_UTILS_STEP_16TH);assert(!astate[0].playing_note_count && !arp_chord_enabled(0));
     arp_set_speed(0,SEQ_UTILS_ARP_CHORD);
     // Production step path: collect eligible Notes together, ignore stored
@@ -72,7 +130,7 @@ static void test_arp_chords(void) {
     for(int i=0;i<SEQ_ENGINE_MAX_NOTES;i++) assert(!sestate.track_active_notes[0][i].note.msg.status);
     seq_engine_track_stop_all_notes(0);assert(!astate[0].playing_note_count && wires==12);
     // Gate-masked chord input never enters the collected group.
-    v.slots=1;seq_engine_track_play_step(0,0,&v);assert(astate[0].playing_note_count==1);
+    v.slots=1;seq_engine_track_play_step(0,0,&v);assert(astate[0].playing_note_count==4);
     arp_set_type(0,ARP_TYPE_UP2);assert(!astate[0].playing_note_count);
     seq_engine_track_play_step(0,0,&v);arp_set_arp_enable(0,0);assert(!astate[0].playing_note_count);
 }

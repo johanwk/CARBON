@@ -1,6 +1,6 @@
 # CARBON community firmware
 
-**Local prototype:** Arp Speed Chord, identity `1.38-jwk-chd1`.
+**Local prototype:** Arp Speed Chord, identity `1.38-jwk-chd2`.
 See [ARP-CHORD.md](ARP-CHORD.md) for the first-pass voicing rule and limits.
 The published releases below do not contain this feature.
 
