@@ -3,12 +3,11 @@
 Unofficial firmware for the Kilpatrick Audio CARBON hardware sequencer.
 Not an official Kilpatrick Audio release. Installation is at your own risk.
 
-**Release preparation:** proposed community prerelease `community-1.36-rc1`,
-System identity `1.36-jwk-rc1`. No downloadable release is published by this
-preparation. Only use an asset accompanied by its exact source revision, SHA256
-and build record. The [fork releases page](https://github.com/johanwk/CARBON/releases)
-is the intended distribution point after approval; official updater binaries
-do not contain these community additions.
+**Community release candidate:** `community-1.36-rc1`, System identity
+`1.36-jwk-rc1`. See the [fork releases page](https://github.com/johanwk/CARBON/releases)
+for the binary, checksum and build record. This prerelease invites wider
+real-world testing; it is not a claim of exhaustive production validation.
+Official updater binaries do not contain these community additions.
 
 ## What it adds
 
@@ -102,8 +101,9 @@ songs; faithful downgrade of 1.36 songs is not supported.
   synth state, global patterns or PRNG rewind. Load/clear/power-off invalidates it.
 - Finite queues and MIDI bandwidth remain limits; arbitrary overload is not
   lossless. Worst-case interrupt time and stack headroom are unmeasured.
-- Practical acceptance is meaningful but not exhaustive. The exact candidate
-  and new 1.36 simple-upload workflow still need representative hardware checks.
+- The maintainer reports no failures in current practical testing. Coverage
+  is not exhaustive: busy-load measurements and a hardware round-trip of the
+  new 1.36 simple-upload workflow remain useful community test targets.
 
 ## Build and contribute
 
@@ -115,8 +115,8 @@ Keep fixes focused; this release freezes the musical feature set. Never upload
 commercial MIDI files or personal backups as test fixtures without rights.
 
 This cumulative release includes PR #10/#11/#12 plus subsequent work. Those
-narrower PR branches remain separate and unchanged; publication of this
-release branch requires a separate decision.
+narrower PR branches remain separate and unchanged. This prerelease does not
+depend on those submissions being reviewed or merged.
 
 ## Licensing / using code in your own projects
 

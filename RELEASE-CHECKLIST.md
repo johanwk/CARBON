@@ -1,21 +1,24 @@
 # Community 1.36-rc1 verification checklist
 
-Preparation only. No publication, hardware flashing or song writing is authorized
-by this checklist. Record candidate commit, binary SHA256, device/LCD, synth,
-MIDI/CV routing, clock source, tester and date with results. Use backed-up or
-disposable songs. Do not convert missing evidence into a confirmed defect.
+Community release-candidate test targets. The maintainer has approved limited
+prerelease publication to obtain wider user feedback, reporting no failures in
+current practical testing. Unchecked items are coverage gaps, not confirmed
+defects or a claim that every combination must pass before community testing.
+Record commit, binary SHA256, device/LCD, synth, routes, clock source, tester
+and date. Use backed-up/disposable songs. This checklist is not authorization
+for an assistant to flash hardware or write songs.
 
-## Release gates
+## Prerelease disposition
 
-- [ ] Exact candidate hardware checklist below completed or remaining items
-      explicitly accepted for a limited community prerelease.
+- [x] Remaining hardware coverage gaps explicitly accepted for a limited
+      community prerelease; they are not marked tested.
 - [ ] Busy-pattern responsiveness checked; no measured interrupt/stack claim
       until instrumentation provides actual values.
 - [ ] New 1.36 interactive transfer/default-template hardware round-trip.
 - [ ] Preserve existing notices/attribution and include corresponding source
       and build instructions with the firmware package.
 - [ ] Inspect exact source tree AND newly published history for private files.
-- [ ] Explicit approval of separate release branch/tag, assets and publication.
+- [x] Maintainer approved separate release-candidate publication and assets.
 
 ## Representative hardware checks - pending for rc1
 
