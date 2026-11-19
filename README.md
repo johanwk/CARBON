@@ -1,11 +1,13 @@
 # CARBON community firmware
 
-**Local prototype:** Arp Speed Chord, identity `1.38-jwk-chd2`.
-See [ARP-CHORD.md](ARP-CHORD.md) for the first-pass voicing rule and limits.
-The published releases below do not contain this feature.
+**Local candidate:** `1.38-jwk-hum4`, with Arp Speed Chord and Humanize.
+See [ARP-CHORD.org](ARP-CHORD.org) for voicing and transition rules, and
+[HUMANIZE.org](HUMANIZE.org) for velocity, gate and probabilistic late onset.
+Ordinary arp uses velocity/lateness only; generated Chord is not humanized.
+The published releases below do not contain these features.
 
 This branch also includes the previously tested one-level song undo.
-See [UNDO.md](UNDO.md) for controls, scope and pending hardware checks.
+See [UNDO.org](UNDO.org) for controls, scope and pending hardware checks.
 This feature is not in the published 1.37 RC1 described below.
 
 Unofficial firmware for the Kilpatrick Audio CARBON hardware sequencer.
@@ -86,7 +88,7 @@ of this unofficial binary has not been verified.
 
 6. Wait for successful completion and restart. Check the System identity, then
    boot/playback, MIDI, CV/gate and a disposable save/reload before performance
-   use. See the [release checklist](RELEASE-CHECKLIST.md).
+   use. See the [release checklist](RELEASE-CHECKLIST.org).
 
 ### Recovery
 
@@ -101,7 +103,7 @@ songs; faithful downgrade of 1.37 songs is not supported.
 ## Everyday starting points
 
 - Scn: select a Scn slot in Step Edit, then buttons 1--6 toggle allowed scenes
-  with matching LEDs. See [scene gates](SCENE-GATES.md).
+  with matching LEDs. See [scene gates](SCENE-GATES.org).
 - Shift+Pattern: density; Shift+Transpose: Euclidean rotation in normal mode.
 - Clock menu: Perform Grid (Straight) and Perform Pitch (Octaves/Octaves+5ths).
   These protect manual gestures, not all automation. Running edits apply next
@@ -132,8 +134,8 @@ songs; faithful downgrade of 1.37 songs is not supported.
 
 ## Build and contribute
 
-See [BUILDING.md](BUILDING.md), [song tools](tools/carbon-backup/README.md),
-[release notes](RELEASE-NOTES.md) and [verification checklist](RELEASE-CHECKLIST.md).
+See [BUILDING.org](BUILDING.org), [song tools](tools/carbon-backup/README.md),
+[release notes](RELEASE-NOTES.org) and [verification checklist](RELEASE-CHECKLIST.org).
 Report reproducible community-build issues to the fork with identity, route,
 clock source and minimal steps; do not attach private songs without consent.
 Keep fixes focused; this release freezes the musical feature set. Never upload

@@ -57,6 +57,13 @@ trap 'rm -rf "$TMP"' EXIT HUP INT TERM
 "$CC" -x c -std=c11 -Wall -Wextra -Werror \
     -Wno-unused-parameter -Wno-sign-compare -Wno-deprecated-declarations \
     -ffunction-sections -fdata-sections -fsanitize=address,undefined \
+    tests/humanize_test.c.in src/seq/scale.c src/midi/midi_utils.c \
+    src/util/seq_utils.c src/seq/midi_ctrl.c "$LINK_GC" -o "$TMP/humanize"
+"$TMP/humanize"
+
+"$CC" -x c -std=c11 -Wall -Wextra -Werror \
+    -Wno-unused-parameter -Wno-sign-compare -Wno-deprecated-declarations \
+    -ffunction-sections -fdata-sections -fsanitize=address,undefined \
     tests/remote_harmony_test.c.in src/seq/scale.c src/midi/midi_utils.c \
     src/util/seq_utils.c src/seq/midi_ctrl.c "$LINK_GC" -o "$TMP/remote-harmony"
 "$TMP/remote-harmony"

@@ -63,5 +63,7 @@ void arp_type_to_name(char *text, int type);
 // Align only the rate phase; preserve program position and held inputs.
 void arp_align_rate(int track);
 void arp_stop_all_notes(int track);
+// Cancel unheard Humanize attacks without changing held input or sounding tails.
+void arp_cancel_pending(int track);
 #endif
 

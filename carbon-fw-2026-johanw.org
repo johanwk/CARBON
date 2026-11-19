@@ -1,19 +1,21 @@
-#+title: CARBON community firmware 1.37 - user guide
+#+title: CARBON community firmware 1.38 local candidate - user guide
 #+author: Johan W. Kluwer
 
 * Introduction
 
 This unofficial/community firmware builds on Kilpatrick Audio CARBON 1.27
 (upstream master bd5f5d4). It is not an official Kilpatrick Audio release or
-a claim of manufacturer support. Candidate identity: =1.37-jwk-rc1=; numeric
-song format: 1.37. See [[file:README.md][Start here]] for installation, recovery and
+a claim of manufacturer support. This guide includes local candidate
+=1.38-jwk-hum4=, numeric song format 1.38, which is not a published release.
+The earlier community 1.37 RC remains a separate release. See [[file:README.md][Start here]] for installation, recovery and
 release status, and the [[https://www.kilpatrickaudio.com/?p=carbon][official CARBON documentation]] for basic operation.
 
 The additions are Program Change per step/scene, Euclidean density/rotation,
 bar-relative divisions, ordered conditional gates, Bias-routed CCi controls,
 song/scene roots and Hrm harmony, Inv/Compact voicing, individual note delays,
 Gli and persistent glide, current-state pitch/delay strokes, protected manual
-performance gestures, next-bar queued targets, and a whole-song RAM snapshot.
+performance gestures, next-bar queued targets, a whole-song RAM snapshot,
+Arp Speed Chord generation and session-only Humanize controls.
 Host tools provide backup, JSON editing, MIDI import and controlled restore.
 
 This cumulative candidate includes the work submitted in PRs #10, #11 and
@@ -29,14 +31,14 @@ select one Scn slot: buttons 1--6 toggle allowed scenes, with matching LEDs
 and a three-cell paired-bar mask. Normal track/scene/mute/copy actions are
 intercepted for those presses. All scenes enabled is the default.
 
-See [[file:SCENE-GATES.md][Scene gate controls and compatibility]] for details and
+See [[file:SCENE-GATES.org][Scene gate controls and compatibility]] for details and
 [[file:tools/carbon-backup/README.md][the host guide]] for schema4 JSON support.
 User hardware feedback confirms Scn works as intended; not every combination
 is hardware-tested. Earlier 1.36 firmware cannot interpret Scn events.
 
 * Building from source
 
-See [[file:BUILDING.md][BUILDING.md]] for the tested toolchain, required makegen stderr fix,
+See [[file:BUILDING.org][BUILDING.org]] for the tested toolchain, required makegen stderr fix,
 release-build command and output files. Building does not flash CARBON.
 
 * Installation
@@ -223,7 +225,7 @@ No existing CARBON feature has intentionally been removed or replaced.
 In particular:
 
 - the original step-length entries keep their original indices and behavior;
-- Arp Speed keeps its original set of choices;
+- Arp Speed retains its original choices and appends Chord in local 1.38;
 - a Euclidean density of 100% uses the original pattern path;
 - normal Note and CC step events retain their existing behavior;
 - Bias Track note offsets continue to work, including while =CCi= events control
@@ -698,8 +700,13 @@ mean backward compatibility. Scene PC, Euclidean settings and roots use
 previously reserved bytes; older songs receive safe defaults on load. In 1.35,
 the event delay byte gained meaning; old songs inherit shared step delay.
 1.36 adds Gli and CCi 34/35; 1.37 adds Scn scene gates. Older firmware cannot interpret all these events
-or relative delays. Do not promise or expect faithful downgrade of 1.37 songs.
+or relative delays. Local 1.38 adds the saved Arp Speed Chord choice; older
+firmware cannot interpret it. Do not expect faithful downgrade of these songs.
 Keep pre-upgrade originals for use with their original firmware.
+
+Current host JSON/upload tools support through 1.37 and reject 1.38 songs.
+Raw saved-song/bank backup remains available for 1.38, but does not imply JSON
+editing or restore support. Humanize itself adds no saved fields.
 
 Host upload replaces saved flash, not the active RAM song: LOAD afterward;
 do not SAVE stale RAM over the uploaded song. Replacement is not atomic across
@@ -708,6 +715,76 @@ the five flash sectors; interruption can damage the chosen slot. See the
 
 MIDI Remote CC16 spans all 23 track lengths. CC26 retains 17 Arp Speed choices
 but uses proportional scaling. Existing automation values may need adjustment.
+
+* Arpeggiator
+
+** Ordinary arp
+
+The original Arp Type, Speed and Gate controls retain their normal meanings.
+Sequenced input notes remain available to the arp for their stored Note length
+times Track Gate. Use longer input notes for a sustained arpeggio; increasing
+Arp Gate alone does not extend the held input. Input delays and ratchets remain
+bypassed. Ordinary arp output can now use velocity and late-onset Humanize;
+see [[*Humanize (local 1.38-jwk-hum4, not published)][Humanize]] below.
+
+** Arp Speed: Chord (local 1.38)
+
+Enable Arp on a sequenced track, select its Type, then turn Arp Speed past
+1/1 to =Chord=. Each step's gate-eligible positive-velocity Notes trigger up
+to four simultaneous generated pitches. Use a polyphonic MIDI destination;
+mono CV cannot play a chord. Poly CV retains its existing voice limits.
+
+With one distinct melodic input, the arp range number chooses a four-note
+voicing. In C major, starting at C4:
+
+| Range | Up / Up-Down / Order / Random / Up-Low | Down / Down-High |
+|-------+---------------------------------------+------------------|
+|     1 | C4 E4 G4 C5                           | C4 G3 E3 C3      |
+|     2 | C4 G4 C5 G5                           | C4 G3 C3 G2      |
+|     3 | C4 G4 C5 C6                           | C4 G3 C3 C2      |
+|     4 | C4 C5 C6 C7                           | C4 C3 C2 C1      |
+
+Third/fifth are scale degrees above the quantized input using effective
+Hrm/root/scale and normal transpose processing. D in C major gives D F A D,
+not D F# A D. Down uses those same pitch classes voiced below the input.
+Chromatic uses a major-third/perfect-fifth fallback. Sparse scales use an
+octave for a missing degree; duplicate pitches are removed. Repeated identical
+inputs count as one. Drum tracks do not receive single-note harmonic fill.
+Repeat types use range 1; single-note Random/Order use the upward range voicing.
+
+With multiple distinct input pitches, Chord collects the first four distinct
+pitches from the selected arp program, without octave folding. This is a
+bounded sample, not the complete program cycle; different ranges can therefore
+produce the same first four notes. Multi-note random programs remain random.
+
+The first eligible input Note supplies group velocity. Duration is the actual
+step interval times Track Gate, minimum one tick. Stored Note lengths/delays,
+ratchets and Arp Gate are ignored in Chord. A new chord releases the previous
+one before retriggering. Empty or fully gated steps create no new chord, but
+existing tails can expire normally. Out-of-range pitches are omitted rather
+than wrapped; output harmony can merge pitches. MIDI messages are serialized
+on the wire even though the group is scheduled on one tick.
+
+Chord is sequencer-triggered only: held live keys do not generate free-running
+chords. Inv/Compact, local Gli, Humanize and pitch-grid prediction do not apply
+to generated Chord. Persistent Bias CCi34/35 glide settings still apply through
+the normal output path, with existing shared-output limitations.
+
+Stop/cleanup, disabling arp, type changes and crossing the Chord boundary
+release generated output. Crossing into/out of Chord restarts program/rate
+phase while retaining live keys and unexpired ordinary sequencer input until
+its matching releases. Chord-only sequencer attacks are not retained as input
+on returning to ordinary arp. Random streams are not rewound.
+
+Straight performance mode permits Chord after 1/1 and queues it to the next
+bar while running. Remote CC26 and CCi26 retain their original 17-rate mapping
+and cannot select Chord; a latched CCi speed still overrides the panel base.
+Chord is stored in song format 1.38; older firmware and current host JSON
+tools do not support it. Back up originals before saving.
+
+User feedback describes the range-based Chord generator as musically useful
+and the chd3 return-to-ordinary-arp fix as working far better. This is practical
+feedback, not exhaustive hardware/timing coverage. See [[file:ARP-CHORD.org][Chord technical details]].
 
 * Individual note delays
 
@@ -865,7 +942,8 @@ Straight. This global performance-session setting defaults Off on boot and
 is not saved in songs. Enabling it does not change any existing song values.
 
 Manual Step Length and Arp Speed adjustments (including Shift+Length and
-the respective menus) now visit only1/32,1/16,1/8,1/4,1/2,1/1. Triplet,
+the respective menus) visit1/32,1/16,1/8,1/4,1/2,1/1. Local 1.38 also permits
+Chord as the final Arp Speed endpoint, with the same next-bar queueing. Triplet,
 dotted and bar-relative divisions are skipped. From an excluded division,
 the next choice is the faster/slower permitted duration in that direction.
 
@@ -999,3 +1077,82 @@ The user tested performance modes and snapshot/recall on CARBON and reported
 positive results. After flashing1.36-jwk-snp3, the queued-target readouts were
 also tested and reported as a great improvement. This is practical hardware
 acceptance, not exhaustive timing, routing or failure-condition coverage.
+
+* Humanize (local 1.38-jwk-hum4, not published)
+
+** Controls
+
+Open Clock and navigate past Recall with Motion Start. Length/Value edits
+the selected parameter. The subtitle reads =Humanize T1 / session only=
+for Track 1 (T2..T6 for other tracks). Multi-track edits apply the first
+selected track's resulting value to all selected tracks.
+
+The labels omit the old =Hum= prefix and leave at least three blank columns
+before the value. Example subtitle and selected parameter row:
+
+#+begin_example
+Humanize T1 / session only
+Vel Chance    66%
+#+end_example
+
+Selecting other entries shows, for example, =Gate Chance   100%=,
+=Late Chance   25%= or =Late Max      3 ticks= in that parameter row.
+
+| Menu entry  | Range       | Meaning                               |
+|-------------+-------------+---------------------------------------|
+| Humanize    | Off / On    | Enable for this track                 |
+| Vel Chance  | 0..100%     | Chance of velocity variation per note |
+| Vel +/-     | 0..32       | Maximum signed velocity deviation     |
+| Gate Chance | 0..100%     | Chance of duration variation per note |
+| Gate +/-    | 0..100%     | Maximum signed duration percentage    |
+| Late Chance | 0..100%     | Chance of delaying a note group       |
+| Late Max    | 0..24 ticks | Maximum extra onset delay             |
+
+All default zero/Off. Enabling alone does nothing until chances and amounts
+are set. Velocity/gate use signed, centre-weighted variation, favouring small
+deviations; a selected note can receive zero deviation. Positive velocities
+stay within 1..127. Zero-velocity events are not turned into sounding notes.
+
+** Ordinary sequenced Notes
+
+Ordinary sequenced Notes, including drums, use all three dimensions; ratchets
+are excluded. Generated ordinary arp uses velocity and late onset only. Direct
+live input and generated Chord remain unchanged. Stored notes are not edited.
+
+Example: velocity 100% +/-8, gate 100% +/-10%, Late Chance 25%, Max 3 ticks.
+Unselected groups keep their original onset; selected groups receive 1..3
+extra ticks uniformly. There is no fixed offset: Centre/jitter were removed
+after hum1 hardware feedback. Chance zero or Max zero adds no delay. Timing
+shares one draw per step note group, preserving existing per-note spacing.
+For ordinary Notes, gate variation applies after Track Gate scaling, rounded
+to the nearest tick (ties up), minimum one tick and maximum 262140 ticks.
+Duration starts at actual onset; pending choices survive control edits.
+At 100% Late Chance and nonzero Max, every eligible group is delayed. There
+are no early attacks. One nominal 96-PPQ tick is about 5.2 ms at 120 BPM;
+countdowns follow the existing swung sequencer passes.
+
+** Lifetime and storage
+
+Session-only per track: boot/load/Clear resets settings, scene/Stop/Reset
+retains them; snapshot/undo leave current settings alone. No clock drift,
+look-ahead or storage changes. Preview remains unchanged.
+
+See [[file:HUMANIZE.org][Humanize details and verification]]. User reports hum1
+works but disliked its fixed offset; hum2/hum3 audition remains pending.
+
+** Ordinary generated arp
+
+Use the same enable, velocity and Late controls. One lateness draw is shared
+by notes generated in the same interpreter pass; velocity varies per note.
+For ordinary arp, only Note On is delayed: original gate expiry/program stops
+remain unchanged, making late notes shorter. A release at or before onset
+omits that hit completely; this can provide rhythmic thinning. Arp ignores
+Humanize gate controls. Works with sequenced/live-fed and free-running arp;
+held input velocity/lifetimes remain unchanged. A useful starting point is
+25% Late Chance with Max 2 or 3 ticks. Larger delays and short Arp Gate values
+can intentionally remove many or all hits; there is no minimum audible gate
+and no extension of the note's end. Generated Chord remains excluded.
+Stop and cleanup cancel pending
+attacks. With held live keys, free-running arp may generate new groups as before.
+The chd3 fix remains intact; ordinary arp gate rules remain unchanged.
+Wheel and magnetism remain deferred.

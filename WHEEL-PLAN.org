@@ -1,0 +1,317 @@
+#+title: CARBON feature plans
+#+options: ^:nil -:nil
+
+Priority: Humanize v1 is the NEXT IMPLEMENTATION TASK (see final section).
+Wheel and track magnetism remain DEFERRED.
+
+* Wheel mode - deferred design proposal
+:PROPERTIES:
+:CUSTOM_ID: wheel-mode---deferred-design-proposal
+:END:
+Status: DEFERRED - come back to this later.
+
+This records the first discussion draft, not an approved implementation spec.
+Do not implement it until the user explicitly resumes the work. No firmware,
+control mapping, storage format or release commitment is implied.
+
+* Motivation and agreed conceptual distinction
+:PROPERTIES:
+:CUSTOM_ID: motivation-and-agreed-conceptual-distinction
+:END:
+Inspired by the user's experience of the 4ms SMR pitch-CV mode, especially
+circulating pitches, variable spacing and slow slew between positions. SMR
+behaviour was recalled from memory, not verified against its documentation.
+This is not intended as an exact emulation.
+
+Rotation distance and voice spacing are independent. Moving one position need
+not give an output the pitch previously assigned to its neighbour. A circular
+pitch list and persistent voice identities are central ideas. Existing
+ordinary arp and arp-to-chord behaviour should remain unchanged.
+
+* Proposed pitch behaviour
+:PROPERTIES:
+:CUSTOM_ID: proposed-pitch-behaviour
+:END:
+- Four voices, matching CARBON's four CV/gate pairs; MIDI chord output too.
+- Initial wheel size: 24 positions, containing successive notes of the
+  effective scale, starting at the input note quantized using effective Root.
+- Chromatic gives 24 successive semitones; other scales span a wider range.
+- For voice numbers 0, 1, 2, 3:
+
+#+begin_src text
+position = (Rotation + voice_number * Spread) modulo 24
+
+Spread 3, Rotation 0:   0   3   6   9
+Spread 3, Rotation 1:   1   4   7  10
+Spread 3, Rotation 16: 16  19  22   1
+#+end_src
+
+- Wrap-around intentionally moves a voice back to a low pitch. Do not sort
+  voices by pitch or reassign their outputs when they cross.
+- Omit pitches outside MIDI/CV capabilities; no clamping or second wrap.
+- Some spreads repeat positions. Preserve four logical voices; duplicate MIDI
+  pitches need safe note ownership/release handling.
+
+* Proposed sequencer behaviour
+:PROPERTIES:
+:CUSTOM_ID: proposed-sequencer-behaviour
+:END:
+- Separate Arp Speed choice, Wheel, after Chord; Arp must be enabled.
+- First eligible positive-velocity Note anchors the wheel and gives velocity.
+  Additional Notes on that step are ignored in this initial proposal.
+- Hrm supplies effective scale/root. Transpose and Bias apply exactly once;
+  precise ordering needs design and tests. Inv/Compact initially excluded.
+- Rotation and Spread retain their values between steps.
+- Empty or gate-blocked steps create no attack; existing tails can expire.
+- Gate duration follows Chord: actual step interval times Track Gate. Stored
+  input lengths/delays/ratchets and Arp Gate are ignored in Wheel.
+- New sequence attacks update the anchor and retrigger the group. Overlapping
+  groups reuse the four voices and glide from their current pitches.
+- No automatic latch or indefinite sustain in the initial proposal.
+- Stop, mute, disabling Arp and leaving Wheel release its voices.
+
+* Proposed controls
+:PROPERTIES:
+:CUSTOM_ID: proposed-controls
+:END:
+| Parameter | Initial range                     | Meaning                                    |
+|-----------+-----------------------------------+--------------------------------------------|
+| Rotation  | 0--23, wrapping                   | Move all positions around the wheel        |
+| Spread    | 1--12                             | Distance between voices in wheel positions |
+| Slew      | Off plus existing glide durations | Time to a new pitch target                 |
+
+Suggested defaults: Rotation 0, Spread 2, Slew Off. A major-scale wheel then
+starts with a four-note stack of thirds.
+
+Tentative contextual panel mapping while Wheel is selected, outside Step Edit:
+
+- Arp Type encoder edits Rotation instead of arp type.
+- Arp Gate encoder edits Spread instead of arp gate.
+- Arp menu exposes Rotation, Spread and Slew explicitly.
+- Example readout: =Wheel Rot:5 Spr:3=; slew appears in the menu.
+- Leaving Wheel restores ordinary control meanings, retaining previous arp
+  type/gate settings. Mapping availability and UI fit need verification.
+
+While a group is active, Rotation/Spread edits retarget pitches immediately,
+without extending gate duration or retriggering gates. Silent edits prepare
+only the next attack. Slew edits affect subsequent retargeting. Use the
+existing curve setting initially rather than adding another Wheel parameter;
+its exact source and persistence need clarification.
+
+* CV slew and MIDI limitations
+:PROPERTIES:
+:CUSTOM_ID: cv-slew-and-midi-limitations
+:END:
+CV is the primary target for continuous chord morphing:
+
+- Reserve a four-voice CV group for one Wheel track.
+- Fixed voice-to-output assignment and independent slew for all four voices.
+- Mid-glide retargeting starts from the actual current pitch.
+- At wrap-around, glide from high to low through the pitch range. The target
+  selection wraps, not the voltage trajectory.
+- Gate handling is independent of pitch movement.
+
+Existing CV glide is groundwork, not an already implemented four-voice
+solution: it currently targets mono pitch groups. Stable polyphonic voice
+assignment, resource ownership and independent slew need investigation and
+testing.
+
+Ordinary MIDI on one channel cannot provide four independent continuous pitch
+glides. Initially retarget using correctly paired Note Off/On messages; do not
+promise SMR-like MIDI morphing. Six independent pitch CV outputs would require
+additional hardware, such as an external MIDI-to-CV interface.
+
+* Persistence and possible later work
+:PROPERTIES:
+:CUSTOM_ID: persistence-and-possible-later-work
+:END:
+Proposed eventual settings: Rotation, Spread and Slew per track/scene. Review
+storage, migration, snapshot/undo and host-tool compatibility before choosing
+an encoding. Dedicated CCi/Remote automation could follow panel validation.
+
+Possible staged prototype, only after renewed approval:
+
+1. Establish wheel calculation, pitch boundaries and panel controls.
+2. Verify stable four-output CV assignment and resource ownership.
+3. Implement/test independent slew and deliberate gate/retrigger semantics.
+4. Check hardware musical behaviour and realtime cost before release claims.
+
+* Questions to revisit
+:PROPERTIES:
+:CUSTOM_ID: questions-to-revisit
+:END:
+All details above remain proposals, especially:
+
+- 24 scale positions versus a fixed semitone range or configurable wheel.
+- Scale-degree spacing versus semitone spacing, and wheel anchor semantics.
+- First-note-only input, fixed four voices, duplicate positions and bounds.
+- Immediate live retargeting versus next-step changes; Hrm/anchor changes
+  during sounding groups; retrigger and overlapping-gate behaviour.
+- Panel mapping, slew/curve controls, and CV group allocation/conflicts.
+- Saved settings, automation and compatibility implications.
+
+No Wheel implementation, tests, build or device operations were requested.
+
+* Separate future idea: track magnetism (DEFERRED)
+:PROPERTIES:
+:CUSTOM_ID: separate-future-idea-track-magnetism-deferred
+:END:
+Record only; no implementation requested. Independent of Wheel mode.
+
+- Bias-like, directed pitch influences: each target track can select up to two
+  source tracks, each with Attract/Repel direction, probability and strength.
+  Mutual attraction requires configuring both directions.
+- Remembered evolution: small pitch changes accumulate per pattern position in
+  a non-destructive playback layer; stored notes remain unchanged.
+- Original notes always attract: each position's original pitch is an implicit
+  home attractor. Removing/muting an external source removes its influence,
+  not the accumulated displacement; home attraction gradually restores the
+  phrase when no other external influence counteracts it.
+- Example: A and B attract each other; activating strongly repulsive C
+  disturbs them. Muting C lets them recover under remaining attraction/home. A
+  shared repeller can move both in the same direction, not necessarily
+  separate them. Home attraction can also prevent complete convergence.
+- Candidate calculation: sample source references from a common pre-update
+  state and combine home plus external tendencies before choosing a bounded
+  movement. Avoid track-processing-order dependence. Prefer small scale-degree
+  changes; do not retune already sounding notes.
+- Possible controls: two source slots, direction/probability/strength per
+  slot, home strength, evolution rate and displacement limit. Lock freezes all
+  evolution including home return; Reset restores the original immediately.
+- Preserve ordinary Bias transposition/control routing; a second magnetic
+  source does not imply extending CCi/Hrm/Inv routing.
+
+Open: strength as movement size versus directional weight/probability; update
+cadence; source pitch reference and rests/polyphony; equal-pitch escape rules;
+scale/root/transpose ordering; exact home-return rule; scene/edit/persistence
+and snapshot/undo semantics. These are discussion proposals, not a settled
+specification. Resume only on explicit user request.
+
+* Humanize v1 - NEXT IMPLEMENTATION TASK
+:PROPERTIES:
+:CUSTOM_ID: humanize-v1---next-implementation-task
+:END:
+User requests this as the next implementation task. This session records the
+plan only. Wheel, magnetism and pitch humanization are not part of this task.
+Startup note: [[file:HUMANIZE-NEXT-SESSION.org]].
+
+** Scope and behaviour
+:PROPERTIES:
+:CUSTOM_ID: scope-and-behaviour
+:END:
+Non-destructive, per-playback variation, not remembered evolution. Stored
+notes remain unchanged. First scope: ordinary sequenced Notes, including drum
+notes; live input, ordinary arp input/output and generated Chord stay
+unchanged. Do not change existing ordinary arp input-duration/gate rules.
+
+Each dimension has independent probability and amount; humanization defaults
+Off and Off must preserve existing playback. Exact menu placement, ranges and
+storage policy need a small design review before implementation.
+
+- Velocity: signed variation around stored velocity (often 100), allowing both
+  louder and softer attacks. Prefer small deviations over extremes. Clamp
+  positive velocities to 1..127. Do not activate rests/zero-velocity events.
+  Initial per-note decisions; correlated chord accents are later work.
+- Gate length: symmetric percentage variation around normal effective duration
+  after Track Gate scaling. Permit shorter and longer notes, minimum one tick.
+  Duration begins at the actual delayed attack; onset delay must not silently
+  shorten it. Define rounding and safe upper bounds.
+- Late onset: add a fixed Centre delay plus probabilistic signed jitter to the
+  existing scheduled note delay. Require Centre >= jitter amplitude so the
+  extra delay is never negative. Unselected groups receive Centre only;
+  selected groups receive Centre + jitter. Example Centre 3, jitter +/-2
+  yields 1..5 extra ticks. Probability zero still retains Centre when enabled.
+  Initially use one draw shared by the eligible note group of each track step,
+  preserving existing per-note relative spacing; no unintended random strum.
+
+** Timing and synchronisation
+:PROPERTIES:
+:CUSTOM_ID: timing-and-synchronisation
+:END:
+Keep transport, clock output, step positions and control-event processing on
+existing schedules. Delay audible Note attacks only. Schedule every offset
+from the original onset, never cumulatively from a previous humanized attack.
+This adds latency relative to external devices/unmodified tracks, not drift. A
+common Centre across participating tracks gives a shared late reference, not
+truly early notes relative to the original clock. No look-ahead or clock
+redesign is intended. Resolution follows current internal tick scheduling.
+
+Reuse existing delayed-note scheduling where practical. Draw decisions once
+and retain them until playback; no redraw from GUI calls or scheduling
+retries. Use dedicated random state, preferably per track, independent of
+probability gates and other features. Define seeding/reset policy and
+deterministic test hooks without requiring identical musical results on each
+transport restart.
+
+** Design checks before coding
+:PROPERTIES:
+:CUSTOM_ID: design-checks-before-coding
+:END:
+- Specify controls: enable, velocity probability/amount, gate
+  probability/amount, timing probability/Centre/jitter; exact distribution and
+  bounds.
+- Decide session-only versus saved per-track/per-scene settings explicitly.
+  Review compatibility, snapshot/undo and host tooling before changing
+  storage.
+- Ratchets need an explicit policy: delayed whole train versus individual
+  hits, gate scaling and release ownership. Do not silently break their
+  current behaviour. A documented initial exclusion is preferable to ambiguous
+  rules.
+- Review interaction with conditional gates, explicit/inherited/relative
+  delays, Hrm/output processing, Gli and note-slot limits. Humanization must
+  not alter control-source resolution or conditional random draws.
+- Changes to controls should affect newly scheduled events, not redraw already
+  pending decisions. Follow existing safe cancellation boundaries and document
+  any cases needing different handling.
+
+** Verification and delivery
+:PROPERTIES:
+:CUSTOM_ID: verification-and-delivery
+:END:
+- Host tests: Off equivalence; probability endpoints; signed velocity limits;
+  gate rounding/minimum and duration from actual onset; Centre-only at zero
+  probability; bounded jitter; shared timing with retained per-note delays.
+- Integration tests: repeated pitches, overlaps, cross-step pending attacks,
+  cancellation/Stop/scene/reset/mute cleanup, slot exhaustion, ratchet policy,
+  no clock drift, random-stream independence, unchanged arp/Chord/live paths.
+- Run all host suites, diff checks and forced release build. Run Rust tests if
+  storage/tooling changes require them. Record identity, sizes, checksum and
+  hardware gaps; no automatic flash, song write, publication or commit.
+- Hardware audition should check velocity around 100, rhythmic feel at several
+  tempos, gate lengths, external sync and busy-track note cleanup. Static
+  tests are not realtime headroom or musical acceptance measurements.
+
+** Humanize v1 implementation decisions
+:PROPERTIES:
+:CUSTOM_ID: humanize-v1-implementation-decisions
+:END:
+Local candidate 1.38-jwk-hum1 now implements this task; see
+[[file:HUMANIZE.org]] for controls, exact ranges/distribution, tests and
+remaining hardware checks. Chosen policy: session-only per track, Clock-menu
+controls, all-ratchet exclusion. No storage/host-profile changes; existing
+chd3 fix retained. Wheel and magnetism remain deferred. No commit, flash, song
+write or publication authorized.
+
+** hum2 user revision - supersedes Centre/jitter above
+:PROPERTIES:
+:CUSTOM_ID: hum2-user-revision---supersedes-centrejitter-above
+:END:
+User reports hum1 works but fixed Centre latency sounds poor. Replace Centre
+and signed jitter with Late Chance 0..100% and Late Max 0..24 ticks.
+Unselected groups receive zero extra delay; selected groups receive uniform
+1..Max ticks. Max zero disables timing variation. Preserve shared group
+spacing, independent velocity/gate and all prior exclusions. Session-only, no
+migration. Arp feasibility reviewed in HUMANIZE.org; generated velocity is
+local, but gate/ late onset need separate generated-output
+lifetime/cancellation policy. No arp extension implemented. Wheel and
+magnetism remain deferred.
+
+** hum3 approved arp simplification
+:PROPERTIES:
+:CUSTOM_ID: hum3-approved-arp-simplification
+:END:
+Ordinary generated arp now uses velocity variation and late onset, but not
+gate variation. Keep original expiry/program release schedules; late attacks
+sound shorter, or are omitted if released at/before onset. Shared timing per
+interpreter pass, held input and program phase unchanged. Generated Chord and
+direct live input remain excluded. See HUMANIZE.org for cleanup/tests.

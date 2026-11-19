@@ -1,0 +1,166 @@
+#+title: Humanize - local hum4 candidate
+#+options: ^:nil -:nil
+
+Identity: 1.38-jwk-hum4, uncommitted on work/arp-chord above 4b36c39.
+Preserves the local chd3 arp transition fix. No flash or publication
+performed. User reports hum1 works, but its fixed Centre offset sounds poor.
+hum2 removes Centre/jitter in favour of probabilistic late onset. hum2/hum3
+audition is pending. Wheel and track magnetism remain deferred. No pitch
+mutation or stored edits.
+
+* Controls
+:PROPERTIES:
+:CUSTOM_ID: controls
+:END:
+Clock menu after Recall: seven per-track session controls. Motion Start
+selects an entry; Length/Value edits it. Multi-track edits apply the first
+selected track's resulting value to all selected tracks. The subtitle reads
+=Humanize T1 / session only= for Track 1 (T2..T6 for other tracks). The
+parameter labels below omit the old =Hum= prefix, leaving at least three blank
+columns before the value. For example:
+
+#+begin_src text
+Humanize T1 / session only
+Vel Chance    66%
+#+end_src
+
+The other chance entries read =Gate Chance   100%= or =Late Chance   25%=; the
+maximum-delay entry reads =Late Max      3 ticks=. These are alternative
+parameter rows, not several entries displayed simultaneously.
+
+| Entry       | Range       | Meaning                                        |
+|-------------+-------------+------------------------------------------------|
+| Humanize    | Off/On      | Master enable                                  |
+| Vel Chance  | 0..100%     | Independent selection per positive Note        |
+| Vel +/-     | 0..32       | Signed velocity deviation                      |
+| Gate Chance | 0..100%     | Independent selection per positive Note        |
+| Gate +/-    | 0..100%     | Signed percentage of normal effective duration |
+| Late Chance | 0..100%     | Probability of delaying the step's note group  |
+| Late Max    | 0..24 ticks | Maximum extra onset delay                      |
+
+All default zero/Off. Suggested starting point: velocity chance 100%, amount
+8; gate chance 100%, amount 10%; Late Chance 25%, Late Max 3 ticks. Most
+groups stay at their original onset; selected groups receive a uniform integer
+extra delay of 1..3 ticks. There is NO fixed Centre offset. At chance zero or
+maximum zero, no extra delay or timing draw occurs. At 100% every eligible
+group is late when Max is nonzero. Random selection changes average feel, not
+transport phase.
+
+Timing remains shared across the eligible positive Notes of one track step,
+not per-note strumming. Existing explicit/inherited/relative delays retain
+their spacing and receive the shared extra offset. Selection and amount are
+drawn once at scheduling; edits, including Off, do not change pending
+decisions.
+
+Velocity and gate variation are unchanged: difference of two uniform draws
+from 0..amount gives symmetric triangular deviations favouring small changes.
+Selected notes can receive zero deviation. Positive velocities clamp to
+1..127; zero-velocity events are not activated, delayed or randomized.
+
+Gate variation follows stored length times effective Track Gate (normal
+integer truncation, minimum one tick). Multiply by (100 + deviation)/100,
+round nearest tick with ties up, clamp to 1..262140 ticks. Duration begins at
+actual onset. No variation accumulates into later notes or changes stored
+values.
+
+* Scope and persistence
+:PROPERTIES:
+:CUSTOM_ID: scope-and-persistence
+:END:
+Ordinary sequenced positive-velocity Notes, including drums, use all three
+dimensions. Ordinary generated arp output uses velocity and late onset only
+(see below). Direct live input, stopped audition and generated Chord remain
+unchanged. Ratchet count greater than one excludes ordinary sequence steps
+from Humanize; existing ratchet delays/subdivisions/gates remain unchanged.
+Arp input still ignores ratchets as before; generated output is independent.
+
+Session-only per track, not per scene. No saved field, migration, event code,
+numeric-version bump or JSON profile change. Load, Clear and reboot clear all
+settings. Scene/Stop/Continue/transport or track Reset retain them. Snapshot
+and Undo leave current Humanize preferences and random streams unchanged.
+Saving or raw backup cannot retain these settings. Host JSON/upload support
+remains through 1.37, not 1.38 Chord songs; no new compatibility is implied.
+
+Conditional/control and Bias/Hrm/Inv preparation remain unchanged. Gli and
+pitch snapshots retain existing semantics; output Hrm/root processing is
+attack-time. Preview neither draws randomness nor predicts Humanize timing.
+Stop/route-stop/ load and pending cancellation on reset/scene/mute/rate
+changes retain their existing policies. Pending notes count toward the
+existing 16-voice capacity. Humanized notes have internal slot-specific
+release identities, never wire ports, so shorter same-input retriggers release
+their own transformed pitches. Identical physical MIDI pitches/shared
+destinations remain receiver-dependent. The shortest-voice search also handles
+durations above 65535 safely.
+
+Dedicated per-track xorshift states are salted from the existing startup seed,
+without consuming conditional or libc/arp randomness. They continue across
+reset/load/scene/checkpoint operations. Tests inject deterministic states.
+
+Clock/transport/step/control schedules are unchanged. Extra offsets always
+start at the original scheduled onset, never a previous humanized attack. No
+look-ahead or drift. Ticks follow the existing nominal 96-PPQ sequencer (about
+5.2 ms at 120 BPM); swing can issue zero/multiple sequencer passes per
+straight clock tick, so countdowns follow those swung passes.
+
+* Ordinary arp output (hum3)
+:PROPERTIES:
+:CUSTOM_ID: ordinary-arp-output-hum3
+:END:
+Uses the same Humanize enable, velocity chance/amount and Late Chance/Max.
+Gate chance/amount are ignored for arp output, with no gate random draws.
+Works for sequencer-fed and live-fed ordinary arp, including free-running arp.
+Held input notes, their velocity/lifetimes and arp program/rate phase are not
+humanized. Direct live playing and generated Arp Speed Chord remain unchanged.
+
+Velocity is drawn independently for each generated positive attack. One late
+draw is shared by outputs generated in the same interpreter pass. Pending
+velocity/delay are frozen: turning Humanize Off affects subsequent schedules,
+not already pending attacks. Existing glide controls and effective harmony are
+applied at actual attack, as with normal arp output.
+
+Only Note On is delayed. Original arp gate timeouts and explicit program stops
+remain on their original schedule: delayed notes sound for less time. A note
+released/retriggered before or exactly when its delayed attack is due is
+omitted entirely, without a false Note Off. This is intentional and can be
+used for rhythmic thinning. Try Late Chance 25%, Max 2 or 3 ticks first;
+larger delays with short gates/faster rates can remove many or all hits. No
+minimum sounding gate is invented, no ticks are added to the end, and no retry
+occurs.
+
+Pending attacks use the existing bounded eight arp output slots, with private
+release identities distinct from live/sequence voices. Expiry/program releases
+run before pending attacks, so release wins ties. A replaced slot cannot age
+its new attack in the same tick. Overflow retains existing drop behaviour.
+
+Stop, disable, clear input, changed type/speed, entering/leaving Chord, route/
+live cleanup and existing reset/scene/mute/song cleanup cancel pending output.
+Cancellation does not rewrite held input or terminate legacy sounding tails
+unless the existing operation already does so. Free-running arp with held live
+keys can generate NEW groups after transport Stop, as before; cancelled groups
+never reappear. The chd3 transition fix and ordinary input gate rules remain.
+
+* Verification
+:PROPERTIES:
+:CUSTOM_ID: verification
+:END:
+Host coverage: Off traces; probability endpoints; signed bounds and gate
+rounding; zero probability/amount adds no offset or draws; selected lateness
+1..Max; all Max values 0..24 at intermediate probability; shared relative
+spacing; duration from actual onset; frozen pending edits; bypasses/drums;
+reversed same-input releases/harmony; long/full slots; pending cancellation;
+random independence and checkpoint preferences. Production clock tests compare
+Off/On control/conditional/step schedules with swing, and cross-step mixed
+on-time/late attacks without drift. Both-LCD UI buffers cover seven controls,
+limits and multiselect. Existing chd3 regressions remain intact.
+
+Native tests/builds are not physical realtime/stack or musical acceptance.
+hum2 still needs audition: occasional lateness at several tempos,
+swing/external sync, gates/velocity, Gli/Hrm and busy repeated-note cleanup.
+No flash, song writes, publication or commit is part of this change.
+
+Arp regressions cover shortened gates, exact-expiry omissions, frozen choices,
+shared multi-note timing, per-note velocity, full slots, type/rate/Chord
+changes, Stop/reset/mute/scene/load/route/live cleanup, sync/freerun, and
+all37types with Off-equivalent traces and long delays. Held velocity remains
+unchanged; gate variation is ignored. Hardware arp audition/realtime
+measurements are pending.

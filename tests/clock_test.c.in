@@ -5,7 +5,12 @@
 #define main engine_fixture_tests
 #include "engine_test.c.in"
 #undef main
-void midi_clock_ticked_swing(uint32_t tick) { engine_tick=tick; seq_engine_run(tick); }
+static uint32_t human_clock_pass, human_output_pass[64];
+void midi_clock_ticked_swing(uint32_t tick) {
+    int before=output_count; engine_tick=tick; seq_engine_run(tick);
+    for(int i=before;i<output_count;i++) human_output_pass[i]=human_clock_pass;
+    human_clock_pass++;
+}
 void midi_clock_beat_crossed(void) { sestate.beat_cross = 1; }
 void midi_clock_run_state_changed(int run) { running = run; }
 static void pump(int milliseconds) {
@@ -70,7 +75,59 @@ static void test_straight_bar_clock(void) {
     assert(timing_step[0]==7 && engine_tick==384);
     assert(!seq_engine_timing_pending(0,0));
 }
+static void test_humanize_clock(void) {
+    // Identical production timer runs with/without Humanize: same clock,
+    // controls, conditions and step positions; only Note attacks are delayed.
+    uint32_t reference_tick=0;int reference_pos=0,reference_reads=0;
+    struct conditional_state reference_condition;
+    for(int mode=0;mode<2;mode++) {
+        setup();midi_clock_init();midi_clock_set_swing(70);
+        enabled[0]=1;put(0,0,SONG_EVENT_PROBABILITY,100,0);
+        put(0,1,SONG_EVENT_CC,7,90);put(0,2,SONG_EVENT_NOTE,60,100);
+        fixture[0][2].length=2;
+        if(mode) {
+            seq_engine_humanize_set(0,HUMANIZE_ENABLE,1);
+            seq_engine_humanize_set(0,HUMANIZE_LATE_MAX,1);
+            seq_engine_humanize_set(0,HUMANIZE_TIMING_CHANCE,100);
+        }
+        midi_clock_midi_rx_start();pump(1000);
+        if(!mode) {reference_tick=engine_tick;reference_pos=sestate.step_pos[0];
+            reference_reads=reads[0];reference_condition=sestate.conditions[0];}
+        else {
+            assert(engine_tick==reference_tick && sestate.step_pos[0]==reference_pos);
+            assert(reads[0]==reference_reads);
+            assert(!memcmp(&reference_condition,&sestate.conditions[0],sizeof(reference_condition)));
+        }
+        int controls=0,attacks=0;uint32_t boundary=0;
+        for(int i=0;i<output_count;i++) {
+            if(output[i].status==MIDI_CONTROL_CHANGE) {boundary=human_output_pass[i];controls++;}
+            if(output[i].status==MIDI_NOTE_ON) {
+                assert(human_output_pass[i]==boundary+(mode?1:0));attacks++;
+            }
+        }
+        assert(controls>=4 && attacks>=4);
+    }
+    // Cross-step pending attacks are absolute offsets, not drift.
+    setup();enabled[0]=1;sestate.step_size[0]=3;sestate.clock_div_count[0]=0;
+    put(0,0,SONG_EVENT_NOTE,60,100);
+    seq_engine_humanize_set(0,HUMANIZE_ENABLE,1);
+    seq_engine_humanize_set(0,HUMANIZE_LATE_MAX,7);
+    seq_engine_humanize_set(0,HUMANIZE_TIMING_CHANCE,50);
+    uint32_t rng=123; sestate.humanize_random[0]=rng;
+    int expected[41]={0},late=0,on_time=0;
+    for(int boundary=1;boundary<=40;boundary+=3) {
+        int delay=humanize_timing(&sestate.humanize[0],&rng);
+        late+=delay>0;on_time+=delay==0;
+        if(boundary+delay<=40) expected[boundary+delay]++;
+    }
+    for(int tick=1;tick<=40;tick++) midi_clock_ticked_swing(tick);
+    for(int i=0;i<output_count;i++) if(output[i].status==MIDI_NOTE_ON)
+        assert(expected[output_ticks[i]]-->0);
+    for(int tick=1;tick<=40;tick++) assert(!expected[tick]);
+    assert(late && on_time && sestate.humanize_random[0]==rng);
+}
 int main(void) {
+    test_humanize_clock();
     test_straight_bar_clock();
     test_variable_delay_intervals();
     struct conditional_state expected;

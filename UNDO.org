@@ -1,28 +1,33 @@
-# One-level song undo - local 1.37-jwk-und3 candidate
+#+title: One-level song undo - local 1.37-jwk-und3 candidate
+#+options: ^:nil -:nil
 
 Not part of published 1.37 RC1. No song format change: schema4/1.37 storage
 remains unchanged. Firmware hardware acceptance is pending.
 
-## Controls
-
+* Controls
+:PROPERTIES:
+:CUSTOM_ID: controls
+:END:
 Hold Clock FIRST, then press Run/Stop to undo. While running, restoration
-waits for the next transport-aligned 4/4 bar; stopped restoration is immediate.
-Repeat the chord before the bar to cancel. Run/Stop alone still controls
-transport; pressing it before Clock keeps its normal action. Either release
-order works. Feedback says No undo, Undo next bar, Undo cancelled or Undo
-restored. Recording/arming and active panel song I/O refuse undo.
+waits for the next transport-aligned 4/4 bar; stopped restoration is
+immediate. Repeat the chord before the bar to cancel. Run/Stop alone still
+controls transport; pressing it before Clock keeps its normal action. Either
+release order works. Feedback says No undo, Undo next bar, Undo cancelled or
+Undo restored. Recording/arming and active panel song I/O refuse undo.
 
-## What creates the undo point?
-
+* What creates the undo point?
+:PROPERTIES:
+:CUSTOM_ID: what-creates-the-undo-point
+:END:
 - Clear current song or selected track regions. Step/event clear inside Step
   Edit shares the step-entry checkpoint rather than capturing again.
 - Copy current scene onto another scene (the existing overwrite operation;
   there is no separate clipboard paste command in this firmware).
 - Magic on selected regions, once before its first changed step.
-- Entering Step Edit or moving to a different step captures one checkpoint
-  for that entire step visit. All subsequent event-type, pitch, velocity,
-  duration, delay, ratchet, Scn, clear and keyboard/CC edits on that step share
-  it. Changing event slots, auditioning or additional knob turns do not
+- Entering Step Edit or moving to a different step captures one checkpoint for
+  that entire step visit. All subsequent event-type, pitch, velocity,
+  duration, delay, ratchet, Scn, clear and keyboard/CC edits on that step
+  share it. Changing event slots, auditioning or additional knob turns do not
   replace it. Undo after changing A through G to F restores the entry A.
   Leaving/re-entering Step Edit, timeout, or switching track/scene begins a
   new visit. Navigation alone replaces the old point, even without edits.
@@ -37,10 +42,12 @@ transient CCi/Hrm/Inv playback and global preset-pattern editing do not create
 undo points. This is not an undo stack for every operation or a DAW-style
 transaction history. No support for undoing host flash uploads is implied.
 
-## Scope and lifetime
-
-Undo stores the whole RAM song plus current musical controls, independently
-of the manual snapshot. A newer undoable operation replaces the old point.
+* Scope and lifetime
+:PROPERTIES:
+:CUSTOM_ID: scope-and-lifetime
+:END:
+Undo stores the whole RAM song plus current musical controls, independently of
+the manual snapshot. A newer undoable operation replaces the old point.
 Repeated undo restores the same point, not redo. Song load (even the same
 slot) invalidates it; power-off loses it. User Clear is itself undoable.
 Saving retains the undo point but cancels a queued restore. Scene changes
@@ -54,20 +61,22 @@ If Step Edit is active when undo applies, it resumes on the same track, step
 and event slot after cleanup, without audition or a new undo capture. Further
 edits retain the original step-entry checkpoint. Undo outside Step Edit does
 not open it; other edit modes and manual snapshot recall retain their existing
-exit behavior. Conditional history/cycle restart; probability streams are
-not rewound. Song mode restarts its captured entry rather than its beat.
-External patches, arbitrary synth CC state and global preset patterns are not
-captured. Transport position is not reset; clock-source changes follow normal
-clock policy, not a seamless-switching promise.
+exit behavior. Conditional history/cycle restart; probability streams are not
+rewound. Song mode restarts its captured entry rather than its beat. External
+patches, arbitrary synth CC state and global preset patterns are not captured.
+Transport position is not reset; clock-source changes follow normal clock
+policy, not a seamless-switching promise.
 
 Undo restores RAM only: no flash save or Program Change resend is performed.
 Any edits made after capture, including ordinary parameter edits that do not
-create a point, are also rolled back. To keep the result, save explicitly.
-The manual snapshot retains its established lifetime (including invalidation
-when clearing/loading a song); undo never stores into the manual buffer.
+create a point, are also rolled back. To keep the result, save explicitly. The
+manual snapshot retains its established lifetime (including invalidation when
+clearing/loading a song); undo never stores into the manual buffer.
 
-## Verification
-
+* Verification
+:PROPERTIES:
+:CUSTOM_ID: verification
+:END:
 Host tests exercise snapshot/undo independence, repeat/cancel, record/I/O
 guards, pending-note and output cleanup, PRNG continuity, production clock
 next-bar application, multi-track destructive-operation grouping, recording
@@ -75,9 +84,10 @@ first-write/recycle/final-flush grouping, song load/save/clear lifetime and
 Clock/Run edge/release order, and Step Edit entry/slot/navigation/timeout
 transaction boundaries including multi-detent A-to-F restoration. Tests also
 cover staying in Step Edit after immediate/next-bar undo, preserving cursor
-and checkpoint without audition, and not opening an inactive editor. These are not hardware timing measurements.
+and checkpoint without audition, and not opening an inactive editor. These are
+not hardware timing measurements.
 
 Use backed-up/disposable songs for the first hardware check: Clear then undo,
 Magic then undo, scene copy, Step Edit and recording overdub, repeated undo,
-manual snapshot independence, both release orders, and busy-pattern recall.
-No firmware flashing, song writing or publication is performed by this document.
+manual snapshot independence, both release orders, and busy-pattern recall. No
+firmware flashing, song writing or publication is performed by this document.

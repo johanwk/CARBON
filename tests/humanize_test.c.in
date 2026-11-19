@@ -1,0 +1,344 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later */
+#define PITCH_TEST_MAIN pitch_original_main
+#include "pitch_integration_test.c.in"
+#undef main
+
+static void configure(void) {
+    seq_engine_humanize_set(0,HUMANIZE_ENABLE,1);
+    seq_engine_humanize_set(0,HUMANIZE_LATE_MAX,3);
+    seq_engine_humanize_set(0,HUMANIZE_TIMING_CHANCE,100);
+    sestate.humanize_random[0]=123;
+}
+static struct seq_engine_step_visit notes(void) {
+    struct seq_engine_step_visit v={.slots=3};
+    v.events[0]=(struct track_event){.type=SONG_EVENT_NOTE,.data0=60,
+        .data1=100,.length=10,.delay=0};
+    v.events[1]=v.events[0];v.events[1].data0=64;v.events[1].delay=2;
+    return v;
+}
+static void primitives(void) {
+    struct humanize_settings s={0};uint32_t r=123, saved=r;
+    assert(humanize_seed(12,0)!=humanize_seed(12,1));
+    humanize_set(&s,HUMANIZE_LATE_MAX,99);assert(s.value[HUMANIZE_LATE_MAX]==24);
+    humanize_set(&s,HUMANIZE_LATE_MAX,3);
+    assert(humanize_timing(&s,&r)==0 && r==saved);
+    assert(humanize_velocity(&s,&r,100)==100 && r==saved);
+    assert(humanize_gate(&s,&r,10)==10 && r==saved);
+    humanize_set(&s,HUMANIZE_ENABLE,1);
+    assert(humanize_timing(&s,&r)==0 && r==saved);
+    humanize_set(&s,HUMANIZE_VELOCITY_AMOUNT,32);
+    humanize_set(&s,HUMANIZE_GATE_AMOUNT,100);
+    assert(humanize_velocity(&s,&r,100)==100 && r==saved);
+    assert(humanize_gate(&s,&r,10)==10 && r==saved);
+    assert(humanize_gate_percent(1,-100)==1);
+    assert(humanize_gate_percent(3,50)==5);
+    assert(humanize_gate_percent(3,-50)==2);
+    assert(humanize_gate_percent(131070,100)==HUMANIZE_MAX_DURATION);
+    humanize_set(&s,HUMANIZE_VELOCITY_CHANCE,100);
+    humanize_set(&s,HUMANIZE_GATE_CHANCE,100);
+    humanize_set(&s,HUMANIZE_TIMING_CHANCE,100);
+    int low=0,high=0,shorter=0,longer=0,first=0,last=0;
+    for(int i=0;i<10000;i++) {
+        int v=humanize_velocity(&s,&r,100);assert(v>=68 && v<=127);
+        low+=v<100;high+=v>100;
+        assert(humanize_velocity(&s,&r,1)>=1);
+        assert(humanize_velocity(&s,&r,127)<=127);
+        saved=r;assert(humanize_velocity(&s,&r,0)==0 && r==saved);
+        int d=humanize_timing(&s,&r);assert(d>=1 && d<=3);
+        first+=d==1;last+=d==3;
+        unsigned g=humanize_gate(&s,&r,100);assert(g>=1 && g<=200);
+        shorter+=g<100;longer+=g>100;
+    }
+    assert(low && high && shorter && longer && first>2500 && last>2500);
+    humanize_set(&s,HUMANIZE_TIMING_CHANCE,50);
+    int selections=0;
+    for(int i=0;i<10000;i++) selections+=humanize_selected(&r,50);
+    assert(selections>4500 && selections<5500);
+    for(int amount=0;amount<=24;amount++) {
+        humanize_set(&s,HUMANIZE_LATE_MAX,amount);
+        int late=0;
+        for(int i=0;i<10000;i++) {
+            int delay=humanize_timing(&s,&r);
+            assert(delay>=0 && delay<=amount);late+=delay>0;
+        }
+        assert(amount ? late>4500 && late<5500 : late==0);
+    }
+    saved=r;humanize_set(&s,HUMANIZE_LATE_MAX,0);
+    assert(!humanize_timing(&s,&r) && r==saved);
+}
+static void shared_timing(void) {
+    for(int trial=0;trial<100;trial++) {
+        init();configure();seq_engine_humanize_set(0,HUMANIZE_TIMING_CHANCE,100);
+        sestate.humanize_random[0]=trial+1;
+        uint32_t expected=sestate.humanize_random[0];
+        int delay=humanize_timing(&sestate.humanize[0],&expected);
+        struct seq_engine_step_visit v=notes(),original=v;
+        seq_engine_track_play_step(0,0,&v);
+        assert(!wires && delay>=1 && delay<=3);
+        assert(sestate.humanize_random[0]==expected);
+        assert(!memcmp(&v,&original,sizeof(v)));
+        // Pending decisions survive knob edits; actual duration starts at attack.
+        seq_engine_humanize_set(0,HUMANIZE_LATE_MAX,24);
+        for(int tick=1;tick<=delay+12;tick++) {
+            seq_engine_track_manage_notes(0);
+            int expected_wires=2*(tick>=delay)+2*(tick>=delay+2)+
+                2*(tick>=delay+10)+2*(tick>=delay+12);
+            assert(wires==expected_wires);
+        }
+        assert(sestate.humanize_random[0]==expected);
+    }
+    init();configure();struct seq_engine_step_visit v=notes();
+    v.events[0].delay=SEQ_START_DELAY_INHERIT;
+    v.events[1].delay=99; // third of actual interval
+    test_delay=2;sestate.step_size[0]=96;
+    seq_engine_humanize_set(0,HUMANIZE_TIMING_CHANCE,0);
+    seq_engine_track_play_step(0,0,&v);
+    assert(sestate.track_active_notes[0][15].start_delay_countdown==2);
+    assert(sestate.track_active_notes[0][14].start_delay_countdown==32);
+    assert(sestate.humanize_random[0]==123); // zero timing probability, no added offset
+}
+static void varied_notes(void) {
+    for(int trial=1;trial<=100;trial++) {
+        init();configure();
+        seq_engine_humanize_set(0,HUMANIZE_VELOCITY_CHANCE,100);
+        seq_engine_humanize_set(0,HUMANIZE_VELOCITY_AMOUNT,32);
+        seq_engine_humanize_set(0,HUMANIZE_GATE_CHANCE,100);
+        seq_engine_humanize_set(0,HUMANIZE_GATE_AMOUNT,100);
+        sestate.humanize_random[0]=trial;
+        uint32_t expected=trial;
+        int delay=humanize_timing(&sestate.humanize[0],&expected);
+        int velocity=humanize_velocity(&sestate.humanize[0],&expected,100);
+        unsigned duration=humanize_gate(&sestate.humanize[0],&expected,15);
+        sestate.gate_time[0]=192; // 150% before Humanize
+        struct seq_engine_step_visit v=notes();v.slots=1;
+        seq_engine_track_play_step(0,0,&v);
+        assert(!wires && sestate.humanize_random[0]==expected);
+        assert(sestate.track_active_notes[0][15].note.tick_len==duration);
+        seq_engine_humanize_set(0,HUMANIZE_ENABLE,0); // frozen pending choices
+        for(unsigned tick=1;tick<=(unsigned)delay+duration;tick++) {
+            seq_engine_track_manage_notes(0);
+            assert(wires==(tick<(unsigned)delay?0:tick<(unsigned)delay+duration?2:4));
+        }
+        assert(wire[0].data1==velocity && wire[0].data0==62);
+        assert(sestate.humanize_random[0]==expected);
+        assert(v.events[0].data1==100 && v.events[0].length==10);
+    }
+}
+static void bypasses(void) {
+    // Off with nonzero amounts is wire-identical, including ratchets.
+    for(int ratchet=1;ratchet<=3;ratchet++) {
+        struct midi_msg baseline[128];int n=0;
+        for(int mode=0;mode<2;mode++) {
+            init();test_ratchet=ratchet;
+            if(mode) {configure();seq_engine_humanize_set(0,HUMANIZE_ENABLE,0);}
+            struct seq_engine_step_visit v=notes();seq_engine_track_play_step(0,0,&v);
+            for(int t=0;t<20;t++) seq_engine_track_manage_notes(0);
+            if(!mode) {n=wires;memcpy(baseline,wire,n*sizeof(*wire));}
+            else {assert(n==wires);assert(!memcmp(baseline,wire,n*sizeof(*wire)));}
+        }
+    }
+    init();configure();test_ratchet=3;struct seq_engine_step_visit v=notes();
+    seq_engine_humanize_set(0,HUMANIZE_VELOCITY_CHANCE,100);
+    seq_engine_humanize_set(0,HUMANIZE_VELOCITY_AMOUNT,32);
+    seq_engine_track_play_step(0,0,&v);
+    assert(wires==2 && wire[0].data1==100 && sestate.humanize_random[0]==123);
+    init();configure();v=notes();v.slots=1;v.events[0].data1=0;
+    seq_engine_track_play_step(0,0,&v);
+    assert(!wires && sestate.humanize_random[0]==123);
+    init();configure();live(MIDI_NOTE_ON,60,100);
+    assert(wires==2 && wire[0].data1==100 && sestate.humanize_random[0]==123);
+    live(MIDI_NOTE_OFF,60,64);assert(wires==4);
+    for(int chord=0;chord<2;chord++) {
+        init();configure();sestate.arp_enable[0]=1;arp_set_arp_enable(0,1);
+        if(chord) arp_set_speed(0,SEQ_UTILS_ARP_CHORD);
+        v=notes();seq_engine_track_play_step(0,0,&v);
+        assert(sestate.humanize_random[0]==123);
+        if(chord) assert(wires>0);else assert(astate[0].held_note_count==2);
+    }
+    init();configure();sestate.track_type[0]=SONG_TRACK_TYPE_DRUM;test_drum=1;
+    v=notes();v.slots=1;seq_engine_track_play_step(0,0,&v);assert(!wires);
+    for(int i=0;i<3;i++) seq_engine_track_manage_notes(0);
+    assert(wires==2 && wire[0].data1==100);
+}
+static void release_ownership(void) {
+    init();configure();seq_engine_humanize_set(0,HUMANIZE_LATE_MAX,0);
+    struct seq_engine_step_visit v=notes();v.slots=1;v.events[0].length=20;
+    seq_engine_track_play_step(0,0,&v);assert(wire[0].data0==62);
+    // Same input, different attack-time harmony and shorter gate: release newer first.
+    seq_engine_remote_harmony_root(3);
+    v.events[0].length=2;seq_engine_track_play_step(0,0,&v);
+    int second=wire[2].data0;assert(second!=wire[0].data0);
+    for(int t=0;t<2;t++) seq_engine_track_manage_notes(0);
+    assert(wires==6 && wire[4].data0==second && wire[4].status==MIDI_NOTE_OFF);
+    for(int t=2;t<20;t++) seq_engine_track_manage_notes(0);
+    assert(wires==8 && wire[6].data0==62);
+    // Exhaust slots with very long durations (old 0xffff sentinel was unsafe).
+    init();configure();seq_engine_humanize_set(0,HUMANIZE_LATE_MAX,0);
+    sestate.gate_time[0]=256;v.events[0].length=65535;
+    for(int i=0;i<17;i++) seq_engine_track_play_step(0,0,&v);
+    assert(wires==36);seq_engine_track_stop_all_notes(0);assert(wires==68);
+    for(int i=0;i<OUTPROC_MAX_NOTES;i++) assert(!opstate.notes[0][i].input.status);
+}
+static void boundaries(void) {
+    for(int kind=0;kind<6;kind++) {
+        init();configure();struct seq_engine_step_visit v=notes();
+        seq_engine_track_play_step(0,0,&v);assert(!wires);
+        uint32_t scheduled=sestate.humanize_random[0];
+        switch(kind) {
+            case 0: seq_engine_track_stop_all_notes(0);break;
+            case 1: seq_engine_reset_all_tracks_pos();break;
+            case 2: seq_engine_mute_select_changed(0,0,1);break;
+            case 3: sestate.scene_next=1;seq_engine_change_scene_synced();break;
+            case 4: seq_engine_song_loaded(0);break;
+            case 5: seq_engine_track_cancel_pending(0);break;
+        }
+        for(int t=0;t<30;t++) seq_engine_track_manage_notes(0);
+        assert(!wires && sestate.humanize_random[0]==scheduled);
+        assert(seq_engine_humanize_get(0,HUMANIZE_ENABLE)==(kind==4?0:1));
+    }
+    init();configure();struct seq_engine_step_visit v=notes();
+    for(int i=0;i<20;i++) seq_engine_track_play_step(0,0,&v);
+    assert(!wires);seq_engine_track_stop_all_notes(0);assert(!wires);
+    // Preview draws nothing; control preparation/conditional random stream unchanged.
+    init();configure();uint32_t random=sestate.conditions[0].random;
+    struct seq_step_preview preview;seq_engine_preview_step(0,0,&preview);
+    assert(sestate.humanize_random[0]==123 && sestate.conditions[0].random==random);
+    v=notes();seq_engine_track_play_step(0,0,&v);
+    assert(sestate.conditions[0].random==random);
+    // Other track draws cannot perturb this track.
+    uint32_t state=sestate.humanize_random[0];
+    for(int i=0;i<100;i++) humanize_random(&sestate.humanize_random[1]);
+    assert(sestate.humanize_random[0]==state);
+    running=0;assert(seq_engine_snapshot_capture()==0);
+    seq_engine_humanize_set(0,HUMANIZE_LATE_MAX,7);
+    assert(seq_engine_snapshot_recall()==0);
+    assert(seq_engine_humanize_get(0,HUMANIZE_LATE_MAX)==7);
+    seq_engine_handle_state_change(SCE_SONG_CLEARED,0,0);
+    assert(!seq_engine_humanize_get(0,HUMANIZE_ENABLE));
+    assert(sestate.humanize_random[0]==state);
+}
+static void arp_setup_human(int sync) {
+    init();configure();
+    sestate.arp_enable[0]=1;arp_set_arp_enable(0,1);arp_set_seq_enable(sync);
+    arp_align_rate(0);live(MIDI_NOTE_ON,60,100);
+    seq_engine_humanize_set(0,HUMANIZE_LATE_MAX,3);
+    seq_engine_humanize_set(0,HUMANIZE_VELOCITY_CHANCE,100);
+    seq_engine_humanize_set(0,HUMANIZE_VELOCITY_AMOUNT,32);
+    // Gate variation deliberately has no effect on generated arp output.
+    seq_engine_humanize_set(0,HUMANIZE_GATE_CHANCE,100);
+    seq_engine_humanize_set(0,HUMANIZE_GATE_AMOUNT,100);
+    assert(!wires);
+}
+static void arp_humanize(void) {
+    for(int sync=0;sync<2;sync++) for(int type=0;type<ARP_NUM_TYPES;type++) {
+        struct midi_msg reference[512];int counts[96],n=0;
+        for(int mode=0;mode<3;mode++) {
+            arp_setup_human(sync);arp_set_type(0,type);srand(987);
+            if(mode==0) seq_engine_humanize_set(0,HUMANIZE_ENABLE,0);
+            else {
+                seq_engine_humanize_set(0,HUMANIZE_LATE_MAX,mode==1?0:24);
+                seq_engine_humanize_set(0,HUMANIZE_VELOCITY_AMOUNT,0);
+            }
+            for(int t=1;t<=96;t++) {
+                arp_run(t);
+                if(!mode) counts[t-1]=wires;
+                else if(mode==1) assert(wires==counts[t-1]);
+            }
+            arp_stop_all_notes(0);
+            if(!mode) {n=wires;memcpy(reference,wire,n*sizeof(*wire));}
+            else if(mode==1) {
+                assert(wires==n && !memcmp(reference,wire,n*sizeof(*wire)));
+                assert(sestate.humanize_random[0]==123); // gate controls ignored
+            }
+            assert(astate[0].held_velo==100);
+            for(int i=0;i<OUTPROC_MAX_NOTES;i++) assert(!opstate.notes[0][i].input.status);
+            for(int i=0;i<ARP_MAX_PLAYING_NOTES;i++) assert(!astate[0].pending_delay[i]);
+        }
+    }
+    for(int sync=0;sync<2;sync++) for(int seed=1;seed<=100;seed++) {
+        arp_setup_human(sync);sestate.humanize_random[0]=seed;
+        uint32_t expected=seed;
+        int delay=humanize_timing(&sestate.humanize[0],&expected);
+        int velocity=humanize_velocity(&sestate.humanize[0],&expected,100);
+        arp_set_gate_time(0,8);arp_run(1);
+        assert(!wires && astate[0].playing_note_count==1);
+        assert(astate[0].held_velo==100 && sestate.humanize_random[0]==expected);
+        // Turning Humanize off must not redraw pending velocity/delay.
+        seq_engine_humanize_set(0,HUMANIZE_ENABLE,0);
+        for(int tick=2;tick<=9;tick++) {
+            arp_run(tick);
+            assert(wires==(tick<1+delay?0:tick<9?2:4));
+        }
+        assert(wire[0].data1==velocity && wire[2].status==MIDI_NOTE_OFF);
+        assert(astate[0].held_note_count==1 && !astate[0].playing_note_count);
+        assert(sestate.humanize_random[0]==expected);
+    }
+    // A gate expiry at the same tick wins over the delayed onset. No false off.
+    for(int seed=1;seed<=100;seed++) {
+        arp_setup_human(1);sestate.humanize_random[0]=seed;
+        arp_set_gate_time(0,1);arp_run(1);arp_run(2);
+        assert(!wires && !astate[0].playing_note_count);
+        for(int tick=3;tick<=12;tick++) arp_run(tick);
+        assert(!wires);
+    }
+    // A two-note interpreter pass shares lateness, but velocities draw separately.
+    arp_setup_human(1);
+    aprog[0].prog[0][ARP_PROG_INST]=AP_LOADL;aprog[0].prog[0][ARP_PROG_ARG]=60;
+    aprog[0].prog[1][ARP_PROG_INST]=AP_PLAY_NOTE;
+    aprog[0].prog[2][ARP_PROG_INST]=AP_LOADL;aprog[0].prog[2][ARP_PROG_ARG]=64;
+    aprog[0].prog[3][ARP_PROG_INST]=AP_PLAY_NOTE;
+    aprog[0].prog[4][ARP_PROG_INST]=AP_WAIT;
+    uint32_t expected=123;
+    int delay=humanize_timing(&sestate.humanize[0],&expected);
+    int v1=humanize_velocity(&sestate.humanize[0],&expected,100);
+    int v2=humanize_velocity(&sestate.humanize[0],&expected,100);
+    arp_run(1);assert(!wires && astate[0].playing_note_count==2);
+    assert(astate[0].pending_delay[0]==delay && astate[0].pending_delay[1]==delay);
+    for(int t=1;t<=delay;t++) arp_run(t+1);
+    assert(wires==4 && wire[0].data1==v1 && wire[2].data1==v2);
+    assert(sestate.humanize_random[0]==expected);
+    arp_stop_all_notes(0);assert(wires==8);
+    // All eight slots remain bounded; overflow does not draw or send.
+    arp_setup_human(1);astate[0].group_delay=-1;
+    for(int i=0;i<ARP_MAX_PLAYING_NOTES;i++) arp_start_note(0,60+i);
+    expected=sestate.humanize_random[0];arp_start_note(0,80);
+    assert(!wires && astate[0].playing_note_count==ARP_MAX_PLAYING_NOTES);
+    assert(sestate.humanize_random[0]==expected);arp_stop_all_notes(0);assert(!wires);
+    // Existing lifecycle boundaries cancel pending output without fake releases.
+    for(int kind=0;kind<13;kind++) {
+        arp_setup_human(1);arp_run(1);assert(!wires);
+        int held=astate[0].held_note_count;
+        switch(kind) {
+            case 0: arp_stop_all_notes(0);break;
+            case 1: arp_set_arp_enable(0,0);break;
+            case 2: arp_set_type(0,ARP_TYPE_DOWN1);break;
+            case 3: arp_set_speed(0,SEQ_UTILS_STEP_32ND);break;
+            case 4: arp_set_speed(0,SEQ_UTILS_ARP_CHORD);break;
+            case 5: seq_engine_track_stop_all_notes(0);break;
+            case 6: seq_engine_reset_all_tracks_pos();break;
+            case 7: seq_engine_mute_select_changed(0,0,1);break;
+            case 8: sestate.scene_next=1;seq_engine_change_scene_synced();break;
+            case 9: seq_engine_song_loaded(0);break;
+            case 10: seq_engine_set_run_state(0);break;
+            case 11: seq_engine_stop_notes(0);break;
+            case 12: seq_engine_stop_live_notes();break;
+        }
+        // Transport Stop may emit its normal all-notes-off controls.
+        for(int i=0;i<wires;i++) assert((wire[i].status & 0xf0)==MIDI_CONTROL_CHANGE);
+        wires=0;
+        for(int i=0;i<ARP_MAX_PLAYING_NOTES;i++) assert(!astate[0].pending_delay[i]);
+        if(kind<5 && kind!=1) assert(astate[0].held_note_count==held);
+        // Explicit clearing must not resurrect omitted notes.
+        arp_clear_input(0);for(int t=2;t<=10;t++) arp_run(t);assert(!wires);
+    }
+    // A faster next program attack cancels the previous pending group.
+    arp_setup_human(1);astate[0].step_size=1;
+    seq_engine_humanize_set(0,HUMANIZE_LATE_MAX,1);
+    for(int t=1;t<=20;t++) arp_run(t);
+    assert(!wires && astate[0].held_note_count==1);arp_clear_input(0);assert(!wires);
+}
+int main(void) {
+    arp_humanize();
+    primitives();shared_timing();varied_notes();bypasses();release_ownership();boundaries();
+    puts("humanize tests passed");return 0;
+}

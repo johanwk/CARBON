@@ -3,6 +3,10 @@
 #define GUI_STATE_SECTION
 #include "../src/gui/gui.c"
 #include "../src/gui/panel_menu.c"
+static struct humanize_settings ui_humanize[6];
+int seq_engine_humanize_get(int track,int param) {return ui_humanize[track].value[param];}
+void seq_engine_humanize_set(int track,int param,int value) {humanize_set(&ui_humanize[track],param,value);}
+int seq_ctrl_get_track_select(int track) {return track==0 || track==2;}
 int seq_engine_snapshot_status(void) {return 0;}
 int seq_engine_snapshot_capture(void) {return 0;}
 int seq_engine_snapshot_recall(void) {return 0;}
@@ -57,6 +61,28 @@ int main(void) {
     timing_wait=0;timing_choice=4;
     for(int lcd = 0; lcd < GUI_DISP_NUM_TYPES; lcd++) {
         gstate.screen_type = lcd;
+        for(int p=0;p<HUMANIZE_PARAMS;p++) {
+            pmstate.menu_submode=PANEL_MENU_CLOCK_HUMANIZE+p;
+            assert(panel_menu_edit_humanize(999));
+            assert(ui_humanize[0].value[p]==ui_humanize[2].value[p]);
+            assert(!ui_humanize[1].value[p]);
+            assert(panel_menu_display_humanize());
+            assert(strlen(gstate.status_lines[3])==28);
+            // Fixed parameter/value fields must have a visible gap, even at maxima.
+            assert(!strncmp(gstate.status_lines[3]+11, "   ", 3));
+            assert(!strncmp(gstate.status_lines[1], "Humanize T1 / session only", strlen("Humanize T1 / session only")));
+            if(p==HUMANIZE_VELOCITY_CHANCE) {
+                assert(!strncmp(gstate.status_lines[3], "Vel Chance    100%", strlen("Vel Chance    100%")));
+                seq_engine_humanize_set(0,p,66);panel_menu_display_humanize();
+                assert(!strncmp(gstate.status_lines[3], "Vel Chance    66%", strlen("Vel Chance    66%")));
+            }
+            gstate.glabels[GUI_LABEL_STATUS_L4].dirty=0;
+            assert(panel_menu_display_humanize());
+            assert(!gstate.glabels[GUI_LABEL_STATUS_L4].dirty);
+        }
+        pmstate.menu_submode=PANEL_MENU_CLOCK_HUMANIZE+HUMANIZE_LATE_MAX;
+        panel_menu_edit_humanize(-999);
+        assert(!ui_humanize[0].value[HUMANIZE_LATE_MAX] && !ui_humanize[2].value[HUMANIZE_LATE_MAX]);
         for(ui_scale = 0; ui_scale < SCALE_NUM_TONALITIES; ui_scale++)
             for(ui_songroot = -1; ui_songroot < 12; ui_songroot++) {
                 memset(gstate.status_lines, ' ', sizeof(gstate.status_lines));

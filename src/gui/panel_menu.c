@@ -1111,12 +1111,37 @@ void panel_menu_display_sys(void) {
     }
 }
 
+static int panel_menu_display_humanize(void) {
+    char tempstr[64];
+    int temp;
+    if(pmstate.menu_submode >= PANEL_MENU_CLOCK_HUMANIZE &&
+            pmstate.menu_submode < PANEL_MENU_CLOCK_NUM_SUBMODES) {
+        // Leave at least three blank columns before the value at column 14.
+        static const char *names[HUMANIZE_PARAMS] = {"Humanize", "Vel Chance",
+            "Vel +/-", "Gate Chance", "Gate +/-",
+            "Late Chance", "Late Max"};
+        int param = pmstate.menu_submode - PANEL_MENU_CLOCK_HUMANIZE;
+        sprintf(tempstr, "Humanize T%d / session only", seq_ctrl_get_first_track() + 1);
+        gui_set_menu_subtitle(tempstr);
+        gui_set_menu_param((char *)names[param]);
+        temp = seq_engine_humanize_get(seq_ctrl_get_first_track(), param);
+        if(param == HUMANIZE_ENABLE) sprintf(tempstr, "%s", temp ? "On" : "Off");
+        else if(param == HUMANIZE_LATE_MAX) sprintf(tempstr, "%d ticks", temp);
+        else if(param == HUMANIZE_VELOCITY_AMOUNT) sprintf(tempstr, "%d", temp);
+        else sprintf(tempstr, "%d%%", temp);
+        gui_set_menu_value(tempstr);
+        return 1;
+    }
+    return 0;
+}
+
 // display the clock menu
 void panel_menu_display_clock(void) {
     char tempstr[64];
     char tempstr2[64];
     int temp;
     gui_set_menu_title("CLOCK");
+    if(panel_menu_display_humanize()) return;
     switch(pmstate.menu_submode) {
         case PANEL_MENU_CLOCK_CAPTURE:
             gui_set_menu_subtitle("Turn right to capture");
@@ -1439,8 +1464,21 @@ void panel_menu_edit_sys(int change) {
     panel_menu_update_display();
 }
 
+static int panel_menu_edit_humanize(int change) {
+    if(pmstate.menu_submode >= PANEL_MENU_CLOCK_HUMANIZE &&
+            pmstate.menu_submode < PANEL_MENU_CLOCK_NUM_SUBMODES) {
+        int param = pmstate.menu_submode - PANEL_MENU_CLOCK_HUMANIZE;
+        int value = seq_engine_humanize_get(seq_ctrl_get_first_track(), param) + change;
+        for(int track = 0; track < SEQ_NUM_TRACKS; track++)
+            if(seq_ctrl_get_track_select(track)) seq_engine_humanize_set(track, param, value);
+        return 1;
+    }
+    return 0;
+}
+
 // edit a value in the clock menu
 void panel_menu_edit_clock(int change) {
+    if(panel_menu_edit_humanize(change)) {panel_menu_update_display(); return;}
     switch(pmstate.menu_submode) {
         case PANEL_MENU_CLOCK_CAPTURE:
             if(change > 0 && seq_engine_snapshot_capture() < 0) {

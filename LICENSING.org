@@ -1,12 +1,15 @@
-# Licensing and attribution
+#+title: Licensing and attribution
+#+options: ^:nil -:nil
 
 Original CARBON and community source is GPL-3.0-or-later unless an individual
 file says otherwise. Preserve COPYING and every existing copyright/license
 notice. Kilpatrick Audio, STMicroelectronics and Arm names do not imply
 endorsement of this community firmware.
 
-## Firmware dependencies
-
+* Firmware dependencies
+:PROPERTIES:
+:CUSTOM_ID: firmware-dependencies
+:END:
 The repository includes ST HAL, CMSIS and ST USB middleware with their own
 notices. HAL files include source/binary redistribution and non-endorsement
 conditions; CMSIS includes Arm notices and Drivers/CMSIS/Lib/license.txt. USB
@@ -19,17 +22,22 @@ Distribute the exact corresponding firmware source and build instructions
 alongside any firmware asset, with its source commit and checksum. Retain
 original notices in the source package and applicable notices with binaries.
 
-## Host tool
+* Host tool
+:PROPERTIES:
+:CUSTOM_ID: host-tool
+:END:
+carbon-backup and the launcher are GPL-3.0-or-later. Cargo.lock pins
+dependencies. Direct dependencies: midir 0.10.4 (MIT), midly 0.5.3
+(Unlicense), sha2 0.10.9, serde 1.0.229 and serde_json 1.0.154 (MIT OR
+Apache-2.0). Platform dependencies vary. The firmware package does not bundle
+a host executable; build the tool from corresponding source using the locked
+instructions. Dependency license texts remain part of their respective
+packages.
 
-carbon-backup and the launcher are GPL-3.0-or-later. Cargo.lock pins dependencies.
-Direct dependencies: midir 0.10.4 (MIT), midly 0.5.3 (Unlicense), sha2 0.10.9,
-serde 1.0.229 and serde_json 1.0.154 (MIT OR Apache-2.0). Platform dependencies
-vary. The firmware package does not bundle a host executable; build the tool
-from corresponding source using the locked instructions. Dependency license
-texts remain part of their respective packages.
-
-## Content
-
+* Content
+:PROPERTIES:
+:CUSTOM_ID: content
+:END:
 Do not ship downloaded music, personal backups, recovery archives, personal
 HTML exports, assistant transcripts or internal briefings. Bundled templates
 are normalized blank data with no musical notes; tests use generated fixtures.

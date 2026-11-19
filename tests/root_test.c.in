@@ -4,6 +4,9 @@
 #include <string.h>
 #include "../src/seq/outproc.c"
 #include "../src/seq/arp.c"
+int seq_engine_humanize_arp_delay(int track) {return 0;}
+int seq_engine_humanize_arp_velocity(int track,int velocity) {return velocity;}
+int seq_engine_humanize_get(int track,int param) {return 0;}
 void seq_engine_arp_start_note(int track, struct midi_msg *msg) {
     outproc_deliver_msg(0, track, msg, 2, 1);
 }

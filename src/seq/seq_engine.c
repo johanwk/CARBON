@@ -46,6 +46,7 @@
 #include "../util/state_change.h"
 #include "../util/state_change_events.h"
 #include <limits.h>
+#include "humanize.h"
 
 // internal settings
 #define SEQ_ENGINE_MAX_NOTES 16  // active notes per track
@@ -98,6 +99,8 @@ struct seq_engine_state {
     int step_pos[SEQ_NUM_TRACKS];  // current step position
     int bias_track_output[SEQ_NUM_TRACKS];  // bias track output
     struct conditional_state conditions[SEQ_NUM_TRACKS];
+    struct humanize_settings humanize[SEQ_NUM_TRACKS];
+    uint32_t humanize_random[SEQ_NUM_TRACKS];
     int16_t internal_cc[SEQ_NUM_TRACKS][14];  // CC 16-29; -1 = inactive
     uint8_t pitch_mode; // 0=Off, 1=Octaves, 2=Octaves+5ths
     uint8_t pitch_reference_valid;
@@ -246,6 +249,8 @@ void seq_engine_init(void) {
     // reset playback info
     for(j = 0; j < SEQ_NUM_TRACKS; j ++) {
         conditional_seed(&sestate.conditions[j], j, probability_seed);
+        memset(&sestate.humanize[j], 0, sizeof(sestate.humanize[j]));
+        sestate.humanize_random[j] = humanize_seed(probability_seed, j);
         sestate.bias_track_output[j] = 0;
         sestate.bar_divisions[j] = 0;
         sestate.bar_div_remainder[j] = 0;
@@ -969,6 +974,9 @@ void seq_engine_handle_state_change(int event_type, int *data, int data_len) {
             data_len >= 2 && data[0] == sestate.scene_current && data[1] >= 0 && data[1] < SEQ_NUM_TRACKS)
         sestate.timing_pending[data[1]][event_type == SCE_SONG_ARP_SPEED] = 0;
     switch(event_type) {
+        case SCE_SONG_CLEARED:
+            memset(sestate.humanize, 0, sizeof(sestate.humanize));
+            break;
         case SCE_SONG_LOADED:
             seq_engine_song_loaded(data[0]);
             break;
@@ -1502,6 +1510,22 @@ void seq_engine_preview_step(int track, int step, struct seq_step_preview *previ
     }
 }
 
+int seq_engine_humanize_arp_delay(int track) {
+    return humanize_timing(&sestate.humanize[track], &sestate.humanize_random[track]);
+}
+int seq_engine_humanize_arp_velocity(int track, int velocity) {
+    return humanize_velocity(&sestate.humanize[track], &sestate.humanize_random[track], velocity);
+}
+
+int seq_engine_humanize_get(int track, int param) {
+    if(track < 0 || track >= SEQ_NUM_TRACKS || param < 0 || param >= HUMANIZE_PARAMS) return 0;
+    return sestate.humanize[track].value[param];
+}
+void seq_engine_humanize_set(int track, int param, int value) {
+    if(track < 0 || track >= SEQ_NUM_TRACKS) return;
+    humanize_set(&sestate.humanize[track], param, value);
+}
+
 void seq_engine_track_play_step(int track, int step,
         const struct seq_engine_step_visit *visit) {
     int i, temp, count = 0;
@@ -1522,6 +1546,11 @@ void seq_engine_track_play_step(int track, int step,
         voicing_transform(pitches, count, sestate.inversion[track], sestate.compact[track]);
         for(i = 0; i < count; i++) voiced[slots[i]] = pitches[i];
     }
+    // Draw once per eligible ordinary group, never in control preparation/preview.
+    int human_delay = 0;
+    if(count && !sestate.arp_enable[track] &&
+            song_get_ratchet_mode(sestate.scene_current, track, step) <= 1)
+        human_delay = humanize_timing(&sestate.humanize[track], &sestate.humanize_random[track]);
     sestate.scheduling_glide[track] = sestate.glide_duration[track];
     sestate.scheduling_curve[track] = sestate.glide_curve[track];
     // play each event on the step
@@ -1551,7 +1580,7 @@ void seq_engine_track_play_step(int track, int step,
                     seq_engine_track_start_note(track, step, event.length,
                         seq_utils_delay_ticks(event.delay == SEQ_START_DELAY_INHERIT
                             ? song_get_start_delay(sestate.scene_current, track, step)
-                            : event.delay, sestate.step_size[track]), &msg);
+                            : event.delay, sestate.step_size[track]) + (event.data1 ? human_delay : 0), &msg);
                     break;
                 case SONG_EVENT_CC:
                     // send event directly
@@ -1587,7 +1616,7 @@ void seq_engine_track_play_step(int track, int step,
 void seq_engine_track_start_note(int track, int step, int length, int delay, struct midi_msg *on_msg) {
     int i, free_slot = -1, total_len;
     struct midi_msg stolen;
-    int min_time_remain = 0xffff;
+    uint32_t min_time_remain = UINT32_MAX;
     int min_time_remain_slot = -1;
     // search for a free slot to put this event
     for(i = 0; i < SEQ_ENGINE_MAX_NOTES; i ++) {
@@ -1623,6 +1652,20 @@ void seq_engine_track_start_note(int track, int step, int length, int delay, str
         }
         free_slot = min_time_remain_slot;
     }
+    // Humanized voices have independent release identity, even when shorter
+    // retriggers finish before an older same-pitch voice. This internal port
+    // tag never reaches wire routing; outproc retains it for release matching.
+    struct midi_msg human_msg;
+    int human = !sestate.arp_enable[track] && on_msg->data1 > 0 &&
+        song_get_ratchet_mode(sestate.scene_current, track, step) <= 1 &&
+        sestate.humanize[track].value[HUMANIZE_ENABLE];
+    if(human) {
+        human_msg = *on_msg;
+        human_msg.port = -2 - free_slot;
+        human_msg.data1 = humanize_velocity(&sestate.humanize[track],
+            &sestate.humanize_random[track], on_msg->data1);
+        on_msg = &human_msg;
+    }
     // now we have a slot we can use for this new note
     // put the note data into the slot and ensure it has a valid length
     midi_utils_copy_msg(&sestate.track_active_notes[track][free_slot].note.msg, on_msg);
@@ -1637,6 +1680,9 @@ void seq_engine_track_start_note(int track, int step, int length, int delay, str
     else {
         sestate.track_active_notes[track][free_slot].note.tick_len = total_len;
     }
+    if(human) sestate.track_active_notes[track][free_slot].note.tick_len =
+        humanize_gate(&sestate.humanize[track], &sestate.humanize_random[track],
+            sestate.track_active_notes[track][free_slot].note.tick_len);
     // get the track params for the step
     sestate.track_active_notes[track][free_slot].start_delay_countdown =
         delay;
@@ -1770,6 +1816,7 @@ void seq_engine_track_manage_notes(int track) {
 // stop all playing notes
 // Pending attacks have no output voice; cancellation must not send note-off.
 static void seq_engine_track_cancel_pending(int track) {
+    arp_cancel_pending(track);
     for(int note = 0; note < SEQ_ENGINE_MAX_NOTES; note++) {
         if(sestate.track_active_notes[track][note].start_delay_countdown > 0)
             sestate.track_active_notes[track][note].note.msg.status = 0;
@@ -1777,6 +1824,7 @@ static void seq_engine_track_cancel_pending(int track) {
 }
 
 void seq_engine_track_stop_all_notes(int track) {
+    arp_cancel_pending(track);
     if(arp_chord_enabled(track)) arp_stop_all_notes(track);
     struct midi_msg msg;
     int note;
@@ -2079,6 +2127,7 @@ int seq_engine_live_get_num_notes(int track) {
 
 // stop all live notes on a track - used if we disable live mode or switch tracks
 void seq_engine_live_stop_all_notes(int track) {
+    arp_cancel_pending(track);
     struct midi_msg msg;
     int i;
     // search for the notes that we need to turn off
@@ -2654,6 +2703,7 @@ void seq_engine_song_loaded(int song) {
     int track, mapnum;
     for(track = 0; track < SEQ_NUM_TRACKS; track ++) {
         seq_engine_track_stop_all_notes(track);
+        memset(&sestate.humanize[track], 0, sizeof(sestate.humanize[track]));
         conditional_reset(&sestate.conditions[track], track);
     }
     seq_engine_clear_internal_cc();

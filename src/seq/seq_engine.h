@@ -22,6 +22,12 @@
  */
 #ifndef SEQ_ENGINE_H
 #define SEQ_ENGINE_H
+#include "humanize.h"
+
+int seq_engine_humanize_get(int track, int param);
+int seq_engine_humanize_arp_delay(int track);
+int seq_engine_humanize_arp_velocity(int track, int velocity);
+void seq_engine_humanize_set(int track, int param, int value);
 
 #include "seq_ctrl.h"
 #include "../midi/midi_utils.h"

@@ -119,3 +119,20 @@ tails; route stop and song load clear sequenced voices. GUI tests check shared
 status-buffer boundaries/dirty suppression, not physical LCD pixels. Hardware
 audition, stack high-water, external-clock jitter and timing-preserving live
 recording are not claimed verified by these host tests.
+
+## Humanize
+
+`humanize_test.c.in` uses production engine/arp/output fixtures with dedicated
+deterministic RNG state. Tests cover signed bounds/rounding, late probability
+endpoints and all delay amounts, shared timing, frozen pending values, bypasses,
+reversed same-input releases, long/full slots, cancellations and checkpoint
+preferences. Clock tests compare control/conditional/step schedules with
+Humanize Off/On, including swing and cross-step mixed on-time/late attacks.
+Root UI tests exercise all seven controls, multiselect and limits on both LCD
+buffer configurations. See HUMANIZE.org for limits and hardware gaps.
+
+Arp Humanize coverage adds sync/freerun shortened gates and omitted hits,
+release-wins-ties, shared simultaneous timing, frozen per-note velocity,
+full-slot handling and pending cancellation at transport/mode/route boundaries.
+All37arp types retain Off-equivalent traces; long-delay cleanup is exercised.
+Generated Chord/input lifetimes remain unchanged; gate variation is ignored.

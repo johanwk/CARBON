@@ -55,6 +55,11 @@ struct arp_state {
     int16_t snapshot_notes[ARP_MAX_HELD_NOTES];  // snapshot of held notes
     int8_t snapshot_order[ARP_MAX_HELD_NOTES];  // snapshot of held note order
     int16_t playing_notes[ARP_MAX_PLAYING_NOTES];  // playing note
+    uint8_t pending_delay[ARP_MAX_PLAYING_NOTES];
+    uint8_t playing_velocity[ARP_MAX_PLAYING_NOTES];
+    int8_t playing_port[ARP_MAX_PLAYING_NOTES];
+    uint8_t fresh_pending;
+    int group_delay;  // -1 until first eligible attack in this interpreter pass
     uint8_t playing_note_count;  // number of playing notes
     int play_note_timeout;  // tick timeout for playing note
     // arp execution state
@@ -82,6 +87,7 @@ int arp_find_random_note(int track, int note);
 void arp_start_note(int track, int note);
 void arp_stop_all_notes(int track);
 void arp_timeout_notes(int track);
+void arp_cancel_pending(int track);
 int arp_find_label(int track, int label);
 void arp_take_snapshot(int track);
 
@@ -161,6 +167,8 @@ void arp_play_chord(int track, const int *notes, int count, int velocity, int ga
     astate[track]=saved;
     astate[track].held_velo=velocity;
     for(int i=0;i<chord_count;i++) arp_start_note(track,chord_notes[i]);
+    // Chord velocity belongs to this attack, not to the retained live/seq input.
+    astate[track].held_velo=saved.held_velo;
     astate[track].play_note_timeout=gate_ticks<1?1:gate_ticks;
     astate[track].chord_fresh=1;
 }
@@ -175,7 +183,9 @@ void arp_init(void) {
         // reset playing notes
         for(i = 0; i < ARP_MAX_PLAYING_NOTES; i ++) {
             astate[track].playing_notes[i] = ARP_NOTE_SLOT_FREE;
+            astate[track].pending_delay[i] = 0;
         }
+        astate[track].group_delay = -1;
         astate[track].playing_note_count = 0;
         astate[track].play_note_timeout = 0;
         astate[track].gate_time = 1;
@@ -197,8 +207,16 @@ void arp_run(int tick_count) {
 
     // process arp for each track
     for(track = 0; track < SEQ_NUM_TRACKS; track ++) {
+        // Only old pending attacks age this pass. Releases/program stops below
+        // win ties; a newly scheduled attack must not lose its first tick.
+        unsigned pending = 0;
+        astate[track].fresh_pending = 0;
+        for(int i = 0; i < ARP_MAX_PLAYING_NOTES; i++)
+            if(astate[track].pending_delay[i]) pending |= 1u << i;
         // sequencer position was reset
         if(tick_count == 0) {
+            arp_cancel_pending(track);
+            pending = 0;
             astate[track].seq_clock_count = 0;
         }
 
@@ -223,6 +241,7 @@ void arp_run(int tick_count) {
                 }
                 // run the step
                 else {
+                    // Slot reuse during this pass must not age new attacks.
                     arp_execute_step(track);
                 }
             }
@@ -232,6 +251,16 @@ void arp_run(int tick_count) {
             }
         }
 
+        for(int i = 0; i < ARP_MAX_PLAYING_NOTES; i++) {
+            if((pending & (1u << i)) && !(astate[track].fresh_pending & (1u << i)) &&
+                    astate[track].pending_delay[i] &&
+                    --astate[track].pending_delay[i] == 0) {
+                struct midi_msg msg;
+                midi_utils_enc_note_on(&msg, astate[track].playing_port[i], 0,
+                    astate[track].playing_notes[i], astate[track].playing_velocity[i]);
+                seq_engine_arp_start_note(track, &msg);
+            }
+        }
         // sequencer is running
         if(astate[track].seq_enable) {
             astate[track].seq_clock_count ++;
@@ -367,6 +396,7 @@ void arp_set_type(int track, int type) {
         return;
     }
     if(astate[track].chord_mode) arp_stop_all_notes(track);
+    if(astate[track].type != type) arp_cancel_pending(track);
     astate[track].type = type;
     arp_reset_program(track);
     arp_progs_load(track, astate[track].type);  // load program
@@ -391,10 +421,16 @@ void arp_set_speed(int track, int speed) {
     }
     int chord = speed == SEQ_UTILS_ARP_CHORD;
     if(chord != astate[track].chord_mode) {
-        arp_clear_input(track);
+        // Retain input ownership: live keys and sequencer tails still have
+        // matching releases pending. Clearing here lets an old release remove
+        // a newer same-pitch input after returning to ordinary arp playback.
+        // Release generated output, restart the program and align both clocks.
+        arp_align_rate(track);
         arp_reset_program(track);
         astate[track].chord_fresh=0;
     }
+    if(astate[track].step_size != (chord ? 1 : seq_utils_step_len_to_ticks(speed)))
+        arp_cancel_pending(track);
     astate[track].chord_mode=chord;
     astate[track].step_size = chord ? 1 : seq_utils_step_len_to_ticks(speed);
 }
@@ -436,6 +472,7 @@ void arp_reset_program(int track) {
 void arp_execute_step(int track) {
     int loop_count = 0;
     int arg, temp, note;
+    astate[track].group_delay = -1;
 
     while(loop_count < ARP_MAX_LOOP_COUNT) {
         arg = aprog[track].prog[astate[track].pc][ARP_PROG_ARG];
@@ -917,8 +954,21 @@ void arp_start_note(int track, int note) {
             song_get_track_type(track) == SONG_TRACK_TYPE_DRUM) note &= 0x7f;
     for(i = 0; i < ARP_MAX_PLAYING_NOTES; i ++) {
         if(astate[track].playing_notes[i] == ARP_NOTE_SLOT_FREE) {
-            midi_utils_enc_note_on(&msg, 0, 0, note, astate[track].held_velo);
-            seq_engine_arp_start_note(track, &msg);
+            int velocity = astate[track].held_velo, delay = 0, port = 0;
+            if(!astate[track].chord_mode && velocity > 0) {
+                if(astate[track].group_delay < 0)
+                    astate[track].group_delay = seq_engine_humanize_arp_delay(track);
+                delay = astate[track].group_delay;
+                velocity = seq_engine_humanize_arp_velocity(track, velocity);
+                // Private identity, distinct from sequence/live and other arp slots.
+                if(seq_engine_humanize_get(track, HUMANIZE_ENABLE)) port = -32 - i;
+            }
+            astate[track].pending_delay[i] = delay;
+            astate[track].playing_velocity[i] = velocity;
+            astate[track].playing_port[i] = port;
+            astate[track].fresh_pending |= 1u << i;
+            midi_utils_enc_note_on(&msg, port, 0, note, velocity);
+            if(!delay) seq_engine_arp_start_note(track, &msg);
             astate[track].playing_notes[i] = note;
             astate[track].playing_note_count ++;
             astate[track].play_note_timeout = astate[track].gate_time;
@@ -933,13 +983,26 @@ void arp_stop_all_notes(int track) {
     int i;
     for(i = 0; i < ARP_MAX_PLAYING_NOTES; i ++) {
         if(astate[track].playing_notes[i] != ARP_NOTE_SLOT_FREE) {
-            midi_utils_enc_note_off(&msg, 0, 0, astate[track].playing_notes[i], 0x40);
-            seq_engine_arp_stop_note(track, &msg);
+            midi_utils_enc_note_off(&msg, astate[track].playing_port[i], 0,
+                astate[track].playing_notes[i], 0x40);
+            if(!astate[track].pending_delay[i]) seq_engine_arp_stop_note(track, &msg);
+            astate[track].pending_delay[i] = 0;
             astate[track].playing_notes[i] = ARP_NOTE_SLOT_FREE;
             astate[track].playing_note_count --;
         }
     }
     astate[track].play_note_timeout = 0;
+}
+
+// Cancel only unheard attacks, retaining legacy sounding tails and input.
+void arp_cancel_pending(int track) {
+    if(track < 0 || track >= SEQ_NUM_TRACKS) return;
+    for(int i = 0; i < ARP_MAX_PLAYING_NOTES; i++) {
+        if(!astate[track].pending_delay[i]) continue;
+        astate[track].pending_delay[i] = 0;
+        astate[track].playing_notes[i] = ARP_NOTE_SLOT_FREE;
+        astate[track].playing_note_count--;
+    }
 }
 
 // timeout notes
