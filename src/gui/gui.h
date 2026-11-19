@@ -81,6 +81,9 @@ void gui_grid_set_overlay_color(int step, int index);
 // set the status / menu override state
 void gui_set_status_override(int enable);
 
+// Expanded Step Edit owns the preview/status area, never the main grid.
+void gui_step_details_set(int enable);
+
 // clear all status text
 void gui_clear_status_text_all(void);
 

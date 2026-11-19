@@ -45,9 +45,9 @@
 //
 // labels
 //
-#define GUI_NUM_STATUS_LINES 4
+#define GUI_NUM_STATUS_LINES 7
 #define GUI_STATUS_LINE_LEN 28
-#define GUI_MAX_LABELS 13  // set this to the total number of labels
+#define GUI_MAX_LABELS 16  // set this to the total number of labels
 #define GUI_LABEL_SONG 0  // song display
 #define GUI_LABEL_SCENE 1  // scene number
 #define GUI_LABEL_RUN 2  // run indicator
@@ -289,6 +289,7 @@ struct gui_state {
     uint8_t current_scene;  // the current scene
     uint8_t first_track;  // the first selected track from the sequencer
     // status display mode
+    uint8_t step_details, step_details_drawn;
     uint8_t status_override;  // 1 = status is in use by function, 0 = status shows track info
     // labels and temp text
     struct gfx_label glabels[GUI_MAX_LABELS];
@@ -625,6 +626,8 @@ void gui_startup(void) {
     state_change_register(gui_handle_state_change, SCEC_CTRL);
     state_change_register(gui_handle_state_change, SCEC_ENG);
 
+    // Re-establish the lower layout after startup/reinitialization.
+    gstate.step_details_drawn = 255;
     // unblock the drawing
     gstate.started = 1;
 }
@@ -728,6 +731,32 @@ static int gui_clock_help_restore(void) {
     return 1;
 }
 
+// Change only the lower display rectangle; preserve the step grid overlay.
+static int gui_step_details_layout(int force) {
+    int expanded=gstate.step_details;
+    if(!force && expanded==gstate.step_details_drawn) return 0;
+    int x=gstate.screen_type==GUI_DISP_TYPE_A ? GUI_DISP_A_LABEL_STATUS_L1_X : GUI_DISP_B_LABEL_STATUS_L1_X;
+    int base=gstate.screen_type==GUI_DISP_TYPE_A ? GUI_DISP_A_LABEL_STATUS_L1_Y : GUI_DISP_B_LABEL_STATUS_L1_Y;
+    int top=gstate.GUI_GRID_Y+gstate.GUI_GRID_H+2;
+    gfx_fill_rect(gstate.GUI_GRID_X,top,
+        gstate.GUI_PREVIEW_X-gstate.GUI_GRID_X+5*gstate.GUI_PREVIEW_GRID_SPACING+8*gstate.GUI_PREVIEW_SQUARE_W,
+        base+46-top,GUI_TEXT_BG_COLOR);
+    for(int row=0;row<7;row++) {
+        int index=row<4 ? GUI_LABEL_STATUS_L1+row : 13+row-4;
+        struct gfx_label *label=&gstate.glabels[index];
+        label->x=(!expanded && row>=4) ? UINT16_MAX : x;
+        label->y=expanded ? base-36+12*row : base+12*row;
+        label->w=224;label->h=10;label->font=GUI_DISP_A_FONT_NORMAL;
+        label->fg_color=GUI_FONT_COLOR_NORMAL;label->bg_color=GUI_TEXT_BG_COLOR;
+        label->dirty=1;
+    }
+    memset(gstate.preview_state,0,sizeof(gstate.preview_state));
+    memset(gstate.track_select_state,0,sizeof(gstate.track_select_state));
+    memset(gstate.arp_enable_state,0,sizeof(gstate.arp_enable_state));
+    gstate.step_details_drawn=expanded;
+    return 1;
+}
+
 // run the refresh task - run on the main polling loop
 void gui_refresh_task(void) {
 	int dirty = 0;
@@ -749,6 +778,7 @@ void gui_refresh_task(void) {
 	    gfx_init_lcd();  // power on and init LCD
 	}
 	// force refresh
+	int lower_refresh=gstate.force_refresh;
 	if(gstate.force_refresh) {
         gstate.force_refresh = 0;
         gstate.clock_help_drawn = 0;
@@ -770,6 +800,7 @@ void gui_refresh_task(void) {
             }
         }
 	}
+    dirty += gui_step_details_layout(lower_refresh);
     dirty += gui_draw_labels();
 	// attempt to redraw the squares
 	dirty += gui_draw_preview_grids();
@@ -862,12 +893,16 @@ void gui_set_status_override(int enable) {
     }
 }
 
+// The extra status rows follow the non-status labels in the label table.
+static int gui_status_label(int line) {
+    return line < 4 ? GUI_LABEL_STATUS_L1 + line : 13 + line - 4;
+}
+
+void gui_step_details_set(int enable) { gstate.step_details = !!enable; }
+
 // clear all status text
 void gui_clear_status_text_all(void) {
-    gui_clear_status_text(0);
-    gui_clear_status_text(1);
-    gui_clear_status_text(2);
-    gui_clear_status_text(3);
+    for(int line=0; line<GUI_NUM_STATUS_LINES; line++) gui_clear_status_text(line);
 }
 
 // clear a line of status text
@@ -880,8 +915,8 @@ void gui_clear_status_text(int line) {
         gstate.status_lines[line][i] = ' ';
     }
     gstate.status_lines[line][i] = 0x00;
-    gui_set_label(GUI_LABEL_STATUS_L1 + line, gstate.status_lines[line]);
-    gui_set_label_highlight(GUI_LABEL_STATUS_L1 + line,
+    gui_set_label(gui_status_label(line), gstate.status_lines[line]);
+    gui_set_label_highlight(gui_status_label(line),
         0, GUI_STATUS_LINE_LEN, GFX_HIGHLIGHT_NORMAL);
 }
 
@@ -901,14 +936,14 @@ void gui_set_status_text(int line, char *text) {
         gstate.status_lines[line][i] = ' ';
     }
     gstate.status_lines[line][i] = 0x00;
-    gui_set_label(GUI_LABEL_STATUS_L1 + line, gstate.status_lines[line]);
+    gui_set_label(gui_status_label(line), gstate.status_lines[line]);
 }
 
 // set a portion of a status line
 // this will clear the range and truncate the line if it's too long
 void gui_set_status_text_part(int line, int startch, int lench, char *text) {
     int i, len;
-    if(line < 0 || line >= 4) {
+    if(line < 0 || line >= GUI_NUM_STATUS_LINES) {
         log_error("gsstp - line invalid: %d", line);
         return;
     }
@@ -925,13 +960,13 @@ void gui_set_status_text_part(int line, int startch, int lench, char *text) {
         gstate.status_lines[line][i] = ' ';
     }
     gstate.status_lines[line][GUI_STATUS_LINE_LEN] = 0x00;
-    gui_set_label(GUI_LABEL_STATUS_L1 + line, gstate.status_lines[line]);
+    gui_set_label(gui_status_label(line), gstate.status_lines[line]);
 }
 
 // set the highlight of a status line
 void gui_set_status_highlight_part(int line, int startch,
         int lench, int mode) {
-    if(line < 0 || line >= 4) {
+    if(line < 0 || line >= GUI_NUM_STATUS_LINES) {
         log_error("gsshp - line invalid: %d", line);
         return;
     }
@@ -939,7 +974,7 @@ void gui_set_status_highlight_part(int line, int startch,
         log_error("gsshp - range invalid - s: %d - l: %d", startch, lench);
         return;
     }
-    gui_set_label_highlight(GUI_LABEL_STATUS_L1 + line, startch, lench, mode);
+    gui_set_label_highlight(gui_status_label(line), startch, lench, mode);
 }
 
 //
@@ -1218,13 +1253,13 @@ int gui_draw_preview_grids(void) {
             if(gstate.preview_state[track][step] != color) {
                 x = step & 0x07;
                 y = (step >> 3) & 0x07;
-                gfx_fill_rect(gstate.GUI_PREVIEW_X + (gstate.GUI_PREVIEW_SQUARE_W * x) +
+                if(!gstate.step_details) gfx_fill_rect(gstate.GUI_PREVIEW_X + (gstate.GUI_PREVIEW_SQUARE_W * x) +
                   (gstate.GUI_PREVIEW_GRID_SPACING * track),
                   gstate.GUI_PREVIEW_Y + (gstate.GUI_PREVIEW_SQUARE_H * y),
                   gstate.GUI_PREVIEW_SQUARE_W, gstate.GUI_PREVIEW_SQUARE_H,
                   color);
                 gstate.preview_state[track][step] = color;
-                dirty = 1;
+                if(!gstate.step_details) dirty = 1;
             }
         }
         // track select indicator
@@ -1236,7 +1271,7 @@ int gui_draw_preview_grids(void) {
         }
         // only redraw if the select bar has changed
         if(color != gstate.track_select_state[track]) {
-            gfx_fill_rect(gstate.GUI_PREVIEW_X + (gstate.GUI_PREVIEW_GRID_SPACING * track),
+            if(!gstate.step_details) gfx_fill_rect(gstate.GUI_PREVIEW_X + (gstate.GUI_PREVIEW_GRID_SPACING * track),
               gstate.GUI_PREVIEW_SELECT_Y,
               (gstate.GUI_PREVIEW_SQUARE_W * 8), gstate.GUI_PREVIEW_SELECT_H,
               color);
@@ -1251,7 +1286,7 @@ int gui_draw_preview_grids(void) {
         }
         // only redraw if the arp bar has changed
         if(color != gstate.arp_enable_state[track]) {
-            gfx_fill_rect(gstate.GUI_PREVIEW_X + (gstate.GUI_PREVIEW_GRID_SPACING * track),
+            if(!gstate.step_details) gfx_fill_rect(gstate.GUI_PREVIEW_X + (gstate.GUI_PREVIEW_GRID_SPACING * track),
               gstate.GUI_PREVIEW_ARP_Y,
               (gstate.GUI_PREVIEW_SQUARE_W * 8), gstate.GUI_PREVIEW_SELECT_H,
               color);
@@ -1265,7 +1300,7 @@ int gui_draw_preview_grids(void) {
 int gui_draw_labels(void) {
     int i, dirty = 0;
     for(i = 0; i < GUI_MAX_LABELS; i ++) {
-        if(gstate.glabels[i].x == -1 || gstate.glabels[i].dirty == 0) {
+        if(gstate.glabels[i].x == UINT16_MAX || gstate.glabels[i].dirty == 0) {
             continue;
         }
         gfx_fill_rect(gstate.glabels[i].x, gstate.glabels[i].y,

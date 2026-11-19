@@ -59,7 +59,43 @@ static void test_pitch_grid(void) {
         assert(!gstate.pitch_marks[0][0] && !gui_draw_main_grid());
     }
 }
+int pattern_get_step_enable(int scene,int track,int pattern,int step) {return 1;}
+int song_get_euclidean_density(int scene,int track) {return 100;}
+int song_get_num_step_events(int scene,int track,int step) {return 1;}
+static void test_details_layout(void) {
+    for(int type=0;type<2;type++) {
+        memset(&gstate,0,sizeof(gstate));gstate.screen_type=type;
+        gstate.GUI_GRID_X=type?25:40;gstate.GUI_GRID_Y=type?80:90;gstate.GUI_GRID_H=238;
+        gstate.GUI_PREVIEW_X=type?30:45;gstate.GUI_PREVIEW_GRID_SPACING=type?44:36;
+        gstate.GUI_PREVIEW_SQUARE_W=type?5:4;
+        gstate.grid_overlay_enable=1;gstate.grid_overlay[12]=0xffcccc00;
+        gui_step_details_set(1);int before=rectangles;
+        assert(gui_step_details_layout(0) && rectangles==before+1);
+        assert(!gui_step_details_layout(0));
+        for(int row=0;row<7;row++) {
+            struct gfx_label *l=&gstate.glabels[gui_status_label(row)];
+            assert(l->y>gstate.GUI_GRID_Y+gstate.GUI_GRID_H);
+            assert(l->y+l->h<480 && l->x+l->w<=320);
+            gui_set_status_text(row,"all seven rows");
+            gui_set_status_highlight_part(row,23,4,GFX_HIGHLIGHT_INVERT);
+            assert(l->highlight[23]==GFX_HIGHLIGHT_INVERT);
+        }
+        before=rectangles;
+        assert(!gui_draw_preview_grids() && rectangles==before);
+        gstate.active_step[0]=5;gstate.track_select[0]=1;gstate.arp_enable[0]=1;
+        assert(!gui_draw_preview_grids() && rectangles==before);
+        assert(gstate.preview_state[0][5]!=0);
+        assert(gstate.grid_overlay_enable && gstate.grid_overlay[12]==0xffcccc00);
+        gui_step_details_set(0);assert(gui_step_details_layout(0));
+        for(int row=4;row<7;row++) assert(gstate.glabels[gui_status_label(row)].x==UINT16_MAX);
+        assert(gstate.glabels[GUI_LABEL_STATUS_L1].y==(type?419:385));
+        assert(!gui_step_details_layout(0));
+        assert(gui_step_details_layout(1));
+        assert(gstate.grid_overlay[12]==0xffcccc00);
+    }
+}
 int main(void) {
+    test_details_layout();
     test_pitch_grid();
     char *label = gstate.glabels[GUI_LABEL_SONG_MODE].text;
     mode.current_entry = -1;

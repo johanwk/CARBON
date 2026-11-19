@@ -72,6 +72,15 @@ struct step_edit_state {
     int8_t recording_notes[SEQ_TRACK_POLY];  // keep track of input notes
 };
 struct step_edit_state sedits;
+static int step_details_preference;
+void step_edit_update_display(void);
+
+void step_edit_toggle_details(void) {
+    if(!sedits.enable) return;
+    step_details_preference=!step_details_preference;
+    sedits.edit_timeout=panel_menu_get_timeout();
+    step_edit_update_display();
+}
 
 // local functions
 void step_edit_adjust_step(int change, int mode, int single, int shift);
@@ -102,6 +111,7 @@ int step_edit_does_step_contain_event(int type, int data0);
 
 // init the step edit mode
 void step_edit_init(void) {
+    step_details_preference=0;
     sedits.enable = 0;
     sedits.undo_captured = 0;
     sedits.edit_timeout = 0;
@@ -262,6 +272,7 @@ void step_edit_set_enable(int enable) {
     // stop edit - only if we're actually enabled
     else if(sedits.enable) {
         sedits.enable = 0;
+        gui_step_details_set(0);
         sedits.undo_captured = 0;
         sedits.edit_timeout = 0;
         step_edit_stop_notes();
@@ -475,9 +486,9 @@ void step_edit_adjust_ratchet_mode(int change, int shift) {
         seq_utils_clamp(song_get_ratchet_mode(sedits.scene, sedits.track,
         sedits.step_pos) + change,
         SEQ_RATCHET_MIN, SEQ_RATCHET_MAX));
-    // display / play step
+    // A single-hit audition would misrepresent ratcheting. Update silently;
+    // normal sequenced playback remains the source of the repeated preview.
     step_edit_update_display();
-    step_edit_play_step();
 }
 
 // clear the current step
@@ -964,6 +975,7 @@ void step_edit_update_display(void) {
     int i, xpos, temp;
     char tempstr[GFX_LABEL_LEN];
     struct track_event event = {.delay = SEQ_START_DELAY_INHERIT};
+    gui_step_details_set(sedits.enable && step_details_preference);
     gui_clear_status_text_all();
     step_edit_update_title();
 
@@ -1134,6 +1146,45 @@ void step_edit_update_display(void) {
                 break;
         }
         xpos += 4;
+    }
+    if(sedits.enable && step_details_preference) {
+        // Keep the existing type and control-value columns; add note-only rows.
+        gui_set_status_text_part(1,0,3,"   ");
+        gui_set_status_text_part(2,0,3,"Nt ");
+        gui_set_status_text_part(3,0,3,"Vl ");
+        gui_set_status_text_part(4,0,3,"Gt ");
+        gui_set_status_text_part(5,0,3,"Dl ");
+        for(i=0;i<SEQ_TRACK_POLY;i++) {
+            xpos=3+4*i;
+            song_get_step_event(sedits.scene,sedits.track,sedits.step_pos,i,&event);
+            gui_set_status_text_part(4,xpos,4,"---");
+            gui_set_status_text_part(5,xpos,4,"---");
+            if(event.type==SONG_EVENT_NOTE) {
+                snprintf(tempstr,sizeof(tempstr),"%d",event.data1);
+                gui_set_status_text_part(3,xpos,4,tempstr);
+                panel_utils_gate_time_to_str(tempstr,event.length);
+                gui_set_status_text_part(4,xpos,4,tempstr);
+                temp=event.delay;
+                if(temp==SEQ_START_DELAY_INHERIT) strcpy(tempstr,"Step");
+                else if(seq_utils_delay_relative_label(temp))
+                    snprintf(tempstr,sizeof(tempstr),"%s",seq_utils_delay_relative_label(temp));
+                else if(!temp) strcpy(tempstr,"OFF");
+                else panel_utils_gate_time_to_str(tempstr,temp);
+                gui_set_status_text_part(5,xpos,4,tempstr);
+            }
+            for(int row=1;row<=5;row++)
+                gui_set_status_highlight_part(row,xpos,4,
+                    sedits.event_pos==i ? GFX_HIGHLIGHT_INVERT : GFX_HIGHLIGHT_NORMAL);
+        }
+        char delay[16];
+        temp=song_get_start_delay(sedits.scene,sedits.track,sedits.step_pos);
+        if(seq_utils_delay_relative_label(temp))
+            snprintf(delay,sizeof(delay),"%s",seq_utils_delay_relative_label(temp));
+        else if(!temp) strcpy(delay,"OFF");
+        else panel_utils_gate_time_to_str(delay,temp);
+        snprintf(tempstr,sizeof(tempstr),"Ratchet:%d Step delay:%s",
+            song_get_ratchet_mode(sedits.scene,sedits.track,sedits.step_pos),delay);
+        gui_set_status_text(6,tempstr);
     }
 }
 

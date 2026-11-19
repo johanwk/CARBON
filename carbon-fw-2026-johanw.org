@@ -1196,3 +1196,45 @@ Other buttons exit before their normal action; closing restores the grid.
 User reports that the implemented editable Clock, Arp, MIDI and Tonality
 overviews work well on hardware. This is practical acceptance, not exhaustive
 route/gesture or realtime verification. See [[file:CLOCK-HELP.org][Overview controls and verification]].
+
+* Expanded Step Edit (local 1.38-jwk-edt2)
+
+While already in Step Edit, hold Step Edit alone for 800 ms to toggle the
+expanded display. Release leaves it active; hold again to return to compact.
+The preference lasts for this firmware session, including leaving/re-entering
+Step Edit. It is not stored in songs. Entry into Step Edit remains immediate;
+a short unshifted tap within Step Edit now retriggers the preview on release.
+The long hold itself does not audition notes, edit events or capture Undo.
+Shift+Step Edit still opens Pattern Edit. Another control cancels a pending
+hold/tap. Existing timeout, exit, selection and editing controls are unchanged.
+
+Expanded mode replaces the six miniature track previews and their selection/
+arp bars, not the main step grid or its pitch strokes. Seven rows show:
+
+- Existing step title/context (including special control-event hints).
+- Event types for all six slots.
+- Nt: stored note pitch, edited with Transpose. Control slots retain their
+  normal first value instead; this is not a separate transpose offset.
+- Vl: note velocity, edited with Length/Value. Control slots retain their
+  normal second value instead.
+- Gt: note gate duration. Non-Note slots show ---.
+- Dl: per-note onset delay, edited with Speed when a slot is selected. Step
+  means inherit the shared step delay; OFF is an explicit zero delay. Relative
+  labels remain available. Non-Note slots show ---.
+- Ratchet: whole-step ratchet setting (Pattern), followed by Step delay: the shared
+  delay edited by Speed with all slots selected. Ratchets are not per note.
+
+The selected event column is highlighted across the type/value rows. Motion
+Start and Shift+Motion Start retain step/event selection. All five editing
+dials retain their original semantics. Closing restores miniature previews.
+
+Host tests cover mixed Note/Prb data, slot six, persistent simultaneous values,
+inherit/Off delays, no toggle-time preview/data/Undo mutation, both LCD layouts,
+preview suppression/cache updates, restoration, and hold/tap/cancel/Shift paths.
+Physical readability, hold feel and busy-playback responsiveness remain untested.
+
+User reports the expanded edt1 display works well on hardware. In edt2 the
+label reads Ratchet, and turning Pattern in Step Edit no longer triggers a
+misleading single-hit audition (compact and expanded views). Normal sequence
+playback still plays ratchet repetitions; no repeated editor audition was added.
+This follow-up awaits hardware confirmation.

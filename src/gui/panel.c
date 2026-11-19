@@ -70,6 +70,7 @@ struct panel_key_queue {
 struct panel_state {
     struct snapshot_keys snapshot_keys;
     struct overview_keys overview_keys;
+    struct overview_keys edit_keys;
     struct scene_mask_keys scene_keys;
     uint8_t led_physical[PANEL_LED_NUM_LEDS];
     int8_t shift_state;  // shift button state
@@ -123,6 +124,7 @@ void panel_init(void) {
     int i;
 
     pstate.scene_keys = (struct scene_mask_keys){0};
+    pstate.edit_keys = (struct overview_keys){0};
     for(i=0;i<PANEL_LED_NUM_LEDS;i++) pstate.led_physical[i] = 0xff;
     // panel input queue
     pstate.key_queue_inp = 0;
@@ -183,6 +185,9 @@ void panel_timer_task(void) {
             snapshot_keys_tick(&pstate.snapshot_keys)) gui_clock_help_set(1);
 
     if(power_ctrl_get_power_state() == POWER_CTRL_STATE_ON) {
+        if(overview_keys_tick(&pstate.edit_keys)>=0 && step_edit_get_enable() &&
+                seq_ctrl_get_record_mode()==SEQ_CTRL_RECORD_IDLE)
+            step_edit_toggle_details();
         int key=overview_keys_tick(&pstate.overview_keys);
         if(key>=0) {
             static const int modes[3]={PANEL_MENU_ARP,PANEL_MENU_MIDI,PANEL_MENU_TONALITY};
@@ -368,6 +373,7 @@ void panel_handle_state_change(int event_type, int *data, int data_len) {
             gui_clock_help_set(0);
             pstate.snapshot_keys = (struct snapshot_keys){0};
             pstate.overview_keys = (struct overview_keys){0};
+            pstate.edit_keys = (struct overview_keys){0};
             switch(data[0]) {
                 case POWER_CTRL_STATE_STANDBY:
                     // turn off all panel LEDs
@@ -474,9 +480,29 @@ static int panel_overview_button(int ctrl,int *val) {
     return 0;
 }
 
+// Only an existing Step Edit session owns this hold. Entry from other modes
+// remains immediate, as does Shift+Edit (Pattern Edit).
+static int panel_step_edit_button(int ctrl,int *val) {
+    int key=ctrl==PANEL_SW_EDIT ? 0 : -1;
+    int blocked=pstate.shift_state || pstate.scene_state ||
+        pstate.snapshot_keys.down[SNAP_CLOCK] || !step_edit_get_enable() ||
+        seq_ctrl_get_record_mode()!=SEQ_CTRL_RECORD_IDLE;
+    for(int i=0;i<SEQ_NUM_TRACKS;i++) blocked |= pstate.track_hold_state[i];
+    int result=overview_keys_event(&pstate.edit_keys,key,!!*val,blocked);
+    if(result==1) return 1;
+    if(result==2) {
+        if(blocked) return 1;
+        *val=1;
+    }
+    return 0;
+}
+
 void panel_handle_seq_input(int ctrl, int val) {
+    // Feed cancellations before any recognizer can consume another gesture.
+    if(val && ctrl!=PANEL_SW_EDIT) overview_keys_cancel(&pstate.edit_keys);
     if(panel_overview_button(ctrl,&val)) return;
     if(panel_handle_clock_help_input(ctrl, val)) return;
+    if(panel_step_edit_button(ctrl,&val)) return;
     if(val && ctrl != PANEL_SW_CLOCK && pstate.snapshot_keys.down[SNAP_CLOCK])
         pstate.snapshot_keys.used = 1; // any other gesture cancels pending long press
     if(panel_handle_scene_mask_input(ctrl, val)) return;

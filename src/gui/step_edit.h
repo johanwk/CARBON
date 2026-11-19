@@ -23,6 +23,9 @@
 #ifndef STEP_EDIT_H
 #define STEP_EDIT_H
 
+// Session-only display preference; never auditions or changes song data.
+void step_edit_toggle_details(void);
+
 #include "../midi/midi_utils.h"
 #include <inttypes.h>
 
