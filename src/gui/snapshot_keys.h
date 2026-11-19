@@ -4,7 +4,14 @@
 #define SNAPSHOT_KEYS_H
 enum snapshot_key { SNAP_CLOCK, SNAP_RECORD, SNAP_LOAD, SNAP_RUN };
 enum snapshot_action { SNAP_PASS, SNAP_CONSUME, SNAP_MENU, SNAP_TAP, SNAP_CAPTURE, SNAP_RECALL, SNAP_UNDO };
-struct snapshot_keys { unsigned char down[4], used; };
+struct snapshot_keys { unsigned char down[4], used, help; unsigned short hold_ms; };
+// Called once per panel millisecond, after queued button events.
+static inline int snapshot_keys_tick(struct snapshot_keys *s) {
+    if(!s->down[SNAP_CLOCK] || s->used) return 0;
+    if(++s->hold_ms < 800) return 0;
+    s->used = s->help = 1;
+    return 1;
+}
 static inline enum snapshot_action snapshot_keys_event(struct snapshot_keys *s,
         int key, int pressed, int shift) {
     if(key < 0 || key > 3) return SNAP_PASS;
@@ -13,9 +20,11 @@ static inline enum snapshot_action snapshot_keys_event(struct snapshot_keys *s,
         s->down[key] = 1;
         if(key == SNAP_CLOCK) {
             s->used = !!shift;
+            s->help = 0; s->hold_ms = 0;
             return shift ? SNAP_TAP : SNAP_CONSUME;
         }
         if(s->down[SNAP_CLOCK]) {
+            if(s->help) return SNAP_CONSUME; // never turn a completed help hold into an action
             s->used = 1;
             return key == SNAP_RECORD ? SNAP_CAPTURE : key == SNAP_LOAD ? SNAP_RECALL : SNAP_UNDO;
         }
@@ -23,7 +32,10 @@ static inline enum snapshot_action snapshot_keys_event(struct snapshot_keys *s,
     }
     int was_down = s->down[key];
     s->down[key] = 0;
-    if(key == SNAP_CLOCK) return was_down && !s->used ? SNAP_MENU : SNAP_CONSUME;
+    if(key == SNAP_CLOCK) {
+        s->hold_ms = 0;
+        return was_down && !s->used ? SNAP_MENU : SNAP_CONSUME;
+    }
     return SNAP_PASS; // Record/Load releases have no ordinary action
 }
 #endif

@@ -6,7 +6,7 @@
 This unofficial/community firmware builds on Kilpatrick Audio CARBON 1.27
 (upstream master bd5f5d4). It is not an official Kilpatrick Audio release or
 a claim of manufacturer support. This guide includes local candidate
-=1.38-jwk-hum4=, numeric song format 1.38, which is not a published release.
+=1.38-jwk-hlp3=, numeric song format 1.38, which is not a published release.
 The earlier community 1.37 RC remains a separate release. See [[file:README.md][Start here]] for installation, recovery and
 release status, and the [[https://www.kilpatrickaudio.com/?p=carbon][official CARBON documentation]] for basic operation.
 
@@ -786,6 +786,15 @@ User feedback describes the range-based Chord generator as musically useful
 and the chd3 return-to-ordinary-arp fix as working far better. This is practical
 feedback, not exhaustive hardware/timing coverage. See [[file:ARP-CHORD.org][Chord technical details]].
 
+* Step Edit: transposing a mixed step
+
+With all event slots selected, Transpose changes only Note pitches. Prb
+probabilities and all other non-Note event parameters remain unchanged.
+To edit a control event, select its individual slot with Shift + Motion Start;
+Transpose then retains its event-specific meaning (for example Prb chance).
+Shift + Transpose still cycles event type only with one slot selected.
+This prevents transposing a phrase from silently changing its gates/controls.
+
 * Individual note delays
 
 In Step Edit, all slots selected edits the shared step delay once. Select one
@@ -1156,3 +1165,34 @@ Stop and cleanup cancel pending
 attacks. With held live keys, free-running arp may generate new groups as before.
 The chd3 fix remains intact; ordinary arp gate rules remain unchanged.
 Wheel and magnetism remain deferred.
+
+* Built-in menu overviews (local 1.38-jwk-hlp2)
+
+Hold Clock, Arp, MIDI or Tonality alone for800ms to open that menu over the
+main grid. Motion Start selects a row; Length/Value edits the highlighted
+value. Tap the same menu button or Clock to close, retaining edits. Other
+encoders are inactive. Up to nine entries are shown, with track/scene/item
+context, full selected-value detail and two help lines.
+
+Clock/Arp/MIDI/Tonality have21/3/22/14entries. MIDI scene Program rows label
+both output and scene. Edits use normal menu/controller rules, including
+multitrack selection, next-bar queues, overrides and MIDI note cleanup.
+Program edits can send Program Changes. Snapshot and Recall remain status-
+only: Value does nothing there. Use their existing shortcuts/normal menu.
+
+Arp/MIDI/Tonality short taps now execute on release. Arp still toggles enable
+on a short tap outside its overview; a long hold does NOT toggle it. Shifted
+Arp/MIDI/Tonality gestures retain immediate normal-menu actions. Any other
+gesture cancels a pending menu hold/tap. Clock shortcuts before the threshold
+retain priority; a completed Clock help hold cannot become a snapshot action.
+
+Clock Step Length marks active CCi16 and queued >bar targets (* means a CCi
+override is also active); its Edit detail shows the actual base/queued value
+being edited. Other menus retain normal readout semantics: effective Scale
+may still reflect Hrm even when editing its base; arp CCi overrides retain
+precedence. Menus/editor timeouts pause while viewing, playback continues.
+Other buttons exit before their normal action; closing restores the grid.
+
+User reports that the implemented editable Clock, Arp, MIDI and Tonality
+overviews work well on hardware. This is practical acceptance, not exhaustive
+route/gesture or realtime verification. See [[file:CLOCK-HELP.org][Overview controls and verification]].

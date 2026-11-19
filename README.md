@@ -1,6 +1,8 @@
 # CARBON community firmware
 
-**Local candidate:** `1.38-jwk-hum4`, with Arp Speed Chord and Humanize.
+**Local candidate:** `1.38-jwk-hlp3`, with Arp Speed Chord, Humanize and
+[menu overviews](CLOCK-HELP.org): hold Clock, Arp, MIDI or Tonality;
+Motion Start selects and Length/Value edits. Snapshot/Recall stay status-only.
 See [ARP-CHORD.org](ARP-CHORD.org) for voicing and transition rules, and
 [HUMANIZE.org](HUMANIZE.org) for velocity, gate and probabilistic late onset.
 Ordinary arp uses velocity/lateness only; generated Chord is not humanized.

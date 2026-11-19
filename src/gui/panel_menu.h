@@ -131,6 +131,16 @@
 #define PANEL_MENU_CLOCK_SOURCE 8  // per song
 #define PANEL_MENU_CLOCK_SCENE_SYNC 9  // per song
 
+// Shared read-only Clock formatting; no menu/engine mutation.
+struct clock_menu_row { char subtitle[64], name[32], value[64]; };
+void panel_menu_clock_row(int item, struct clock_menu_row *row);
+const char *panel_menu_clock_help(int item, int line);
+int panel_menu_overview_count(int mode);
+const char *panel_menu_overview_title(int mode);
+void panel_menu_overview_row(int mode, int item, struct clock_menu_row *row);
+const char *panel_menu_overview_help(int mode, int item, int line);
+void panel_menu_overview_edit(int mode, int item, int change);
+
 // init the panel menu
 void panel_menu_init(void);
 

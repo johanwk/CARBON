@@ -103,9 +103,12 @@ void seq_ctrl_rt_task(void) {
             midi_clock_timer_task();  // all music timing starts here
             seq_engine_timer_task();  // must run after clock for correct timing
             clock_out_timer_task();  // runs separately from sequencer due to straight time
-            pattern_edit_timer_task();  // handle timeout of pattern edit mode
-            step_edit_timer_task();  // handle timeout of step edit mode
-            song_edit_timer_task();  // handle timeout of song edit mode
+            // Help is a view, not an edit-mode transition. Preserve editor timeouts.
+            if(!gui_clock_help_active()) {
+                pattern_edit_timer_task();
+                step_edit_timer_task();
+                song_edit_timer_task();
+            }
             sysex_timer_task();  // handle processing of SYSEX messages
             song_timer_task();  // handle loading and saving
             panel_timer_task();  // handle input from user which might be realtime

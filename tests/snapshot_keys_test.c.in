@@ -2,7 +2,28 @@
 #include <assert.h>
 #include <stdio.h>
 #include "../src/gui/snapshot_keys.h"
+#include "../src/gui/overview_keys.h"
+static void test_overview_keys(void) {
+ for(int key=0;key<3;key++) {
+  struct overview_keys s={0};
+  assert(overview_keys_event(&s,key,1,0)==1);
+  for(int t=0;t<799;t++) assert(overview_keys_tick(&s)==-1);
+  assert(overview_keys_tick(&s)==key);
+  for(int t=0;t<1000;t++) assert(overview_keys_tick(&s)==-1);
+  assert(overview_keys_event(&s,key,0,0)==1);
+  assert(overview_keys_event(&s,key,1,0)==1);
+  assert(overview_keys_event(&s,key,0,0)==2);
+  assert(overview_keys_event(&s,key,0,0)==0);
+  assert(overview_keys_event(&s,key,1,1)==0);
+  for(int t=0;t<800;t++) assert(overview_keys_tick(&s)==-1);
+  assert(overview_keys_event(&s,key,0,0)==0);
+  overview_keys_event(&s,key,1,0);overview_keys_event(&s,-1,1,0);
+  for(int t=0;t<800;t++) assert(overview_keys_tick(&s)==-1);
+  assert(overview_keys_event(&s,key,0,0)==1);
+ }
+}
 int main(void) {
+ test_overview_keys();
  struct snapshot_keys s={0};
  assert(snapshot_keys_event(&s,SNAP_CLOCK,1,0)==SNAP_CONSUME);
  assert(snapshot_keys_event(&s,SNAP_CLOCK,1,0)==SNAP_CONSUME);
@@ -37,5 +58,21 @@ int main(void) {
  assert(snapshot_keys_event(&s,SNAP_RUN,1,0)==SNAP_CONSUME);
  assert(snapshot_keys_event(&s,SNAP_RUN,0,0)==SNAP_PASS);
  assert(snapshot_keys_event(&s,SNAP_CLOCK,0,0)==SNAP_MENU);
- puts("snapshot key chord tests passed");return 0;
+ // Long press fires once at 800ms, and release never opens the normal menu.
+ s=(struct snapshot_keys){0};snapshot_keys_event(&s,SNAP_CLOCK,1,0);
+ for(int ms=1;ms<800;ms++) assert(!snapshot_keys_tick(&s));
+ assert(snapshot_keys_tick(&s));
+ for(int ms=0;ms<1000;ms++) assert(!snapshot_keys_tick(&s));
+ assert(snapshot_keys_event(&s,SNAP_RECORD,1,0)==SNAP_CONSUME);
+ assert(snapshot_keys_event(&s,SNAP_CLOCK,0,0)==SNAP_CONSUME);
+ for(int key=SNAP_RECORD;key<=SNAP_RUN;key++) {
+  s=(struct snapshot_keys){0};snapshot_keys_event(&s,SNAP_CLOCK,1,0);
+  for(int ms=0;ms<799;ms++) assert(!snapshot_keys_tick(&s));
+  snapshot_keys_event(&s,key,1,0);
+  assert(!snapshot_keys_tick(&s));
+  assert(snapshot_keys_event(&s,SNAP_CLOCK,0,0)==SNAP_CONSUME);
+ }
+ s=(struct snapshot_keys){0};snapshot_keys_event(&s,SNAP_CLOCK,1,1);
+ for(int ms=0;ms<1000;ms++) assert(!snapshot_keys_tick(&s));
+ puts("snapshot/long-Clock key tests passed");return 0;
 }

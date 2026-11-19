@@ -1,0 +1,103 @@
+#+title: Built-in menu overviews and editing
+#+options: ^:nil -:nil
+
+* Open and navigate
+
+Local candidate 1.38-jwk-hlp2. Hold Clock, Arp, MIDI or Tonality alone for
+800 milliseconds to replace the main grid with that menu's overview.
+Release leaves it open. Tap the same button (or Clock) to close. Motion Start
+selects a row; Length/Value edits its value. Other encoders do nothing here.
+Edits remain applied when the overview closes; closing is not Cancel/Undo.
+
+Clock has21entries, Arp3, MIDI22 and Tonality14, in normal menu order. Up to
+nine rows are visible, with a > selection marker and highlighted value field.
+The heading gives menu/track/scene/item count. A detail line shows the selected
+value in full (useful for long scale/arp/port names), followed by two help lines.
+MIDI scene Program rows include A/B and scene number explicitly.
+
+Unshifted short presses of Arp, MIDI and Tonality now act on RELEASE, after
+ruling out a long hold. Arp still toggles enable on a short tap outside its
+overview; holding Arp never toggles it. MIDI/Tonality taps open their normal
+menus. Shift+Arp, Shift+MIDI (System) and Shift+Tonality (Swing) remain immediate
+on press. Touching another control during a pending unshifted hold cancels
+both that hold and its deferred tap, preventing unintended toggles.
+
+Other button presses close an overview before retaining their normal action;
+menu-button presses are deferred as above and can open a different overview.
+Matching releases from earlier presses continue to reach their owner.
+Clock-first Record/Load/Run shortcuts before the800ms threshold retain
+capture/recall/undo priority and cancel help detection. Once a Clock hold
+opens the overview it cannot become one of those actions until Clock has
+been released and freshly pressed. Shift+Clock retains tap tempo outside an
+open overview. Clock is always a close gesture inside an overview.
+
+* Editing and safety
+
+Overview editing and ordinary menus share the SAME per-item edit handlers;
+there is no separate parameter implementation. Existing multitrack semantics,
+validation, queued next-bar performance changes, CCi/Hrm precedence, cleanup
+and song/session scopes apply. MIDI port/channel edits can release notes;
+Program edits can send Program Changes. These are real edits, not previews.
+
+Snapshot and Recall are the only informational Clock rows: Length/Value does
+nothing there. They display Empty/Ready/Next bar as applicable, with status-only
+help. Use the existing shortcuts or normal menu for those actions. Magic Range
+and Chance edit their parameters only; they do not execute Magic.
+
+The overview is not a track selector. To change tracks, close it or press a
+track button (which exits before its normal selection action), then reopen.
+While multiple tracks are selected, the first selected track supplies the
+readout and normal controller multiselect rules apply to edits.
+
+* Values and overrides
+
+Values follow the same formatter as the normal menu and refresh as they change.
+They are not a saved screenshot or a preview of future automation.
+
+Clock Step Length can show effective CCi16 with a CCi marker. Queued manual
+choices show >bar; >bar* additionally marks an active CCi override. The detail
+line labelled Edit shows the base/queued editing value, so editing does not
+pretend to remove an override. Other entries retain normal-menu display rules:
+Arp parameters show stored/queued values, and Tonality Scale shows effective
+scale/root while edits target the stored base. Help warns when CCi/Hrm can
+retain precedence. Pending Arp Speed/Transpose readouts follow normal menus.
+
+Snapshot/Recall remain status-only. Humanize edits are still per-track session
+preferences, not saved settings. Ordinary arp uses velocity/lateness only;
+Chord is excluded. No storage/version migration or host-tool change is needed.
+
+* Display and timing
+
+Opening preserves the existing menu/editor and grid selection overlays.
+Menu/editor inactivity countdowns pause while viewing; musical clock, note
+cleanup and recording continue. Closing restores the grid without clearing
+its selection. External scene/song changes can still update/end editing under
+normal rules. Power changes close the view and reset hold recognizers.
+
+Rendering uses a small cached text overlay in the normal GUI loop, not a
+framebuffer or timer-interrupt LCD drawing. Only changed rows redraw. Hold
+detection uses the existing1ms panel task without waiting or blocking playback.
+Both LCD layouts retain their grid positions/font. Source helper names that
+still mention clock_help now represent the shared overview display.
+
+* Verification and hardware status
+
+User flashed hlp1 and reports the read-only Clock overview works. This confirms
+initial long-hold/layout use, not the new hlp2 editing or other menu gestures.
+User also flashed hlp2 and reports the editable overviews work very well.
+This is practical acceptance, not exhaustive route/gesture verification.
+The hlp3 follow-up retains these overviews and fixes Step Edit group transpose
+to leave all non-Note events unchanged; that fix awaits hardware audition.
+
+Host tests cover all four menus/60entries, help widths, both LCD rectangles,
+live values, editor dispatch and multiselect Humanize, scene Program routing,
+Snapshot/Recall action suppression, retained underlying menu state, scroll
+limits, highlighted values, unchanged-row caching and grid restoration.
+Gesture tests cover799/800ms, hold/release/repeat handling, all three new menu
+buttons, deferred taps, shifted bypass, cancellation and Clock shortcuts.
+Existing playback suites and forced release build pass. Physical button feel,
+legibility, busy-pattern responsiveness and interrupt headroom remain hardware
+checks; host fixtures do not establish these.
+
+No flash, song write, publication or commit is implied. Load/Save/System/Swing
+full-screen overviews are not added; their normal menus remain available.

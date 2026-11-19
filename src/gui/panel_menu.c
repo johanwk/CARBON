@@ -109,7 +109,7 @@ void panel_menu_timer_task(void) {
         if(value != shown || wait != pending) {shown = value; pending = wait; panel_menu_update_display();}
     } else {shown = pending = -1;}
     // handle menu timeout
-    if(pmstate.menu_timeout_count) {
+    if(pmstate.menu_timeout_count && !gui_clock_help_active()) {
         // only time out if we're not set to max = special non-timeout setting
         if(pmstate.menu_timeout_count != PANEL_MENU_TIMEOUT_MAX) {
             pmstate.menu_timeout_count --;
@@ -620,15 +620,6 @@ void panel_menu_update_display(void) {
 }
 
 // display the swing menu
-static void panel_menu_display_timing_value(int kind) {
-    char value[32];
-    int choice = seq_engine_timing_value(seq_ctrl_get_scene(), seq_ctrl_get_first_track(), kind);
-    if(kind && choice == SEQ_UTILS_ARP_CHORD) strcpy(value, "Chord");
-    else panel_utils_step_len_to_str(value, choice);
-    if(seq_engine_timing_pending(seq_ctrl_get_first_track(), kind))
-        strcat(value, kind && choice == SEQ_UTILS_ARP_CHORD ? " >bar" : " next bar");
-    gui_set_menu_value(value);
-}
 
 void panel_menu_display_swing(void) {
     char tempstr[64];
@@ -651,54 +642,55 @@ void panel_menu_display_swing(void) {
 }
 
 // display the tonality menu
-void panel_menu_display_tonality(void) {
+static void panel_menu_tonality_row(int item, struct clock_menu_row *row) {
+    memset(row, 0, sizeof(*row));
     char tempstr[64];
     int temp;
-    gui_set_menu_title("TONALITY");
-    if(pmstate.menu_submode >= PANEL_MENU_TONALITY_SONG_ROOT) {
-        if(pmstate.menu_submode == PANEL_MENU_TONALITY_SONG_ROOT) {
-            gui_set_menu_subtitle("Song");
-            gui_set_menu_param("Song Root");
+    if(item >= PANEL_MENU_TONALITY_SONG_ROOT) {
+        if(item == PANEL_MENU_TONALITY_SONG_ROOT) {
+            snprintf(row->subtitle, sizeof(row->subtitle), "%s", "Song");
+            snprintf(row->name, sizeof(row->name), "%s", "Song Root");
             temp = song_get_root();
         }
         else {
-            int scene = pmstate.menu_submode - PANEL_MENU_TONALITY_SCENE_ROOT1;
+            int scene = item - PANEL_MENU_TONALITY_SCENE_ROOT1;
             sprintf(tempstr, "Scene %d Root", scene + 1);
-            gui_set_menu_subtitle("Scene Override");
-            gui_set_menu_param(tempstr);
+            snprintf(row->subtitle, sizeof(row->subtitle), "%s", "Scene Override");
+            snprintf(row->name, sizeof(row->name), "%s", tempstr);
             temp = song_get_scene_root(scene);
         }
-        gui_set_menu_value((char *)scale_root_name(temp));
+        snprintf(row->value, sizeof(row->value), "%s", (char *)scale_root_name(temp));
         return;
     }
-    switch(pmstate.menu_submode) {
+    switch(item) {
         case PANEL_MENU_TONALITY_SWING:
-            gui_set_menu_subtitle("Song");
-            gui_set_menu_param("Swing");
+            snprintf(row->subtitle, sizeof(row->subtitle), "%s", "Song");
+            snprintf(row->name, sizeof(row->name), "%s", "Swing");
             sprintf(tempstr, "%d%%", song_get_swing());
-            gui_set_menu_value(tempstr);
+            snprintf(row->value, sizeof(row->value), "%s", tempstr);
             break;
         case PANEL_MENU_TONALITY_SCALE:
             sprintf(tempstr, "Scene %d Track %d",
                 (seq_ctrl_get_scene() + 1),
                 (seq_ctrl_get_first_track() + 1));
-            gui_set_menu_subtitle(tempstr);
+            snprintf(row->subtitle, sizeof(row->subtitle), "%s", tempstr);
             scale_name_with_root(tempstr,
                 seq_engine_get_effective_tonality(seq_ctrl_get_scene(), seq_ctrl_get_first_track()),
                 seq_engine_get_effective_root(seq_ctrl_get_scene()));
             // Scale/root names exceed the generic 13-character value field.
-            gui_set_status_text_part(3, 0, 27, tempstr);
+            snprintf(row->name, sizeof(row->name), "%s", "Scale");
+            snprintf(row->value, sizeof(row->value), "%s", tempstr);
             break;
         case PANEL_MENU_TONALITY_TRANSPOSE:
             sprintf(tempstr, "Scene %d Track %d",
                 (seq_ctrl_get_scene() + 1),
                 (seq_ctrl_get_first_track() + 1));
-            gui_set_menu_subtitle(tempstr);
-            gui_set_menu_param("Transpose");
+            snprintf(row->subtitle, sizeof(row->subtitle), "%s", tempstr);
+            snprintf(row->name, sizeof(row->name), "%s", "Transpose");
             // drum mode
             if(song_get_track_type(seq_ctrl_get_first_track()) ==
                     SONG_TRACK_TYPE_DRUM) {
-                gui_set_menu_value("-- (DRUM)");
+                snprintf(row->value, sizeof(row->value), "%s", "-- (DRUM)");
             }
             // voice mode
             else {
@@ -706,89 +698,124 @@ void panel_menu_display_tonality(void) {
                     seq_engine_pitch_value(seq_ctrl_get_scene(),
                     seq_ctrl_get_first_track()));
                 if(seq_engine_pitch_pending(seq_ctrl_get_first_track())) strcat(tempstr, " next bar");
-                gui_set_menu_value(tempstr);
+                snprintf(row->value, sizeof(row->value), "%s", tempstr);
             }
             break;
         case PANEL_MENU_TONALITY_BIAS_TRACK:
             sprintf(tempstr, "Scene %d Track %d",
                 (seq_ctrl_get_scene() + 1),
                 (seq_ctrl_get_first_track() + 1));
-            gui_set_menu_subtitle(tempstr);
-            gui_set_menu_param("Bias Track");
+            snprintf(row->subtitle, sizeof(row->subtitle), "%s", tempstr);
+            snprintf(row->name, sizeof(row->name), "%s", "Bias Track");
             temp = song_get_bias_track(seq_ctrl_get_scene(),
                 seq_ctrl_get_first_track());
             if(temp == SONG_TRACK_BIAS_NULL) {
-                gui_set_menu_value("DISABLED");
+                snprintf(row->value, sizeof(row->value), "%s", "DISABLED");
             }
             else {
                 sprintf(tempstr, "%d", (temp + 1));
-                gui_set_menu_value(tempstr);
+                snprintf(row->value, sizeof(row->value), "%s", tempstr);
             }
             break;
         case PANEL_MENU_TONALITY_TRACK_TYPE:
             sprintf(tempstr, "Track %d",
                 (seq_ctrl_get_first_track() + 1));
-            gui_set_menu_subtitle(tempstr);
-            gui_set_menu_param("Track Type");
+            snprintf(row->subtitle, sizeof(row->subtitle), "%s", tempstr);
+            snprintf(row->name, sizeof(row->name), "%s", "Track Type");
             if(song_get_track_type(seq_ctrl_get_first_track()) ==
                     SONG_TRACK_TYPE_DRUM) {
-                gui_set_menu_value("DRUM");
+                snprintf(row->value, sizeof(row->value), "%s", "DRUM");
             }
             else {
-                gui_set_menu_value("VOICE");
+                snprintf(row->value, sizeof(row->value), "%s", "VOICE");
             }
             break;
         case PANEL_MENU_TONALITY_MAGIC_RANGE:
-            gui_set_menu_subtitle("Magic Range");
-            gui_set_menu_param("Range");
+            snprintf(row->subtitle, sizeof(row->subtitle), "%s", "Magic Range");
+            snprintf(row->name, sizeof(row->name), "%s", "Range");
             sprintf(tempstr, "%2d", song_get_magic_range());
-            gui_set_menu_value(tempstr);
+            snprintf(row->value, sizeof(row->value), "%s", tempstr);
             break;
         case PANEL_MENU_TONALITY_MAGIC_CHANCE:
-            gui_set_menu_subtitle("Magic Chance");
-            gui_set_menu_param("Chance");
+            snprintf(row->subtitle, sizeof(row->subtitle), "%s", "Magic Chance");
+            snprintf(row->name, sizeof(row->name), "%s", "Chance");
             sprintf(tempstr, "%3d%%", song_get_magic_chance());
-            gui_set_menu_value(tempstr);
+            snprintf(row->value, sizeof(row->value), "%s", tempstr);
             break;
     }
 }
 
+void panel_menu_display_tonality(void) {
+    struct clock_menu_row row;
+    panel_menu_tonality_row(pmstate.menu_submode, &row);
+    gui_set_menu_title("TONALITY");
+    gui_set_menu_subtitle(row.subtitle);
+    if(pmstate.menu_submode == PANEL_MENU_TONALITY_SCALE) {
+        gui_set_status_text_part(3, 0, 27, row.value);
+        return;
+    }
+    gui_set_menu_param(row.name);
+    gui_set_menu_value(row.value);
+}
+
 // display the arp menu
-void panel_menu_display_arp(void) {
+static void panel_menu_arp_row(int item, struct clock_menu_row *row) {
+    memset(row, 0, sizeof(*row));
     char tempstr[64];
-    gui_set_menu_title("ARP");
-    switch(pmstate.menu_submode) {
+    switch(item) {
         case PANEL_MENU_ARP_TYPE:
             sprintf(tempstr, "Scene %d Track %d",
                 (seq_ctrl_get_scene() + 1),
                 (seq_ctrl_get_first_track() + 1));
-            gui_set_menu_subtitle(tempstr);
-            gui_set_menu_param("Arp Type");
+            snprintf(row->subtitle, sizeof(row->subtitle), "%s", tempstr);
+            snprintf(row->name, sizeof(row->name), "%s", "Arp Type");
             arp_type_to_name(tempstr,
                 song_get_arp_type(seq_ctrl_get_scene(),
                 seq_ctrl_get_first_track()));
-            gui_set_menu_value(tempstr);
+            snprintf(row->value, sizeof(row->value), "%s", tempstr);
             break;
         case PANEL_MENU_ARP_SPEED:
             sprintf(tempstr, "Scene %d Track %d",
                 (seq_ctrl_get_scene() + 1),
                 (seq_ctrl_get_first_track() + 1));
-            gui_set_menu_subtitle(tempstr);
-            gui_set_menu_param("Arp Speed");
-            panel_menu_display_timing_value(1);
+            snprintf(row->subtitle, sizeof(row->subtitle), "%s", tempstr);
+            snprintf(row->name, sizeof(row->name), "%s", "Arp Speed");
+            int choice = seq_engine_timing_value(seq_ctrl_get_scene(), seq_ctrl_get_first_track(), 1);
+            if(choice == SEQ_UTILS_ARP_CHORD) strcpy(tempstr, "Chord");
+            else panel_utils_step_len_to_str(tempstr, choice);
+            if(seq_engine_timing_pending(seq_ctrl_get_first_track(), 1))
+                strcat(tempstr, choice == SEQ_UTILS_ARP_CHORD ? " >bar" : " next bar");
+            snprintf(row->value, sizeof(row->value), "%s", tempstr);
             break;
         case PANEL_MENU_ARP_GATE_TIME:
             sprintf(tempstr, "Scene %d Track %d",
                 (seq_ctrl_get_scene() + 1),
                 (seq_ctrl_get_first_track() + 1));
-            gui_set_menu_subtitle(tempstr);
-            gui_set_menu_param("Arp Gate Len");
+            snprintf(row->subtitle, sizeof(row->subtitle), "%s", tempstr);
+            snprintf(row->name, sizeof(row->name), "%s", "Arp Gate Len");
             sprintf(tempstr, "%d",
                  song_get_arp_gate_time(seq_ctrl_get_scene(),
                  seq_ctrl_get_first_track()));
-            gui_set_menu_value(tempstr);
+            snprintf(row->value, sizeof(row->value), "%s", tempstr);
             break;
     }
+}
+
+static void panel_menu_display_timing_value(int kind) {
+    struct clock_menu_row row;
+    if(kind) panel_menu_arp_row(PANEL_MENU_ARP_SPEED,&row);
+    else panel_menu_clock_row(PANEL_MENU_CLOCK_STEP_LEN,&row);
+    gui_set_menu_value(row.value);
+}
+
+void panel_menu_display_arp(void) {
+    struct clock_menu_row row;
+    panel_menu_arp_row(pmstate.menu_submode, &row);
+    gui_set_menu_title("ARP");
+    gui_set_menu_subtitle(row.subtitle);
+    gui_set_menu_param(row.name);
+    if(pmstate.menu_submode == PANEL_MENU_ARP_SPEED) panel_menu_display_timing_value(1);
+    else gui_set_menu_value(row.value);
 }
 
 // display the load menu
@@ -854,16 +881,16 @@ void panel_menu_display_save(void) {
 }
 
 // display the MIDI menu
-void panel_menu_display_midi(void) {
+static void panel_menu_midi_row(int item, struct clock_menu_row *row) {
+    memset(row, 0, sizeof(*row));
     char tempstr[64];
     int track = seq_ctrl_get_first_track();
     int temp;
-    gui_set_menu_title("MIDI");
-    switch(pmstate.menu_submode) {
+    switch(item) {
         case PANEL_MENU_MIDI_PROGRAM_A:
             sprintf(tempstr, "Track %d", (track + 1));
-            gui_set_menu_subtitle(tempstr);
-            gui_set_menu_param("Program A");
+            snprintf(row->subtitle, sizeof(row->subtitle), "%s", tempstr);
+            snprintf(row->name, sizeof(row->name), "%s", "Program A");
             // CV/gate doesn't have programs
             if(song_get_midi_port_map(track, 0) == MIDI_PORT_CV_OUT) {
                 panel_utils_get_blank_str(tempstr);
@@ -878,12 +905,12 @@ void panel_menu_display_midi(void) {
                     sprintf(tempstr, "%d", temp + 1);
                 }
             }
-            gui_set_menu_value(tempstr);
+            snprintf(row->value, sizeof(row->value), "%s", tempstr);
             break;
         case PANEL_MENU_MIDI_PROGRAM_B:
             sprintf(tempstr, "Track %d", (track + 1));
-            gui_set_menu_subtitle(tempstr);
-            gui_set_menu_param("Program B");
+            snprintf(row->subtitle, sizeof(row->subtitle), "%s", tempstr);
+            snprintf(row->name, sizeof(row->name), "%s", "Program B");
             // CV/gate doesn't have programs
             if(song_get_midi_port_map(track, 1) == MIDI_PORT_CV_OUT) {
                 panel_utils_get_blank_str(tempstr);
@@ -898,73 +925,73 @@ void panel_menu_display_midi(void) {
                     sprintf(tempstr, "%d", temp + 1);
                 }
             }
-            gui_set_menu_value(tempstr);
+            snprintf(row->value, sizeof(row->value), "%s", tempstr);
             break;
         case PANEL_MENU_MIDI_TRACK_OUTA_PORT:
             sprintf(tempstr, "Track %d", (track + 1));
-            gui_set_menu_subtitle(tempstr);
-            gui_set_menu_param("Out Port A");
+            snprintf(row->subtitle, sizeof(row->subtitle), "%s", tempstr);
+            snprintf(row->name, sizeof(row->name), "%s", "Out Port A");
             panel_utils_port_str(tempstr, song_get_midi_port_map(track, 0));
-            gui_set_menu_value(tempstr);
+            snprintf(row->value, sizeof(row->value), "%s", tempstr);
             break;
         case PANEL_MENU_MIDI_TRACK_OUTB_PORT:
             sprintf(tempstr, "Track %d", (track + 1));
-            gui_set_menu_subtitle(tempstr);
-            gui_set_menu_param("Out Port B");
+            snprintf(row->subtitle, sizeof(row->subtitle), "%s", tempstr);
+            snprintf(row->name, sizeof(row->name), "%s", "Out Port B");
             panel_utils_port_str(tempstr, song_get_midi_port_map(track, 1));
-            gui_set_menu_value(tempstr);
+            snprintf(row->value, sizeof(row->value), "%s", tempstr);
             break;
         case PANEL_MENU_MIDI_TRACK_OUTA_CHAN:
             sprintf(tempstr, "Track %d", (track + 1));
-            gui_set_menu_subtitle(tempstr);
-            gui_set_menu_param("Out Chan A");
+            snprintf(row->subtitle, sizeof(row->subtitle), "%s", tempstr);
+            snprintf(row->name, sizeof(row->name), "%s", "Out Chan A");
             panel_utils_channel_str(tempstr,
                 song_get_midi_port_map(track, 0),
                 song_get_midi_channel_map(track, 0));
-            gui_set_menu_value(tempstr);
+            snprintf(row->value, sizeof(row->value), "%s", tempstr);
             break;
         case PANEL_MENU_MIDI_TRACK_OUTB_CHAN:
             sprintf(tempstr, "Track %d", (track + 1));
-            gui_set_menu_subtitle(tempstr);
-            gui_set_menu_param("Out Chan B");
+            snprintf(row->subtitle, sizeof(row->subtitle), "%s", tempstr);
+            snprintf(row->name, sizeof(row->name), "%s", "Out Chan B");
             panel_utils_channel_str(tempstr,
                 song_get_midi_port_map(track, 1),
                 song_get_midi_channel_map(track, 1));
-            gui_set_menu_value(tempstr);
+            snprintf(row->value, sizeof(row->value), "%s", tempstr);
             break;
         case PANEL_MENU_MIDI_KEY_SPLIT:
             sprintf(tempstr, "Track %d", (track + 1));
-            gui_set_menu_subtitle(tempstr);
-            gui_set_menu_param("Key Split");
+            snprintf(row->subtitle, sizeof(row->subtitle), "%s", tempstr);
+            snprintf(row->name, sizeof(row->name), "%s", "Key Split");
             panel_utils_key_split_str(tempstr, song_get_key_split(track));
-            gui_set_menu_value(tempstr);
+            snprintf(row->value, sizeof(row->value), "%s", tempstr);
             break;
         case PANEL_MENU_MIDI_KEY_VELOCITY:
-            gui_set_menu_param("Key Vel Scale");
-            gui_set_menu_subtitle("");
+            snprintf(row->name, sizeof(row->name), "%s", "Key Vel Scale");
+            snprintf(row->subtitle, sizeof(row->subtitle), "%s", "");
             sprintf(tempstr, "%d", song_get_key_velocity_scale());
-            gui_set_menu_value(tempstr);
+            snprintf(row->value, sizeof(row->value), "%s", tempstr);
             break;
         case PANEL_MENU_MIDI_REMOTE_CTRL:
-            gui_set_menu_param("MIDI Rmt Ctrl");
-            gui_set_menu_subtitle("");
+            snprintf(row->name, sizeof(row->name), "%s", "MIDI Rmt Ctrl");
+            snprintf(row->subtitle, sizeof(row->subtitle), "%s", "");
             panel_utils_onoff_str(tempstr, song_get_midi_remote_ctrl());
-            gui_set_menu_value(tempstr);
+            snprintf(row->value, sizeof(row->value), "%s", tempstr);
             break;
         case PANEL_MENU_MIDI_AUTOLIVE:
-            gui_set_menu_param("MIDI Autolive");
-            gui_set_menu_subtitle("");
+            snprintf(row->name, sizeof(row->name), "%s", "MIDI Autolive");
+            snprintf(row->subtitle, sizeof(row->subtitle), "%s", "");
             panel_utils_onoff_str(tempstr, song_get_midi_autolive());
-            gui_set_menu_value(tempstr);
+            snprintf(row->value, sizeof(row->value), "%s", tempstr);
             break;
         default:
-            if(pmstate.menu_submode >= PANEL_MENU_MIDI_PROGRAM_A_SCENE1 &&
-                    pmstate.menu_submode <= PANEL_MENU_MIDI_PROGRAM_A_SCENE6) {
-                int scene = pmstate.menu_submode - PANEL_MENU_MIDI_PROGRAM_A_SCENE1;
+            if(item >= PANEL_MENU_MIDI_PROGRAM_A_SCENE1 &&
+                    item <= PANEL_MENU_MIDI_PROGRAM_A_SCENE6) {
+                int scene = item - PANEL_MENU_MIDI_PROGRAM_A_SCENE1;
                 sprintf(tempstr, "Scene %d Track %d",
                     (scene + 1), (track + 1));
-                gui_set_menu_subtitle(tempstr);
-                gui_set_menu_param("Program A");
+                snprintf(row->subtitle, sizeof(row->subtitle), "%s", tempstr);
+                snprintf(row->name, sizeof(row->name), "%s", "Program A");
                 if(song_get_midi_port_map(track, 0) == MIDI_PORT_CV_OUT) {
                     panel_utils_get_blank_str(tempstr);
                 }
@@ -977,15 +1004,15 @@ void panel_menu_display_midi(void) {
                         sprintf(tempstr, "%d", temp + 1);
                     }
                 }
-                gui_set_menu_value(tempstr);
+                snprintf(row->value, sizeof(row->value), "%s", tempstr);
             }
-            else if(pmstate.menu_submode >= PANEL_MENU_MIDI_PROGRAM_B_SCENE1 &&
-                    pmstate.menu_submode <= PANEL_MENU_MIDI_PROGRAM_B_SCENE6) {
-                int scene = pmstate.menu_submode - PANEL_MENU_MIDI_PROGRAM_B_SCENE1;
+            else if(item >= PANEL_MENU_MIDI_PROGRAM_B_SCENE1 &&
+                    item <= PANEL_MENU_MIDI_PROGRAM_B_SCENE6) {
+                int scene = item - PANEL_MENU_MIDI_PROGRAM_B_SCENE1;
                 sprintf(tempstr, "Scene %d Track %d",
                     (scene + 1), (track + 1));
-                gui_set_menu_subtitle(tempstr);
-                gui_set_menu_param("Program B");
+                snprintf(row->subtitle, sizeof(row->subtitle), "%s", tempstr);
+                snprintf(row->name, sizeof(row->name), "%s", "Program B");
                 if(song_get_midi_port_map(track, 1) == MIDI_PORT_CV_OUT) {
                     panel_utils_get_blank_str(tempstr);
                 }
@@ -998,10 +1025,19 @@ void panel_menu_display_midi(void) {
                         sprintf(tempstr, "%d", temp + 1);
                     }
                 }
-                gui_set_menu_value(tempstr);
+                snprintf(row->value, sizeof(row->value), "%s", tempstr);
             }
             break;
     }
+}
+
+void panel_menu_display_midi(void) {
+    struct clock_menu_row row;
+    panel_menu_midi_row(pmstate.menu_submode, &row);
+    gui_set_menu_title("MIDI");
+    gui_set_menu_subtitle(row.subtitle);
+    gui_set_menu_param(row.name);
+    gui_set_menu_value(row.value);
 }
 
 // display the system menu
@@ -1111,71 +1147,92 @@ void panel_menu_display_sys(void) {
     }
 }
 
-static int panel_menu_display_humanize(void) {
-    char tempstr[64];
+const char *panel_menu_clock_help(int item, int line) {
+    static const char *help[PANEL_MENU_CLOCK_NUM_SUBMODES][2] = {
+        {"Scene/track step duration.", "CCi may override stored rate."},
+        {"Metronome output or Off.", "Track 6 uses a MIDI note."},
+        {"Metronome sound duration.", "Milliseconds, not ticks."},
+        {"DIN 1 output pulse rate.", "Off disables clock output."},
+        {"DIN 2 output pulse rate.", "Off disables clock output."},
+        {"CV/gate output pulse rate.", "Off disables clock output."},
+        {"USB host clock output rate.", "Off disables clock output."},
+        {"USB device clock output rate.", "Off disables clock output."},
+        {"Stored clock source.", "External sync follows input."},
+        {"When queued scenes activate.", "Beat or Track 1 end."},
+        {"Protect manual rate changes.", "Straight: apply at next bar."},
+        {"Protect manual transpose.", "Octaves or octaves/fifths."},
+        {"Capture song/controls in RAM.", "Read-only here; no capture."},
+        {"Restore the RAM snapshot.", "Read-only here; no recall."},
+        {"Per-track session setting.", "Not saved; no Chord/ratchets."},
+        {"Chance per positive attack.", "Includes ordinary arp output."},
+        {"Signed velocity variation.", "Clamped to 1..127."},
+        {"Chance of length variation.", "Ordinary Notes, not arp."},
+        {"Percent after Track Gate.", "Duration starts at onset."},
+        {"Chance of added late onset.", "Unselected groups on time."},
+        {"Selected delay: 1..Max ticks.", "Arp may omit late hits."}
+    };
+    if(item < 0 || item >= PANEL_MENU_CLOCK_NUM_SUBMODES || line < 0 || line > 1) return "";
+    return help[item][line];
+}
+
+void panel_menu_clock_row(int item, struct clock_menu_row *row) {
+    char tempstr[64], tempstr2[64];
     int temp;
-    if(pmstate.menu_submode >= PANEL_MENU_CLOCK_HUMANIZE &&
-            pmstate.menu_submode < PANEL_MENU_CLOCK_NUM_SUBMODES) {
+    memset(row, 0, sizeof(*row));
+    if(item >= PANEL_MENU_CLOCK_HUMANIZE &&
+            item < PANEL_MENU_CLOCK_NUM_SUBMODES) {
         // Leave at least three blank columns before the value at column 14.
         static const char *names[HUMANIZE_PARAMS] = {"Humanize", "Vel Chance",
             "Vel +/-", "Gate Chance", "Gate +/-",
             "Late Chance", "Late Max"};
-        int param = pmstate.menu_submode - PANEL_MENU_CLOCK_HUMANIZE;
+        int param = item - PANEL_MENU_CLOCK_HUMANIZE;
         sprintf(tempstr, "Humanize T%d / session only", seq_ctrl_get_first_track() + 1);
-        gui_set_menu_subtitle(tempstr);
-        gui_set_menu_param((char *)names[param]);
+        snprintf(row->subtitle, sizeof(row->subtitle), "%s", tempstr);
+        snprintf(row->name, sizeof(row->name), "%s", (char *)names[param]);
         temp = seq_engine_humanize_get(seq_ctrl_get_first_track(), param);
         if(param == HUMANIZE_ENABLE) sprintf(tempstr, "%s", temp ? "On" : "Off");
         else if(param == HUMANIZE_LATE_MAX) sprintf(tempstr, "%d ticks", temp);
         else if(param == HUMANIZE_VELOCITY_AMOUNT) sprintf(tempstr, "%d", temp);
         else sprintf(tempstr, "%d%%", temp);
-        gui_set_menu_value(tempstr);
-        return 1;
+        snprintf(row->value, sizeof(row->value), "%s", tempstr);
+        return;
     }
-    return 0;
-}
-
-// display the clock menu
-void panel_menu_display_clock(void) {
-    char tempstr[64];
-    char tempstr2[64];
-    int temp;
-    gui_set_menu_title("CLOCK");
-    if(panel_menu_display_humanize()) return;
-    switch(pmstate.menu_submode) {
+    switch(item) {
         case PANEL_MENU_CLOCK_CAPTURE:
-            gui_set_menu_subtitle("Turn right to capture");
-            gui_set_menu_param("Snapshot");
-            gui_set_menu_value(seq_engine_snapshot_status() ? "Replace" : "Capture");
+            snprintf(row->subtitle, sizeof(row->subtitle), "%s", "Turn right to capture");
+            snprintf(row->name, sizeof(row->name), "%s", "Snapshot");
+            snprintf(row->value, sizeof(row->value), "%s", seq_engine_snapshot_status() ? "Replace" : "Capture");
             break;
         case PANEL_MENU_CLOCK_RECALL:
-            gui_set_menu_subtitle("Right recall / left cancel");
-            gui_set_menu_param("Recall");
-            gui_set_menu_value(seq_engine_snapshot_status() == 2 ? "Next bar" :
+            snprintf(row->subtitle, sizeof(row->subtitle), "%s", "Right recall / left cancel");
+            snprintf(row->name, sizeof(row->name), "%s", "Recall");
+            snprintf(row->value, sizeof(row->value), "%s", seq_engine_snapshot_status() == 2 ? "Next bar" :
                 seq_engine_snapshot_status() == 1 ? "Ready" : "Empty");
             break;
         case PANEL_MENU_CLOCK_PITCH:
-            gui_set_menu_subtitle("Manual pitch / next bar");
-            gui_set_menu_param("Perform Pitch");
-            gui_set_menu_value(seq_engine_pitch_mode() == 2 ? "Octaves+5ths" :
+            snprintf(row->subtitle, sizeof(row->subtitle), "%s", "Manual pitch / next bar");
+            snprintf(row->name, sizeof(row->name), "%s", "Perform Pitch");
+            snprintf(row->value, sizeof(row->value), "%s", seq_engine_pitch_mode() == 2 ? "Octaves+5ths" :
                 seq_engine_pitch_mode() == 1 ? "Octaves" : "Off");
             break;
         case PANEL_MENU_CLOCK_PERFORMANCE:
-            gui_set_menu_subtitle("Manual rates / next bar");
-            gui_set_menu_param("Perform Grid");
-            gui_set_menu_value(seq_engine_straight_enabled() ? "Straight" : "Off");
+            snprintf(row->subtitle, sizeof(row->subtitle), "%s", "Manual rates / next bar");
+            snprintf(row->name, sizeof(row->name), "%s", "Perform Grid");
+            snprintf(row->value, sizeof(row->value), "%s", seq_engine_straight_enabled() ? "Straight" : "Off");
             break;
         case PANEL_MENU_CLOCK_STEP_LEN:
             sprintf(tempstr, "Scene %d Track %d",
                 (seq_ctrl_get_scene() + 1),
                 (seq_ctrl_get_first_track() + 1));
-            gui_set_menu_subtitle(tempstr);
-            gui_set_menu_param("Step Length");
-            panel_menu_display_timing_value(0);
+            snprintf(row->subtitle, sizeof(row->subtitle), "%s", tempstr);
+            snprintf(row->name, sizeof(row->name), "%s", "Step Length");
+            panel_utils_step_len_to_str(tempstr, seq_engine_timing_value(seq_ctrl_get_scene(), seq_ctrl_get_first_track(), 0));
+            if(seq_engine_timing_pending(seq_ctrl_get_first_track(), 0)) strcat(tempstr, " next bar");
+            snprintf(row->value, sizeof(row->value), "%s", tempstr);
             break;
         case PANEL_MENU_CLOCK_METRONOME_MODE:
-            gui_set_menu_subtitle("");
-            gui_set_menu_param("Metronome");
+            snprintf(row->subtitle, sizeof(row->subtitle), "%s", "");
+            snprintf(row->name, sizeof(row->name), "%s", "Metronome");
             temp = song_get_metronome_mode();
             switch(temp) {
                 case SONG_METRONOME_OFF:
@@ -1189,72 +1246,93 @@ void panel_menu_display_clock(void) {
                     break;
                 default:
                     panel_utils_note_to_name(tempstr2, temp, 1, 0);
-                    sprintf(tempstr, "Track 6 %s", tempstr2);
+                    snprintf(tempstr, sizeof(tempstr), "Track 6 %.12s", tempstr2);
                     break;
             }
-            gui_set_menu_value(tempstr);
+            snprintf(row->value, sizeof(row->value), "%s", tempstr);
             break;
         case PANEL_MENU_CLOCK_METRONOME_SOUND_LEN:
-            gui_set_menu_subtitle("");
-            gui_set_menu_param("Metronome Len");
+            snprintf(row->subtitle, sizeof(row->subtitle), "%s", "");
+            snprintf(row->name, sizeof(row->name), "%s", "Metronome Len");
             sprintf(tempstr, "%dms", song_get_metronome_sound_len());
-            gui_set_menu_value(tempstr);
+            snprintf(row->value, sizeof(row->value), "%s", tempstr);
             break;
         case PANEL_MENU_CLOCK_TX_DIN1:
-            gui_set_menu_subtitle("MIDI Clock OUT");
-            gui_set_menu_param("MIDI DIN 1");
+            snprintf(row->subtitle, sizeof(row->subtitle), "%s", "MIDI Clock OUT");
+            snprintf(row->name, sizeof(row->name), "%s", "MIDI DIN 1");
             panel_utils_clock_ppq_to_str(tempstr,
                 song_get_midi_port_clock_out(MIDI_PORT_DIN1_OUT));
-            gui_set_menu_value(tempstr);
+            snprintf(row->value, sizeof(row->value), "%s", tempstr);
             break;
         case PANEL_MENU_CLOCK_TX_DIN2:
-            gui_set_menu_subtitle("MIDI Clock OUT");
-            gui_set_menu_param("MIDI DIN 2");
+            snprintf(row->subtitle, sizeof(row->subtitle), "%s", "MIDI Clock OUT");
+            snprintf(row->name, sizeof(row->name), "%s", "MIDI DIN 2");
             panel_utils_clock_ppq_to_str(tempstr,
                 song_get_midi_port_clock_out(MIDI_PORT_DIN2_OUT));
-            gui_set_menu_value(tempstr);
+            snprintf(row->value, sizeof(row->value), "%s", tempstr);
             break;
         case PANEL_MENU_CLOCK_TX_CV:
-            gui_set_menu_subtitle("MIDI Clock OUT");
-            gui_set_menu_param("CV/GATE");
+            snprintf(row->subtitle, sizeof(row->subtitle), "%s", "MIDI Clock OUT");
+            snprintf(row->name, sizeof(row->name), "%s", "CV/GATE");
             panel_utils_clock_ppq_to_str(tempstr,
                 song_get_midi_port_clock_out(MIDI_PORT_CV_OUT));
-            gui_set_menu_value(tempstr);
+            snprintf(row->value, sizeof(row->value), "%s", tempstr);
             break;
         case PANEL_MENU_CLOCK_TX_USB_HOST:
-            gui_set_menu_subtitle("MIDI Clock OUT");
-            gui_set_menu_param("MIDI USB HOST");
+            snprintf(row->subtitle, sizeof(row->subtitle), "%s", "MIDI Clock OUT");
+            snprintf(row->name, sizeof(row->name), "%s", "MIDI USB HOST");
             panel_utils_clock_ppq_to_str(tempstr,
                 song_get_midi_port_clock_out(MIDI_PORT_USB_HOST_OUT));
-            gui_set_menu_value(tempstr);
+            snprintf(row->value, sizeof(row->value), "%s", tempstr);
             break;
         case PANEL_MENU_CLOCK_TX_USB_DEV:
-            gui_set_menu_subtitle("MIDI Clock OUT");
-            gui_set_menu_param("MIDI USB DEV");
+            snprintf(row->subtitle, sizeof(row->subtitle), "%s", "MIDI Clock OUT");
+            snprintf(row->name, sizeof(row->name), "%s", "MIDI USB DEV");
             panel_utils_clock_ppq_to_str(tempstr,
                 song_get_midi_port_clock_out(MIDI_PORT_USB_DEV_OUT1));
-            gui_set_menu_value(tempstr);
+            snprintf(row->value, sizeof(row->value), "%s", tempstr);
             break;
         case PANEL_MENU_CLOCK_SOURCE:
-            gui_set_menu_subtitle("MIDI Clock Source");
-            gui_set_menu_param("Source");
+            snprintf(row->subtitle, sizeof(row->subtitle), "%s", "MIDI Clock Source");
+            snprintf(row->name, sizeof(row->name), "%s", "Source");
             panel_utils_clock_source_str(tempstr,
                 song_get_midi_clock_source());
-            gui_set_menu_value(tempstr);
+            snprintf(row->value, sizeof(row->value), "%s", tempstr);
             break;
         case PANEL_MENU_CLOCK_SCENE_SYNC:
-            gui_set_menu_subtitle("Scene Change Sync");
-            gui_set_menu_param("Mode");
+            snprintf(row->subtitle, sizeof(row->subtitle), "%s", "Scene Change Sync");
+            snprintf(row->name, sizeof(row->name), "%s", "Mode");
             switch(song_get_scene_sync()) {
                 case SONG_SCENE_SYNC_BEAT:
-                    gui_set_menu_value("Beat");
+                    snprintf(row->value, sizeof(row->value), "%s", "Beat");
                     break;
                 case SONG_SCENE_SYNC_TRACK1:
-                    gui_set_menu_value("Track 1 End");
+                    snprintf(row->value, sizeof(row->value), "%s", "Track 1 End");
                     break;
             }
             break;
     }
+}
+
+static int panel_menu_display_humanize(void) {
+    if(pmstate.menu_submode < PANEL_MENU_CLOCK_HUMANIZE ||
+            pmstate.menu_submode >= PANEL_MENU_CLOCK_NUM_SUBMODES) return 0;
+    struct clock_menu_row row;
+    panel_menu_clock_row(pmstate.menu_submode, &row);
+    gui_set_menu_subtitle(row.subtitle);
+    gui_set_menu_param(row.name);
+    gui_set_menu_value(row.value);
+    return 1;
+}
+
+void panel_menu_display_clock(void) {
+    struct clock_menu_row row;
+    gui_set_menu_title("CLOCK");
+    if(panel_menu_display_humanize()) return;
+    panel_menu_clock_row(pmstate.menu_submode, &row);
+    gui_set_menu_subtitle(row.subtitle);
+    gui_set_menu_param(row.name);
+    gui_set_menu_value(row.value);
 }
 
 //
@@ -1293,10 +1371,10 @@ void panel_menu_edit_swing(int change) {
 }
 
 // edit a value in the tonality menu
-void panel_menu_edit_tonality(int change) {
-    if(pmstate.menu_submode >= PANEL_MENU_TONALITY_SONG_ROOT)
-        panel_menu_edit_root(pmstate.menu_submode - PANEL_MENU_TONALITY_SONG_ROOT, change);
-    switch(pmstate.menu_submode) {
+static void panel_menu_edit_tonality_item(int item,int change) {
+    if(item >= PANEL_MENU_TONALITY_SONG_ROOT)
+        panel_menu_edit_root(item - PANEL_MENU_TONALITY_SONG_ROOT, change);
+    switch(item) {
         case PANEL_MENU_TONALITY_SWING:
             seq_ctrl_adjust_swing(change);
             break;
@@ -1319,12 +1397,16 @@ void panel_menu_edit_tonality(int change) {
             seq_ctrl_adjust_magic_chance(change);
             break;
     }
+}
+
+void panel_menu_edit_tonality(int change) {
+    panel_menu_edit_tonality_item(pmstate.menu_submode,change);
     panel_menu_update_display();
 }
 
 // edit a value in the arp menu
-void panel_menu_edit_arp(int change) {
-    switch(pmstate.menu_submode) {
+static void panel_menu_edit_arp_item(int item,int change) {
+    switch(item) {
         case PANEL_MENU_ARP_TYPE:
             seq_ctrl_adjust_arp_type(change);
             break;
@@ -1335,6 +1417,10 @@ void panel_menu_edit_arp(int change) {
             seq_ctrl_adjust_arp_gate_time(change);
             break;
     }
+}
+
+void panel_menu_edit_arp(int change) {
+    panel_menu_edit_arp_item(pmstate.menu_submode,change);
     panel_menu_update_display();
 }
 
@@ -1365,8 +1451,8 @@ void panel_menu_edit_save(int change) {
 }
 
 // edit a value in the MIDI menu
-void panel_menu_edit_midi(int change) {
-    switch(pmstate.menu_submode) {
+static void panel_menu_edit_midi_item(int item,int change) {
+    switch(item) {
         case PANEL_MENU_MIDI_PROGRAM_A:
             seq_ctrl_adjust_midi_program(0, change);
             break;
@@ -1398,20 +1484,24 @@ void panel_menu_edit_midi(int change) {
             seq_ctrl_adjust_midi_autolive(change);
             break;
         default:
-            if(pmstate.menu_submode >= PANEL_MENU_MIDI_PROGRAM_A_SCENE1 &&
-                    pmstate.menu_submode <= PANEL_MENU_MIDI_PROGRAM_A_SCENE6) {
+            if(item >= PANEL_MENU_MIDI_PROGRAM_A_SCENE1 &&
+                    item <= PANEL_MENU_MIDI_PROGRAM_A_SCENE6) {
                 seq_ctrl_adjust_scene_midi_program(
-                    pmstate.menu_submode - PANEL_MENU_MIDI_PROGRAM_A_SCENE1,
+                    item - PANEL_MENU_MIDI_PROGRAM_A_SCENE1,
                     0, change);
             }
-            else if(pmstate.menu_submode >= PANEL_MENU_MIDI_PROGRAM_B_SCENE1 &&
-                    pmstate.menu_submode <= PANEL_MENU_MIDI_PROGRAM_B_SCENE6) {
+            else if(item >= PANEL_MENU_MIDI_PROGRAM_B_SCENE1 &&
+                    item <= PANEL_MENU_MIDI_PROGRAM_B_SCENE6) {
                 seq_ctrl_adjust_scene_midi_program(
-                    pmstate.menu_submode - PANEL_MENU_MIDI_PROGRAM_B_SCENE1,
+                    item - PANEL_MENU_MIDI_PROGRAM_B_SCENE1,
                     1, change);
             }
             break;
     }
+}
+
+void panel_menu_edit_midi(int change) {
+    panel_menu_edit_midi_item(pmstate.menu_submode,change);
     panel_menu_update_display();
 }
 
@@ -1464,10 +1554,10 @@ void panel_menu_edit_sys(int change) {
     panel_menu_update_display();
 }
 
-static int panel_menu_edit_humanize(int change) {
-    if(pmstate.menu_submode >= PANEL_MENU_CLOCK_HUMANIZE &&
-            pmstate.menu_submode < PANEL_MENU_CLOCK_NUM_SUBMODES) {
-        int param = pmstate.menu_submode - PANEL_MENU_CLOCK_HUMANIZE;
+static int panel_menu_edit_humanize_item(int item,int change) {
+    if(item >= PANEL_MENU_CLOCK_HUMANIZE &&
+            item < PANEL_MENU_CLOCK_NUM_SUBMODES) {
+        int param = item - PANEL_MENU_CLOCK_HUMANIZE;
         int value = seq_engine_humanize_get(seq_ctrl_get_first_track(), param) + change;
         for(int track = 0; track < SEQ_NUM_TRACKS; track++)
             if(seq_ctrl_get_track_select(track)) seq_engine_humanize_set(track, param, value);
@@ -1477,9 +1567,9 @@ static int panel_menu_edit_humanize(int change) {
 }
 
 // edit a value in the clock menu
-void panel_menu_edit_clock(int change) {
-    if(panel_menu_edit_humanize(change)) {panel_menu_update_display(); return;}
-    switch(pmstate.menu_submode) {
+static void panel_menu_edit_clock_item(int item,int change) {
+    if(panel_menu_edit_humanize_item(item,change)) return;
+    switch(item) {
         case PANEL_MENU_CLOCK_CAPTURE:
             if(change > 0 && seq_engine_snapshot_capture() < 0) {
                 gui_set_menu_value("Busy/record"); return;
@@ -1528,5 +1618,87 @@ void panel_menu_edit_clock(int change) {
             seq_ctrl_adjust_scene_sync(change);
             break;
     }
+}
+
+void panel_menu_edit_clock(int change) {
+    panel_menu_edit_clock_item(pmstate.menu_submode,change);
     panel_menu_update_display();
+}
+
+// Overview adapters share production formatters and editors, not song copies.
+int panel_menu_overview_count(int mode) {
+    switch(mode) {
+        case PANEL_MENU_CLOCK:return PANEL_MENU_CLOCK_NUM_SUBMODES;
+        case PANEL_MENU_ARP:return PANEL_MENU_ARP_NUM_SUBMODES;
+        case PANEL_MENU_MIDI:return PANEL_MENU_MIDI_NUM_SUBMODES;
+        case PANEL_MENU_TONALITY:return PANEL_MENU_TONALITY_NUM_SUBMODES;
+        default:return 0;
+    }
+}
+const char *panel_menu_overview_title(int mode) {
+    switch(mode) {
+        case PANEL_MENU_CLOCK:return "CLOCK";case PANEL_MENU_ARP:return "ARP";
+        case PANEL_MENU_MIDI:return "MIDI";case PANEL_MENU_TONALITY:return "TONALITY";
+        default:return "";
+    }
+}
+void panel_menu_overview_row(int mode,int item,struct clock_menu_row *row) {
+    memset(row,0,sizeof(*row));
+    if(item<0 || item>=panel_menu_overview_count(mode)) return;
+    switch(mode) {
+        case PANEL_MENU_CLOCK:panel_menu_clock_row(item,row);break;
+        case PANEL_MENU_ARP:panel_menu_arp_row(item,row);break;
+        case PANEL_MENU_MIDI:
+            panel_menu_midi_row(item,row);
+            if(item>=PANEL_MENU_MIDI_PROGRAM_A_SCENE1)
+                snprintf(row->name,sizeof(row->name),"Program %c S%d",
+                    item>=PANEL_MENU_MIDI_PROGRAM_B_SCENE1?'B':'A',
+                    (item-PANEL_MENU_MIDI_PROGRAM_A_SCENE1)%6+1);
+            break;
+        case PANEL_MENU_TONALITY:panel_menu_tonality_row(item,row);break;
+    }
+}
+const char *panel_menu_overview_help(int mode,int item,int line) {
+    if(item<0 || item>=panel_menu_overview_count(mode) || line<0 || line>1) return "";
+    if(mode==PANEL_MENU_CLOCK) {
+        if(item==PANEL_MENU_CLOCK_STEP_LEN && line==1) return "CCi/* overrides edited base.";
+        return panel_menu_clock_help(item,line);
+    }
+    if(mode==PANEL_MENU_ARP) {
+        static const char *h[3][2]={
+            {"Scene/track arp program.","Hold opens without toggling."},
+            {"Rate or generated Chord.","CCi26 may override base."},
+            {"Ordinary arp gate in ticks.","Chord uses Track Gate."}};
+        return h[item][line];
+    }
+    if(mode==PANEL_MENU_MIDI) {
+        if(item>=10) return line?"Sent on scene activation.":"Scene-specific Program A/B.";
+        if(item<2) return line?"May send Program Change.":"Track Program; blank is Off.";
+        if(item<6) return line?"Releases old-route notes.":"Track output routing.";
+        if(item==6) return line?"Off, left or right keyboard.":"Live input split per track.";
+        if(item==7) return line?"Applies to keyboard input.":"Song keyboard velocity scale.";
+        if(item==8) return line?"Remote CCs can change values.":"Enable MIDI remote control.";
+        return line?"Normal Live behaviour.":"Automatic live-input mode.";
+    }
+    static const char *h[8][2]={
+        {"Shows effective scale/root.","Edits base; Hrm may override."},
+        {"Edit stored/queued transpose.","CCi17 may override base."},
+        {"Scene/track Bias source.","Notes and controls can route."},
+        {"Track voice or drum mode.","Normal drum pitch rules."},
+        {"Song Magic pitch range.","Edits do not execute Magic."},
+        {"Song Magic change chance.","Edits do not execute Magic."},
+        {"Song swing percentage.","Normal clock policy applies."},
+        {"Song root or legacy Off.","Scenes may override this."}};
+    if(item>=8) return line?"Song inherits; Off is legacy.":"Root for the named scene.";
+    return h[item][line];
+}
+void panel_menu_overview_edit(int mode,int item,int change) {
+    if(!change || item<0 || item>=panel_menu_overview_count(mode)) return;
+    if(mode==PANEL_MENU_CLOCK && (item==PANEL_MENU_CLOCK_CAPTURE || item==PANEL_MENU_CLOCK_RECALL)) return;
+    switch(mode) {
+        case PANEL_MENU_CLOCK:panel_menu_edit_clock_item(item,change);break;
+        case PANEL_MENU_ARP:panel_menu_edit_arp_item(item,change);break;
+        case PANEL_MENU_MIDI:panel_menu_edit_midi_item(item,change);break;
+        case PANEL_MENU_TONALITY:panel_menu_edit_tonality_item(item,change);break;
+    }
 }

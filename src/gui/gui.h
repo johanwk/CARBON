@@ -58,6 +58,14 @@ int gui_get_screen_type(void);
 // turns off power immediately (power off)
 void gui_set_lcd_power(int state);
 
+// Read-only Clock overview, rendered over the main grid in the GUI loop.
+int gui_clock_help_active(void);
+int gui_overview_mode(void);
+void gui_overview_open(int mode);
+void gui_overview_edit(int change);
+void gui_clock_help_set(int enable);
+void gui_clock_help_scroll(int change);
+
 // enable or disable the grid overlay
 void gui_grid_set_overlay_enable(int enable);
 

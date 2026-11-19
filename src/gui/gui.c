@@ -23,6 +23,7 @@
 #include "gui.h"
 #include "step_edit.h"
 #include "panel.h"
+#include "panel_menu.h"
 #include "../config.h"
 #include "../config_store.h"
 #include "../gfx.h"
@@ -292,6 +293,11 @@ struct gui_state {
     // labels and temp text
     struct gfx_label glabels[GUI_MAX_LABELS];
     char status_lines[GUI_NUM_STATUS_LINES][GFX_LABEL_LEN];  // temp strs that can be built up
+    // Small cached text overlay, no framebuffer. Input changes only flags/cursor.
+    volatile uint8_t clock_help, clock_help_selected;
+    uint8_t clock_help_drawn;
+    char clock_help_rows[14][30];
+    struct gfx_label clock_help_label;
     // refresh stuff
     uint8_t force_refresh;  // 0 = no refresh, 1 = force refresh
     uint8_t force_reinit;  // 0 = no reinit, 1 = reinit
@@ -623,6 +629,105 @@ void gui_startup(void) {
     gstate.started = 1;
 }
 
+int gui_clock_help_active(void) { return gstate.clock_help; }
+int gui_overview_mode(void) {return gstate.clock_help;}
+void gui_overview_open(int mode) {
+    if(!panel_menu_overview_count(mode)) return;
+    gstate.clock_help_selected=0;gstate.clock_help=mode;
+}
+void gui_overview_edit(int change) {
+    panel_menu_overview_edit(gstate.clock_help,gstate.clock_help_selected,change);
+}
+void gui_clock_help_set(int enable) {
+    if(enable && !gstate.clock_help) gstate.clock_help_selected = 0;
+    gstate.clock_help = enable ? PANEL_MENU_CLOCK : 0;
+}
+void gui_clock_help_scroll(int change) {
+    gstate.clock_help_selected = seq_utils_clamp(gstate.clock_help_selected + change,
+        0, panel_menu_overview_count(gstate.clock_help) - 1);
+}
+
+static int gui_draw_clock_help(void) {
+    int mode=gstate.clock_help, count=panel_menu_overview_count(mode);
+    int selected = seq_utils_clamp(gstate.clock_help_selected,0,count-1), dirty = 0;
+    if(!gstate.clock_help_drawn) {
+        gfx_fill_rect(gstate.GUI_GRID_X, gstate.GUI_GRID_Y,
+            gstate.GUI_GRID_W, gstate.GUI_GRID_H, GUI_TEXT_BG_COLOR);
+        memset(gstate.clock_help_rows, 0, sizeof(gstate.clock_help_rows));
+        gstate.clock_help_drawn = 1;
+        dirty = 1;
+    }
+    int top = selected < 9 ? 0 : selected - 8;
+    for(int row = 0; row < 14; row++) {
+        char text[30] = {0};
+        if(row == 0) snprintf(text, sizeof(text), "%s T%c S%c %02u/%02u", panel_menu_overview_title(mode),
+            '1'+seq_utils_clamp(seq_ctrl_get_first_track(),0,5),
+            '1'+seq_utils_clamp(seq_ctrl_get_scene(),0,5), (unsigned)(selected+1)%100, (unsigned)count%100);
+        else if(row <= 9) {
+            int item = top + row - 1;
+            if(item < count) {
+                struct clock_menu_row entry;
+                panel_menu_overview_row(mode,item, &entry);
+                // Actions show status only, never an invitation to execute.
+                if(mode==PANEL_MENU_CLOCK && item == PANEL_MENU_CLOCK_CAPTURE)
+                    snprintf(entry.value, sizeof(entry.value), "%s", seq_engine_snapshot_status() ? "Ready" : "Empty");
+                if(mode==PANEL_MENU_CLOCK && item == PANEL_MENU_CLOCK_STEP_LEN &&
+                        seq_ctrl_get_scene() == seq_engine_get_current_scene() &&
+                        seq_engine_get_internal_cc(seq_ctrl_get_first_track(), 16, -1) >= 0) {
+                    char effective[16];
+                    panel_utils_step_len_to_str(effective,
+                        seq_engine_get_internal_cc(seq_ctrl_get_first_track(), 16, -1));
+                    snprintf(entry.value, sizeof(entry.value), "%s CCi", effective);
+                }
+                if(mode==PANEL_MENU_CLOCK && item == PANEL_MENU_CLOCK_STEP_LEN && seq_engine_timing_pending(seq_ctrl_get_first_track(), 0)) {
+                    char target[16];
+                    panel_utils_step_len_to_str(target, seq_engine_timing_value(seq_ctrl_get_scene(), seq_ctrl_get_first_track(), 0));
+                    snprintf(entry.value, sizeof(entry.value), "%s >bar%s", target,
+                        seq_engine_get_internal_cc(seq_ctrl_get_first_track(), 16, -1) >= 0 ? "*" : "");
+                }
+                const char *name = mode==PANEL_MENU_CLOCK && item == PANEL_MENU_CLOCK_SCENE_SYNC ? "Scene Sync" :
+                    mode==PANEL_MENU_CLOCK && item == PANEL_MENU_CLOCK_TX_CV ? "CV Clock" : entry.name;
+                snprintf(text, sizeof(text), "%c%-13.13s %13.13s", item==selected?'>':' ', name, entry.value);
+            }
+        } else if(row == 10) {
+            struct clock_menu_row entry;panel_menu_overview_row(mode,selected,&entry);
+            if(mode==PANEL_MENU_CLOCK && selected==PANEL_MENU_CLOCK_CAPTURE)
+                snprintf(entry.value,sizeof(entry.value),"%s",seq_engine_snapshot_status()?"Ready (status only)":"Empty (status only)");
+            if(mode==PANEL_MENU_CLOCK && selected==PANEL_MENU_CLOCK_RECALL)
+                snprintf(entry.value,sizeof(entry.value),"%s (status only)",
+                    seq_engine_snapshot_status()==2?"Next bar":seq_engine_snapshot_status()?"Ready":"Empty");
+            // Full selected base/queued editing value for long names.
+            snprintf(text,sizeof(text),"=%.28s",entry.value);
+            if(mode==PANEL_MENU_CLOCK && selected==PANEL_MENU_CLOCK_STEP_LEN)
+                snprintf(text,sizeof(text),"Edit:%.24s",entry.value);
+        } else if(row < 13) snprintf(text, sizeof(text), "%.29s", panel_menu_overview_help(mode,selected,row-11));
+        else strcpy(text, "Start:row Length:value");
+        if(!strcmp(text, gstate.clock_help_rows[row])) continue;
+        strcpy(gstate.clock_help_rows[row], text);
+        struct gfx_label *label = &gstate.clock_help_label;
+        memset(label, 0, sizeof(*label));
+        label->x = gstate.GUI_GRID_X + 2; label->y = gstate.GUI_GRID_Y + row*16;
+        label->w = 232; label->h = 14; label->font = GFX_FONT_SMALLTEXT_8X10;
+        label->fg_color = GUI_FONT_COLOR_NORMAL; label->bg_color = GUI_TEXT_BG_COLOR;
+        strcpy(label->text, text);
+        if(row>=1 && row<=9 && top+row-1==selected &&
+                !(mode==PANEL_MENU_CLOCK && (selected==PANEL_MENU_CLOCK_CAPTURE || selected==PANEL_MENU_CLOCK_RECALL)))
+            memset(label->highlight+15,GFX_HIGHLIGHT_INVERT,13);
+        gfx_fill_rect(label->x, label->y, label->w, label->h, label->bg_color);
+        gfx_draw_string(label); dirty = 1;
+    }
+    return dirty;
+}
+
+static int gui_clock_help_restore(void) {
+    if(gstate.clock_help || !gstate.clock_help_drawn) return 0;
+    gstate.clock_help_drawn = 0;
+    gui_draw_grid_bg();
+    memset(gstate.grid_state, 0, sizeof(gstate.grid_state));
+    memset(gstate.pitch_marks, 0, sizeof(gstate.pitch_marks));
+    return 1;
+}
+
 // run the refresh task - run on the main polling loop
 void gui_refresh_task(void) {
 	int dirty = 0;
@@ -633,6 +738,7 @@ void gui_refresh_task(void) {
         return;
     }
 
+    dirty += gui_clock_help_restore();
     // CCi overrides need no stored-song event; unchanged labels do not redraw.
     gui_update_song_mode();
 
@@ -645,6 +751,7 @@ void gui_refresh_task(void) {
 	// force refresh
 	if(gstate.force_refresh) {
         gstate.force_refresh = 0;
+        gstate.clock_help_drawn = 0;
 	    gui_clear_screen();
 	    // dirty all the labels
         for(i = 0; i < GUI_MAX_LABELS; i ++) {
@@ -666,7 +773,7 @@ void gui_refresh_task(void) {
     dirty += gui_draw_labels();
 	// attempt to redraw the squares
 	dirty += gui_draw_preview_grids();
-    dirty += gui_draw_main_grid();
+    dirty += gstate.clock_help ? gui_draw_clock_help() : gui_draw_main_grid();
 	if(dirty) {
 		gfx_commit();
 	}

@@ -167,7 +167,35 @@ static void test_undo_preserves_editor(void) {
     assert(step_edit_suspend_for_undo());step_edit_resume_after_undo();assert(undo_captures==captures);
     step_edit_set_enable(0);assert(!step_edit_suspend_for_undo());
 }
+static void test_group_transpose_notes_only(void) {
+    const uint8_t controls[]={SONG_EVENT_PROBABILITY,SONG_EVENT_EUCLIDEAN,
+        SONG_EVENT_CC,SONG_EVENT_INTERNAL_CC,SONG_EVENT_PROGCHG,SONG_EVENT_SCENE,
+        SONG_EVENT_PRE,SONG_EVENT_NON_PRE,SONG_EVENT_HARMONY,SONG_EVENT_INVERSION,SONG_EVENT_GLIDE};
+    for(unsigned type=0;type<sizeof(controls);type++) for(int shift=0;shift<2;shift++) {
+        setup();running=1;sedits.event_pos=STEP_EDIT_EVENT_POS_ALL;
+        events[0]=(struct track_event){.type=SONG_EVENT_NOTE,.data0=60,.data1=100,.length=24,.delay=99};
+        events[1]=(struct track_event){.type=controls[type],.data0=2,.data1=1,.length=7,.delay=255};
+        if(controls[type]==SONG_EVENT_PROBABILITY) events[1].data0=66;
+        events[2]=events[0];events[2].data0=72;
+        struct track_event saved[SEQ_TRACK_POLY];memcpy(saved,events,sizeof(saved));
+        step_edit_adjust_note(1,shift);
+        assert(events[0].data0==61 && events[2].data0==73);
+        assert(!memcmp(&events[1],&saved[1],sizeof(events[1])));
+        step_edit_adjust_note(-1,shift);
+        assert(!memcmp(events,saved,sizeof(saved)));
+        assert(!count);
+        // A control-only step must also be untouched by group transpose.
+        events[0].type=events[2].type=SONG_EVENT_NULL;memcpy(saved,events,sizeof(saved));
+        step_edit_adjust_note(1,0);assert(!memcmp(events,saved,sizeof(saved)));
+    }
+    setup();running=1;sedits.event_pos=1;
+    events[0]=(struct track_event){.type=SONG_EVENT_NOTE,.data0=60,.data1=100,.length=24};
+    events[1]=(struct track_event){.type=SONG_EVENT_PROBABILITY,.data0=66};
+    step_edit_adjust_note(1,0);assert(events[1].data0==67 && events[0].data0==60);
+    step_edit_adjust_note(-1,0);assert(events[1].data0==66);
+}
 int main(void) {
+    test_group_transpose_notes_only();
     test_undo_preserves_editor();
     test_step_visit_undo();
     setup();sedits.enable=1;events[0]=(struct track_event){.type=SONG_EVENT_NOTE,.data0=60,.data1=100};

@@ -136,3 +136,26 @@ release-wins-ties, shared simultaneous timing, frozen per-note velocity,
 full-slot handling and pending cancellation at transport/mode/route boundaries.
 All37arp types retain Off-equivalent traces; long-delay cleanup is exercised.
 Generated Chord/input lifetimes remain unchanged; gate variation is ignored.
+
+## Clock help
+
+Snapshot-key tests cover the800ms hold, release suppression and shortcut/tap
+priority. Panel tests cover scroll-only encoder interception and exit/release
+ownership. Root UI tests exercise all21shared menu rows/help bounds on both
+LCD layouts, live queued/CCi and Snapshot status, dirty-only rendering and
+restoration without clearing grid overlays. Physical LCD/button audition and
+realtime workload measurements remain separate; see CLOCK-HELP.org.
+
+## Editable menu overview extension
+
+Root UI fixtures now cover all60Clock/Arp/MIDI/Tonality rows on both layouts,
+shared per-item editor dispatch, MIDI scene Program identities, multiselect
+Humanize, retained underlying menu state, full-value detail and action guards.
+Key tests cover deferred Arp/MIDI/Tonality taps and800ms holds, shifted bypass,
+cancel/repeat/release cases; panel tests verify Value edits and matching-button
+close without toggling Arp. CLOCK-HELP.org documents the revised controls.
+
+Step Edit group-transpose regression: mixed Note/control steps preserve all
+non-Note records byte-for-byte, including Prb66percent, in both directions and
+with/without Shift. Control-only groups remain unchanged; an individually
+selected Prb still edits its probability. Reproduced failure before the fix.

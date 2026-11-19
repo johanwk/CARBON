@@ -20,6 +20,7 @@
  */
 #include "panel.h"
 #include "snapshot_keys.h"
+#include "overview_keys.h"
 #include "scene_mask_ui.h"
 #include "gui.h"
 #include "panel_menu.h"
@@ -68,6 +69,7 @@ struct panel_key_queue {
 //
 struct panel_state {
     struct snapshot_keys snapshot_keys;
+    struct overview_keys overview_keys;
     struct scene_mask_keys scene_keys;
     uint8_t led_physical[PANEL_LED_NUM_LEDS];
     int8_t shift_state;  // shift button state
@@ -177,6 +179,16 @@ void panel_timer_task(void) {
     for(int i=0;i<SEQ_NUM_TRACKS;i++)
         panel_set_led(PANEL_LED_1+i, pstate.led_state[PANEL_LED_1+i]);
 
+    if(power_ctrl_get_power_state() == POWER_CTRL_STATE_ON &&
+            snapshot_keys_tick(&pstate.snapshot_keys)) gui_clock_help_set(1);
+
+    if(power_ctrl_get_power_state() == POWER_CTRL_STATE_ON) {
+        int key=overview_keys_tick(&pstate.overview_keys);
+        if(key>=0) {
+            static const int modes[3]={PANEL_MENU_ARP,PANEL_MENU_MIDI,PANEL_MENU_TONALITY};
+            gui_overview_open(modes[key]);
+        }
+    }
     // handle beat LED
     if(pstate.beat_led_timeout) {
         pstate.beat_led_timeout --;
@@ -353,6 +365,9 @@ void panel_handle_state_change(int event_type, int *data, int data_len) {
             }
             break;
         case SCE_POWER_STATE:
+            gui_clock_help_set(0);
+            pstate.snapshot_keys = (struct snapshot_keys){0};
+            pstate.overview_keys = (struct overview_keys){0};
             switch(data[0]) {
                 case POWER_CTRL_STATE_STANDBY:
                     // turn off all panel LEDs
@@ -421,7 +436,49 @@ static int panel_handle_scene_mask_input(int ctrl, int val) {
     return 0;
 }
 
+static int panel_handle_clock_help_input(int ctrl, int val) {
+    if(!gui_clock_help_active()) return 0;
+    if(ctrl == PANEL_SW_CLOCK) {
+        enum snapshot_action action = snapshot_keys_event(&pstate.snapshot_keys, SNAP_CLOCK, !!val, 0);
+        if(action == SNAP_MENU) gui_clock_help_set(0);
+        return 1;
+    }
+    if(ctrl >= PANEL_ENC_SPEED) {
+        if(ctrl == PANEL_ENC_MOTION_START && val) gui_clock_help_scroll(seq_utils_enc_val_to_change(val));
+        if(ctrl == PANEL_ENC_MOTION_LENGTH && val) gui_overview_edit(seq_utils_enc_val_to_change(val));
+        return 1; // only selection and Value edit are active
+    }
+    // Other button presses close help before retaining their normal action.
+    // Releases still reach the owner that saw the original press.
+    if(val) gui_clock_help_set(0);
+    return 0;
+}
+
+static int panel_overview_key(int ctrl) {
+    return ctrl==PANEL_SW_ARP?0:ctrl==PANEL_SW_MIDI?1:ctrl==PANEL_SW_TONALITY?2:-1;
+}
+static int panel_overview_button(int ctrl,int *val) {
+    int key=panel_overview_key(ctrl);
+    if(*val && ctrl!=PANEL_SW_CLOCK && pstate.snapshot_keys.down[SNAP_CLOCK])
+        pstate.snapshot_keys.used=1;
+    // A shifted gesture stays immediate; holding Shift through release
+    // cannot reinterpret an earlier unshifted tap.
+    int result=overview_keys_event(&pstate.overview_keys,key,!!*val,
+        pstate.shift_state || pstate.snapshot_keys.down[SNAP_CLOCK]);
+    if(result==1) return 1;
+    if(result==2) {
+        static const int modes[3]={PANEL_MENU_ARP,PANEL_MENU_MIDI,PANEL_MENU_TONALITY};
+        if(gui_overview_mode()==modes[key]) {gui_clock_help_set(0);return 1;}
+        *val=1; // deferred tap executes the original unshifted press action
+    }
+    return 0;
+}
+
 void panel_handle_seq_input(int ctrl, int val) {
+    if(panel_overview_button(ctrl,&val)) return;
+    if(panel_handle_clock_help_input(ctrl, val)) return;
+    if(val && ctrl != PANEL_SW_CLOCK && pstate.snapshot_keys.down[SNAP_CLOCK])
+        pstate.snapshot_keys.used = 1; // any other gesture cancels pending long press
     if(panel_handle_scene_mask_input(ctrl, val)) return;
     int key = ctrl == PANEL_SW_CLOCK ? SNAP_CLOCK : ctrl == PANEL_SW_RECORD ? SNAP_RECORD :
         ctrl == PANEL_SW_LOAD ? SNAP_LOAD : ctrl == PANEL_SW_RUN_STOP ? SNAP_RUN : -1;

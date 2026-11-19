@@ -616,7 +616,10 @@ void step_edit_adjust_step(int change, int mode, int single, int shift) {
             }
             // edit the contents
             switch(mode) {
-                case STEP_EDIT_ADJUST_NOTE:  // note number and CC number
+                case STEP_EDIT_ADJUST_NOTE:  // note number or selected event parameter
+                    // Group transpose is musical pitch editing, not a bulk edit
+                    // of unrelated control parameters (Prb, CC, Hrm, etc.).
+                    if(!single && event.type != SONG_EVENT_NOTE) continue;
                     // note
                     if(event.type == SONG_EVENT_NOTE) {
                         event.data0 += change;

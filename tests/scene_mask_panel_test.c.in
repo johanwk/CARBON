@@ -11,7 +11,50 @@ int panel_menu_get_mode(void) {return menu;}
 void panel_if_set_led(int led,uint8_t value) {leds[led]=value;writes++;}
 void panel_if_blink_led(int led,uint8_t off,uint8_t on) {leds[led]=-1;writes++;}
 void log_error(char *fmt,...) {assert(0);}
+static int help_active, help_scroll;
+int gui_clock_help_active(void) {return help_active;}
+void gui_clock_help_set(int enable) {help_active=enable;}
+void gui_clock_help_scroll(int change) {help_scroll+=change;}
+static int help_edits;
+void gui_overview_edit(int change) {help_edits+=change;}
+static int help_mode=PANEL_MENU_CLOCK;
+int gui_overview_mode(void) {return help_active?help_mode:0;}
+int seq_utils_enc_val_to_change(int value) {return value;}
+static void test_help_input(void) {
+    memset(&pstate,0,sizeof(pstate));help_active=1;help_scroll=0;
+    assert(panel_handle_clock_help_input(PANEL_ENC_MOTION_START,2));
+    assert(help_scroll==2 && help_active);
+    for(int enc=PANEL_ENC_SPEED;enc<=PANEL_ENC_TRANSPOSE;enc++)
+        if(enc!=PANEL_ENC_MOTION_START) assert(panel_handle_clock_help_input(enc,1));
+    assert(help_scroll==2 && help_active && help_edits==1);
+    // Release of the opening long press must leave help open.
+    snapshot_keys_event(&pstate.snapshot_keys,SNAP_CLOCK,1,0);
+    for(int i=0;i<800;i++) snapshot_keys_tick(&pstate.snapshot_keys);
+    assert(panel_handle_clock_help_input(PANEL_SW_CLOCK,0) && help_active);
+    assert(panel_handle_clock_help_input(PANEL_SW_CLOCK,1) && help_active);
+    assert(panel_handle_clock_help_input(PANEL_SW_CLOCK,0) && !help_active);
+    help_active=1;
+    assert(!panel_handle_clock_help_input(PANEL_SW_1,0) && help_active);
+    assert(!panel_handle_clock_help_input(PANEL_SW_RUN_STOP,1) && !help_active);
+    const int keys[3]={PANEL_SW_ARP,PANEL_SW_MIDI,PANEL_SW_TONALITY};
+    const int modes[3]={PANEL_MENU_ARP,PANEL_MENU_MIDI,PANEL_MENU_TONALITY};
+    for(int key=0;key<3;key++) {
+        memset(&pstate,0,sizeof(pstate));help_active=0;int val=1;
+        assert(panel_overview_button(keys[key],&val)); // no tap action yet
+        val=0;assert(!panel_overview_button(keys[key],&val) && val==1);
+        val=1;assert(panel_overview_button(keys[key],&val));
+        for(int ms=0;ms<800;ms++) overview_keys_tick(&pstate.overview_keys);
+        help_active=1;help_mode=modes[key];
+        val=0;assert(panel_overview_button(keys[key],&val) && help_active);
+        val=1;assert(panel_overview_button(keys[key],&val));
+        val=0;assert(panel_overview_button(keys[key],&val) && !help_active);
+        pstate.shift_state=1;val=1;assert(!panel_overview_button(keys[key],&val));
+        val=0;assert(!panel_overview_button(keys[key],&val));
+    }
+    help_mode=PANEL_MENU_CLOCK;
+}
 int main(void) {
+ test_help_input();
  memset(&pstate,0,sizeof(pstate)); memset(pstate.led_physical,255,sizeof(pstate.led_physical));
  pstate.bl_power_state=PANEL_POWER_STATE_ON;
  for(int i=0;i<6;i++) panel_update_track_led(i,i==2);
