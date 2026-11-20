@@ -41,6 +41,9 @@ if [ "$OUT" = docs/screenshots/fixtures ] && [ "$LAYOUT" = a ]; then
         docs/screenshots/card-hrminv-1-setup.svg
     python3 tools/screenshots/annotate.py hrminv2 "$OUT/13-card-hrminv-pitches-lcda.png" \
         docs/screenshots/card-hrminv-2-pitches.svg --pitches "$TMP/pitches"
+    python3 tools/screenshots/annotate.py euclid "$OUT/14-card-euclid-lcda.png" \
+        docs/screenshots/card-euclid.svg
+    echo docs/screenshots/card-euclid.svg
     python3 tools/screenshots/banner.py "$OUT" "$TMP/pitches" docs/screenshots/banner.svg
     echo docs/screenshots/banner.svg
     echo docs/screenshots/card-hrminv-1-setup.svg

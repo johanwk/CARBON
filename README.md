@@ -1,6 +1,12 @@
 # CARBON community firmware
 
-**Local candidate:** `1.38-jwk-hlp3`, with Arp Speed Chord, Humanize and
+![Four CARBON screens: up to six events per step, one chord with many harmonies, whole scenes at a glance, every setting on one page](docs/screenshots/banner.svg)
+
+**New here?** The illustrated [user guide](carbon-fw-2026-johanw.org) shows
+what the firmware adds, with diagrams of Step Edit, step events and Bias
+harmony. Screens are rendered from example data by CARBON's display code.
+
+**Local candidate:** `1.38-jwk-sys1`, with Arp Speed Chord, Humanize and
 [menu overviews](CLOCK-HELP.org): hold Clock, Arp, MIDI or Tonality;
 Motion Start selects and Length/Value edits. Snapshot/Recall stay status-only.
 See [ARP-CHORD.org](ARP-CHORD.org) for voicing and transition rules, and

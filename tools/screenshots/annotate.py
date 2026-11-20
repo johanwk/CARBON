@@ -12,7 +12,7 @@ their targets and targets sit at a common edge, so leaders cannot cross.
 
 Usage: annotate.py DIAGRAM SCREEN.png OUT.svg     (DIAGRAM: main, stepedit)
 """
-import base64, html, os, subprocess, sys
+import base64, html, os, struct, subprocess, sys, zlib
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from pngcrush import recompress
 
@@ -287,6 +287,65 @@ def hrminv_pitch_overlay():
     g.append(text(49, 327, "Coloured = changed by that row.", 7, "#ddd"))
     return "\n".join(g)
 
+def euclid_hits(length, density, rotation):
+    """Mirror of the mask rule in src/seq/pattern.c pattern_get_step_enable().
+    The euclid card checks this against the rendered grid pixels."""
+    hits = (density * length + 50) // 100
+    rot = rotation % length
+    return "".join("1" if ((rel + length - rot) % length * hits) % length < hits
+                   else "0" for rel in range(length)) if hits else "0" * length
+
+def grid_hits(png, row0=0, rows=2):
+    """Read which grid cells are lit (red family) from the rendered PNG."""
+    d, i, z = png, 8, b""
+    while i < len(d):
+        n = struct.unpack(">I", d[i:i+4])[0]
+        if d[i+4:i+8] == b"IDAT": z += d[i+8:i+8+n]
+        i += 12 + n
+    raw, st = zlib.decompress(z), 1 + LCD_W * 3
+    out = ""
+    for r in range(row0, row0 + rows):
+        for c in range(8):
+            x, y = 44 + 29 * c + 20, 94 + 29 * r + 20
+            R, G, B = raw[y*st+1+x*3: y*st+4+x*3]
+            out += "1" if R > 120 and G < 60 and B < 60 else "0"
+    return out
+
+EUCLID_PNG = None
+
+def euclid_overlay():
+    # Keep grid rows 1-2 (the 16-step window) visible; explain below them.
+    gx, gy, gw, gh = GRID
+    top = 152
+    g = [HATCH_DEFS,
+         f'<rect x="{gx}" y="{top}" width="{gw}" height="{gy+gh-top}" fill="#101418" '
+         'fill-opacity="0.97"/>',
+         f'<rect x="{gx+2}" y="{gy+2}" width="{gw-4}" height="{top-gy-4}" fill="none" '
+         'stroke="#fff" stroke-width="1" stroke-dasharray="3 2"/>']
+    shown = grid_hits(EUCLID_PNG)
+    assert shown == euclid_hits(16, 31, 2), (shown, euclid_hits(16, 31, 2))
+    g.append(text(49, 166, "Above: the real grid. 16-step window,", 9, "#fff", True))
+    g.append(text(49, 177, "density 31% = 5 hits, rotation 2.", 9, "#fff", True))
+    def row(y, bits, label):
+        r = [text(49, y - 4, label, 8, "#ddd")]
+        for k, b in enumerate(bits):
+            x = 49 + k * 14
+            if b == "1":
+                r.append(f'<rect x="{x}" y="{y}" width="12" height="12" rx="2" '
+                         f'fill="{FAMILY["sound"]}"/>')
+            else:
+                r.append(f'<rect x="{x}" y="{y}" width="12" height="12" rx="2" '
+                         'fill="url(#hatch)" stroke="#888" stroke-width="0.5"/>')
+        return "".join(r)
+    g.append(row(196, "1" * 16, "Density 100%: the track's own pattern (here every step)"))
+    g.append(row(226, euclid_hits(16, 50, 0), "Density 50%, rotation 0: 8 hits"))
+    g.append(row(256, euclid_hits(16, 31, 0), "Density 31%, rotation 0: 5 hits"))
+    g.append(row(286, euclid_hits(16, 31, 2), "Density 31%, rotation 2: same rhythm, 2 later"))
+    g.append(text(49, 314, "Hits fall only on steps that hold events; nothing is",
+                  7.5, "#ddd"))
+    g.append(text(49, 323, "deleted. Explanation panel not shown on CARBON.", 7.5, "#aaa"))
+    return "\n".join(g)
+
 DIAGRAMS = {
  "main": dict(
   title="CARBON main display",
@@ -415,6 +474,28 @@ DIAGRAMS = {
    ("R", (ch(29), row(2)+5), (ch(5), row(2), 88, 10), "What you edit",
     "Only the stored chord. Hrm and Inv are not placed on T2."),
   ]),
+ "euclid": dict(
+  title="Euclidean density and rotation",
+  subtitle="Normal mode, after turning Shift+Pattern. Rendered from example data.",
+  overlay=euclid_overlay,
+  callouts=[
+   ("L", (40, 121), (40, 90, 238, 62), "The active hits",
+    "Red cells: steps that play. Density spreads them as evenly as possible over the motion window."),
+   ("L", (49, 202), None, "Density 100% = original",
+    "At 100% the selected pattern plays exactly as before."),
+   ("L", (49, 262), None, "Fewer hits, evenly spread",
+    "Lower density removes hits; the rest stay evenly spaced."),
+   ("L", (49, 292), None, "Rotation moves the rhythm",
+    "The same pattern starts later. Rotation runs from 0 to the window length."),
+   ("R", (272, 85), (230, 80, 46, 10), "Status line: 16:5:2",
+    "Below 100%, the song line shows window length, hits and rotation."),
+   ("R", (200, 390), (48, 385, 160, 10), "Which track",
+    "Settings are stored per track and scene."),
+   ("R", (160, 402), (48, 397, 120, 10), "Density  -  Shift+Pattern",
+    "0-100%. Here 31%: 5 of 16 steps."),
+   ("R", (152, 414), (48, 409, 112, 10), "Rotation  -  Shift+Transpose",
+    "Shifts the hits along the window."),
+  ]),
  "stepedit": dict(
   title="Step Edit, expanded view",
   subtitle="Hold Step Edit to switch compact/expanded. Rendered from example data.",
@@ -529,6 +610,8 @@ if __name__ == "__main__":
         load_strips(sys.argv[5]); sys.argv = sys.argv[:4]
     if len(sys.argv) == 6 and sys.argv[4] == "--pitches":
         load_pitches(sys.argv[5]); sys.argv = sys.argv[:4]
+    if len(sys.argv) == 4 and sys.argv[1] == "euclid":
+        EUCLID_PNG = open(sys.argv[2], "rb").read()
     if len(sys.argv) != 4 or sys.argv[1] not in DIAGRAMS:
         sys.exit("usage: annotate.py {%s} SCREEN.png OUT.svg" % ",".join(DIAGRAMS))
     main(*sys.argv[1:])

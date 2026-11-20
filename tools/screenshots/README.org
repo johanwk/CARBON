@@ -41,6 +41,7 @@ This builds the renderer, then writes:
 - =docs/screenshots/step-event-families.svg=
 - =docs/screenshots/card-prb.svg=, =card-euc.svg= (event cards)
 - =docs/screenshots/card-hrminv-1-setup.svg=, =card-hrminv-2-pitches.svg=
+- =docs/screenshots/card-euclid.svg= (Euclidean density and rotation)
 - =docs/screenshots/banner.svg= (README banner, =banner.py=)
 
 Commit regenerated images together with the code change that altered them.
@@ -60,6 +61,7 @@ Commit regenerated images together with the code change that altered them.
 | 11-card-euc                        | Step 8: Euc 3:8, N G4; slot 1 chosen |
 | 12-card-hrminv-setup               | T1 step 1: N A3, Hrm, Inv; Hrm chosen |
 | 13-card-hrminv-pitches             | T2 step 1: chord C4 E4 G4            |
+| 14-card-euclid                     | T1 density 31%, rotation 2, normal   |
 
 ** Other layouts and directories
 
@@ -117,6 +119,10 @@ Follower pitches on card 2 are computed by =voicing.c.in= in playback
 order: =voicing_transform()= from =src/seq/voicing.h= (Inv), then the bias
 offset, then =scale_quantize_root()= from =src/seq/scale.c= (Hrm), song
 root C. Arp, drum tracks, Track Gate and CC overrides are not modelled.
+
+The Euclidean card renders Track 1 through the production mask code in
+=src/seq/pattern.c= (included by the renderer). =annotate.py= reads the lit
+grid cells back from the PNG and asserts they match its own strip rows.
 
 =banner.py= composes four fixture screens (Step Edit, Hrm/Inv pitches with
 its overlay, scene overview, Clock overview) with short tags for the top

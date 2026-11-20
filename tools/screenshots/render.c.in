@@ -140,7 +140,17 @@ float midi_clock_get_tempo(void) { return 120.0f; }
 int midi_clock_is_ext_synced(void) { return 0; }
 void outproc_deliver_msg(int scene,int track,struct midi_msg *m,int d,int mode) {}
 void state_change_register(void (*h)(int,int*,int),int c) {}
-int pattern_get_step_enable(int scene,int track,int pattern,int step) { return fx_hit(track,step); }
+/* Euclidean card: track 1 runs the PRODUCTION pattern.c mask with a real
+ * density/rotation; other tracks keep their fixture patterns. */
+static int fx_euc, fx_density=100, fx_rotation;
+#define pattern_get_step_enable production_pattern_get_step_enable
+#include "../../src/seq/pattern.c"
+#undef pattern_get_step_enable
+int pattern_get_step_enable(int scene,int track,int pattern,int step) {
+    if(fx_euc && track==0) return production_pattern_get_step_enable(scene,track,pattern,step);
+    return fx_hit(track,step);
+}
+int seq_engine_get_effective_motion_start(int t) { return fx_start[fx_scene][t]; }
 int seq_ctrl_get_current_song(void) { return 7; }
 int seq_ctrl_get_first_track(void) { return fx_first; }
 int seq_ctrl_get_record_mode(void) { return SEQ_CTRL_RECORD_IDLE; }
@@ -152,8 +162,8 @@ int seq_ctrl_load_song(int s) { return 0; } int seq_ctrl_save_song(int s) { retu
 void seq_ctrl_clear_song(void) {} void seq_ctrl_record_pressed(void) {}
 void seq_ctrl_reset_pos(void) {} void seq_ctrl_reset_track(int t) {}
 int seq_engine_get_current_scene(void) { return fx_scene; }
-int seq_engine_get_effective_euclidean_density(int t) { return 100; }
-int seq_engine_get_effective_euclidean_rotation(int t) { return 0; }
+int seq_engine_get_effective_euclidean_density(int t) { return fx_euc && !t ? fx_density : 100; }
+int seq_engine_get_effective_euclidean_rotation(int t) { return fx_euc && !t ? fx_rotation : 0; }
 int seq_engine_get_effective_motion_length(int t) { return fx_len[fx_scene][t]; }
 int seq_engine_get_effective_root(int s) { return song_get_scene_root(s)==-2 ? 0 : song_get_scene_root(s); }
 int seq_engine_get_effective_tonality(int s,int t) { return fx_scale[s][t]; }
@@ -187,7 +197,8 @@ int song_get_cv_bend_range(void) { return 2; }
 int song_get_cv_output_scaling(int o) { return 0; }
 int song_get_cvcal(int o) { return 0; } int song_get_cvoffset(int o) { return 0; }
 int song_get_cvgate_pair_mode(int p) { return 0; } int song_get_cvgate_pairs(void) { return SONG_CVGATE_PAIR_ABCD; }
-int song_get_euclidean_density(int s,int t) { return 100; }
+int song_get_euclidean_density(int s,int t) { return fx_euc && !t ? fx_density : 100; }
+int song_get_euclidean_rotation(int s,int t) { return fx_euc && !t ? fx_rotation : 0; }
 int song_get_gate_time(int s,int t) { return 0x80; }
 int song_get_key_split(int t) { return 0; } int song_get_key_velocity_scale(void) { return 0; }
 int song_get_magic_chance(void) { return 100; } int song_get_magic_range(void) { return 12; }
@@ -333,6 +344,23 @@ int main(int argc,char **argv) {
         for(int l=0;l<GUI_NUM_STATUS_LINES;l++) printf("%d|%s|\n",l,gstate.status_lines[l]);
 #endif
         step_edit_set_enable(0); fx_first=0; fx_ov=NULL;
+        /* Euclidean card: track 1, motion 1-16, density 31% (5 of 16), rot 2.
+         * Status text reproduces panel_show_euclidean_status() (Shift+Pattern). */
+        {
+            int s0=fx_start[0][0], l0=fx_len[0][0];
+            fx_start[0][0]=0; fx_len[0][0]=16; fx_euc=1; fx_density=31; fx_rotation=2;
+            boot(screen);
+            char line[64];
+            gui_set_status_override(1); gui_clear_status_text_all();
+            snprintf(line,sizeof(line),"Track %d Euclidean",1); gui_set_status_text(0,line);
+            snprintf(line,sizeof(line),"Density: %d%%",song_get_euclidean_density(0,0)); gui_set_status_text(1,line);
+            snprintf(line,sizeof(line),"Rotation: %d",song_get_euclidean_rotation(0,0)%song_get_motion_length(0,0));
+            gui_set_status_text(2,line);
+            gui_set_status_text(3,"Shift: Pattern / Transpose");
+            gui_update_active_step(0,6); /* playhead on a hit */
+            bad|=shot(argv[1],"14-card-euclid",screen);
+            fx_euc=0; fx_density=100; fx_rotation=0; fx_start[0][0]=s0; fx_len[0][0]=l0;
+        }
         boot(screen); gui_overview_open(PANEL_MENU_CLOCK); bad|=shot(argv[1],"04-clock-overview",screen);
         boot(screen); gui_track_overview_open(5); bad|=shot(argv[1],"05-track-overview",screen);
         boot(screen); gui_scene_overview_open(1); bad|=shot(argv[1],"06-scene-overview",screen);
