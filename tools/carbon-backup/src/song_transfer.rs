@@ -22,10 +22,10 @@ pub fn arguments(args:&[String])->Result<(bool,usize,String),String>{
 
 
 pub fn firmware_assertion(raw:&[u8])->Result<&'static str,String>{
- match raw.first(){Some(36)=>Ok("--firmware-community-1.36"),Some(37)=>Ok("--firmware-community-1.37"),_=>Err("Simple upload requires a 1.36 or 1.37 source".into())}
+ match raw.first(){Some(36)=>Ok("--firmware-community-1.36"),Some(37)=>Ok("--firmware-community-1.37"),Some(38)=>Ok("--firmware-community-1.38"),_=>Err("Simple upload requires a 1.36, 1.37 or 1.38 source".into())}
 }
 pub fn firmware_description(raw:&[u8])->Result<&'static str,String>{
- match firmware_assertion(raw)? {"--firmware-community-1.37"=>Ok("1.37-jwk-rc1 (or compatible 1.37-jwk-scn1; scene gates)"),_=>Ok("1.36-jwk-rc1 (or compatible 1.36-jwk-snp3)")}
+ match firmware_assertion(raw)? {"--firmware-community-1.38"=>Ok("1.38-jwk-rc1 (arp Chord)"),"--firmware-community-1.37"=>Ok("1.37-jwk-rc1 (or compatible 1.37-jwk-scn1; scene gates)"),_=>Ok("1.36-jwk-rc1 (or compatible 1.36-jwk-snp3)")}
 }
 pub fn validate_upload(text:&str)->Result<Vec<u8>,String>{
     let doc=crate::json::parse(text)?;
@@ -125,5 +125,15 @@ pub fn upload<D:Device,F:FnMut(&[u8])->Result<(),String>>(device:&mut D,slot:usi
  for version in [34,35,37]{raw[0]=version;assert!(restore::validate_hardware_source(&raw,"--firmware-community-1.36").is_err());}
  assert!(restore::validate_hardware_source(&[],"--firmware-community-1.36").is_err());
 }
+ #[test]fn simple_upload_138(){
+  let t=crate::json::parse(include_str!("../templates/default-1.38.json")).unwrap();
+  let raw=document::import(&t).unwrap().1;
+  assert_eq!(firmware_assertion(&raw).unwrap(),"--firmware-community-1.38");
+  assert!(firmware_description(&raw).unwrap().contains("1.38-jwk-rc1"));
+  assert_eq!(validate_upload(include_str!("../templates/default-1.38.json")).unwrap(),raw);
+  let mut d=device();let backed=d.backed.clone();
+  upload(&mut d,37,raw.clone(),true,|_|{backed.set(true);Ok(())}).unwrap();assert_eq!(d.data,raw);
+  assert_eq!(document::import(&download(&mut d,37,true).unwrap()).unwrap().1,raw);
+ }
  #[test]fn consent_and_source(){for action in ["download","replace"]{assert!(confirmation(action,37,&format!("{action} 37\n")));assert!(!confirmation(action,37,"yes"));assert!(!confirmation(action,37,&format!("{action} 36")));}assert!(validate_upload("{}").is_err());assert!(validate_upload(include_str!("../templates/default-1.36.json")).is_ok());}
 }

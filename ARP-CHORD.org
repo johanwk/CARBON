@@ -1,8 +1,7 @@
-#+title: Arp Speed: Chord - first local prototype
+#+title: Arp Speed: Chord
 #+options: ^:nil -:nil
 
-Chord implementation: chd3, retained in local 1.38-jwk-hum4. Built on the
-tested undo/Scn development work, not part of a published RC. The user liked
+Included in community 1.38-rc1. The user liked
 chd2's chord voicings and reports chd3 works far better after switching back
 to ordinary arp. This is practical feedback, not exhaustive hardware coverage.
 The main user guide now includes Chord under Arpeggiator. Humanize does not
@@ -93,8 +92,9 @@ The additional stored Arp Speed index is 17; all old indices stay unchanged.
 Track step index17 still means 1/3 bar, not Chord. Numeric song version1.38
 marks the new capability; six-byte events and 20480-byte songs stay unchanged.
 Back up before saving: older firmware cannot interpret the Chord speed.
-Current host JSON/upload tools support through1.37 and reject1.38; raw saved
-song/bank backup remains available. No implicit profile edits or downgrade.
+Host JSON/upload tools support 1.38 as schema5/profile carbon-1.38-arp-chord,
+which allows arp speed index 17; earlier profiles reject it. No implicit
+profile edits or downgrade.
 
 Tests exercise all37 built-in types with one through six notes, <=4 outputs,
 single-note range voicings, scale degrees and deduplication, common gate time

@@ -27,7 +27,7 @@ an archive, copy a token, select ports or supply firmware/stopped flags.
 Each command asks you to stop CARBON and leave it undisturbed. Type
 `download 37` or `replace 37` at the prompt; anything else cancels before
 connecting. Upload also states the supported firmware: currently the installed
-1.37-jwk-rc1 (or compatible 1.37-jwk-scn1) for 1.37 sources, or 1.36-jwk-rc1 (also 1.36-jwk-snp3) for 1.36 sources. The tool cannot detect
+1.38-jwk-rc1 for 1.38 sources, 1.37-jwk-rc1 (or compatible 1.37-jwk-scn1) for 1.37 sources, or 1.36-jwk-rc1 (also 1.36-jwk-snp3) for 1.36 sources. The tool cannot detect
 firmware or stop playback automatically. The prompt replaces the old switches;
 confirm only if its conditions are true. Piped input cannot authorize a transfer.
 
@@ -42,7 +42,7 @@ After uploading, **LOAD the target song from the panel**, rather than saving
 stale RAM over it. Download reads saved flash, not unsaved edits or host-only
 JSON annotations. It creates a new file and never overwrites an existing one.
 On failure an empty/incomplete output or recovery directory may remain.
-JSON download requires a decodable 1.34/1.35/1.36/1.37 song; the advanced raw backup
+JSON download requires a decodable 1.34 to 1.38 song; the advanced raw backup
 command remains available for blank, damaged or unsupported images.
 
 
@@ -63,16 +63,16 @@ Running `./carbon` without arguments also shows help. For all commands, use
 You do not need to create a template for normal use. The wrapper uses:
 
 ```text
-tools/carbon-backup/templates/default-1.37.json
+tools/carbon-backup/templates/default-1.38.json
 ```
 
 It is a blank starting song derived from a verified song36 capture. Its example
 notes and arrangement were removed. Outputs are disabled until conversion
 sets them; calibration offsets are zero. It is not a backup of your device.
 
-The default is schema4/profile `carbon-1.37-scene-gates`.
-It contains no Notes, Scn, Gli or CCi events. For RC1, supply the retained
-`tools/carbon-backup/templates/default-1.36.json` explicitly to `convert`;
+The default is schema5/profile `carbon-1.38-arp-chord`.
+It contains no Notes, Scn, Gli or CCi events. For older firmware, supply the
+retained `default-1.37.json` or `default-1.36.json` explicitly to `convert`;
 templates are not implicitly migrated. Confirm the source-matching firmware
 before upload, not merely the song's version number.
 
@@ -97,7 +97,7 @@ The following capture procedure is optional, not required for the default.
 
 ### Create your template
 
-1. On CARBON running community firmware 1.37-jwk-rc1 (or compatible 1.37-jwk-scn1), load a song you are willing to save again.
+1. On CARBON running community firmware 1.38-jwk-rc1, load a song you are willing to save again.
    Back it up first if you need to preserve its old saved version.
 2. Save that song using the panel.
 3. Stop playback. Do not edit, save or load anything during the backup.
@@ -112,23 +112,23 @@ saved. Use the exact input and output port names listed by the tool. On our
 Mac, both are `CARBON Port 1`.
 
 ```sh
-./carbon backup song 30 template-1.37.json
-./carbon validate template-1.37.json
+./carbon backup song 30 template-1.38.json
+./carbon validate template-1.38.json
 ```
 
 Validation should report:
 
 ```text
-Valid CARBON schema4 / firmware profile carbon-1.37-scene-gates
+Valid CARBON schema5 / firmware profile carbon-1.38-arp-chord
 ```
 
-**You have now created `template-1.37.json`.** You can use it with the
+**You have now created `template-1.38.json`.** You can use it with the
 explicit-template command above. Keep the JSON somewhere safe.
 The backup reads saved flash twice and requires matching results; it does not
 change CARBON.
 
 If validation reports an older profile, the saved song is still in the older
-format. Back up its original first, save it under community 1.37, then repeat the capture/export with **new filenames**.
+format. Back up its original first, save it under community 1.38, then repeat the capture/export with **new filenames**.
 The tools refuse to overwrite existing output files.
 
 ## 3. Inspect your MIDI file
@@ -265,7 +265,7 @@ review. They are not required for everyday JSON transfers.
 ./carbon tool plan-restore zelda.backup before34.backup 34 replace
 # Add --json for the complete diff.
 ./carbon tool restore-song zelda.backup before34.backup 34 recovery34.backup \
-  'CARBON Port 1' --stopped --firmware-community-1.37 --confirm
+  'CARBON Port 1' --stopped --firmware-community-1.38 --confirm
 ```
 
 Here `before34.backup` must be a previously captured backup of slot34; the
@@ -285,14 +285,14 @@ recovery filename must be new. The advanced API retains its explicit flags.
 
 Backups contain **saved songs only**, not firmware, unsaved edits, system
 configuration or the global editable pattern bank. Keep valuable backups outside
-the build directory and preferably on another drive. The simple uploader accepts 1.36 and 1.37
+the build directory and preferably on another drive. The simple uploader accepts 1.36, 1.37 and 1.38
 song sources with source-specific firmware assertions; an older raw backup is not necessarily uploadable with it.
 
 ## Troubleshooting
 
 - **Template not found:** normal conversion uses the supplied default. Check
   that the templates directory is present. For a custom template, check its path.
-- **Template is an older version:** back up the original, save under community 1.37 and capture/export it again,
+- **Template is an older version:** back up the original, save under community 1.38 and capture/export it again,
   using new filenames.
 - **Output already exists:** choose a new filename. Overwriting output files
   is deliberately prevented.
@@ -316,8 +316,8 @@ with diagnostics. Bar1starts at time0; pickups are not inferred. A mid-bar meter
 change starts a new numbered bar. MIDI60is C4; CARBON uses96ticks per quarter.
 The planner still uses floating-point timing coordinates.
 
-Recommended JSON uses schema4/profile `carbon-1.37-scene-gates`.
-Schema3/1.36 remains supported including simple upload. Offline tools also
+Recommended JSON uses schema5/profile `carbon-1.38-arp-chord`.
+Schema4/1.37 and schema3/1.36 remain supported including simple upload. Offline tools also
 read schemas1/2; simple upload rejects those older sources.
 The JSON format is a prototype. Each song archive contains a manifest and a
 20,480-byte image; only that binary image is uploaded. Hashes detect changed
@@ -338,6 +338,7 @@ Use the public release checklist for candidate verification status.
 
 | Source | JSON profile | Simple upload prompt / advanced assertion |
 |---|---|---|
+| 1.38 | schema5 / `carbon-1.38-arp-chord` | 1.38-jwk-rc1 / `--firmware-community-1.38` |
 | 1.37 | schema4 / `carbon-1.37-scene-gates` | 1.37-jwk-rc1 (or compatible 1.37-jwk-scn1) / `--firmware-community-1.37` |
 | 1.36 | schema3 / `carbon-1.36-glide` | 1.36-jwk-rc1 or snp3 / `--firmware-community-1.36` |
 | 1.35 | schema2 / `carbon-1.35-note-delay` | advanced only: 1.35-jwk-dly1 / `--firmware-9c91ab0` |
@@ -349,10 +350,25 @@ from the validated source: this does NOT detect installed firmware. Confirm
 that the named compatible firmware is installed. Unsupported or mismatched
 profiles fail before MIDI access. No automatic migration/downgrade is performed.
 
-MIDI import defaults to the blank 1.37 template in this release;
-explicit 1.35/1.36 templates remain supported. Conversion replaces the shared
+MIDI import defaults to the blank 1.38 template in this release;
+explicit 1.35/1.36/1.37 templates remain supported. Conversion replaces the shared
 event bank, including any Scn events in a custom template. It does not invent
-scene-specific arrangements. RC1's published branch/tools remain unchanged.
+scene-specific arrangements. Earlier published branches/tools remain unchanged.
+
+## Firmware 1.38 (schema5)
+
+Schema5/profile `carbon-1.38-arp-chord` describes songs saved by community
+firmware 1.38. Its layout and events are those of 1.37 (including Scn); the
+only stored difference is that a scene/track `arp_speed_index` may be 17,
+meaning Arp Speed Chord. Earlier profiles reject 17. A 1.38 song must stay
+schema5: changing the profile or version byte is refused, as always, and no
+automatic migration or downgrade is performed. Firmware 1.37 cannot play
+Chord; keep 1.37 originals for 1.37 firmware.
+
+Backup/export, validation, compilation, view, MIDI import, restore planning
+and simple upload support 1.38, with the same protections as 1.37. Host tests
+cover schema5 round-trips, the Chord limit and simulated transfers; a 1.38
+hardware upload has not yet been recorded.
 
 ## Scene gates in JSON
 

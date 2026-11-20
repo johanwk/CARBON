@@ -3,7 +3,7 @@
 
 * Open and navigate
 
-Local candidate 1.38-jwk-hlp2. Hold Clock, Arp, MIDI or Tonality alone for
+Included in community 1.38-rc1. Hold Clock, Arp, MIDI or Tonality alone for
 800 milliseconds to replace the main grid with that menu's overview.
 Release leaves it open. Tap the same button (or Clock) to close. Motion Start
 selects a row; Length/Value edits its value. Other encoders do nothing here.

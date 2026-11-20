@@ -6,26 +6,15 @@
 what the firmware adds, with diagrams of Step Edit, step events and Bias
 harmony. Screens are rendered from example data by CARBON's display code.
 
-**Local candidate:** `1.38-jwk-sys1`, with Arp Speed Chord, Humanize and
-[menu overviews](CLOCK-HELP.org): hold Clock, Arp, MIDI or Tonality;
-Motion Start selects and Length/Value edits. Snapshot/Recall stay status-only.
-See [ARP-CHORD.org](ARP-CHORD.org) for voicing and transition rules, and
-[HUMANIZE.org](HUMANIZE.org) for velocity, gate and probabilistic late onset.
-Ordinary arp uses velocity/lateness only; generated Chord is not humanized.
-The published releases below do not contain these features.
-
-This branch also includes the previously tested one-level song undo.
-See [UNDO.org](UNDO.org) for controls, scope and pending hardware checks.
-This feature is not in the published 1.37 RC1 described below.
-
 Unofficial firmware for the Kilpatrick Audio CARBON hardware sequencer.
 Not an official Kilpatrick Audio release. Installation is at your own risk.
 
-**Community release candidate:** `community-1.37-rc1`, System identity
-`1.37-jwk-rc1`. See the [fork releases page](https://github.com/johanwk/CARBON/releases)
+**Community release candidate:** `community-1.38-rc1`, System identity
+`1.38-jwk-rc1`. See the [fork releases page](https://github.com/johanwk/CARBON/releases)
 for the binary, checksum and build record. This prerelease invites wider
 real-world testing; it is not a claim of exhaustive production validation.
 Official updater binaries do not contain these community additions.
+What changed since 1.37: [release notes](RELEASE-NOTES.org).
 
 ## What it adds
 
@@ -34,7 +23,9 @@ divisions; ordered conditional events including scene-mask gates; Bias-routed in
 roots and Hrm harmony; Inv/Compact voicing; individual note delays; curved
 CV glide and synth-dependent MIDI portamento; current-state pitch/delay grid;
 manual performance timing/pitch protection with next-bar target readouts;
-whole-song RAM snapshots; backup, JSON and MIDI import tools.
+whole-song RAM snapshots and one-level undo; Arp Speed Chord; Humanize;
+full-page menu, track and scene overviews; expanded Step Edit; backup, JSON
+and MIDI import tools.
 
 Use the [official CARBON product/manual page](https://www.kilpatrickaudio.com/?p=carbon)
 for ordinary operation, connections and original features. The
@@ -106,7 +97,7 @@ application at 0x08020000. Do not erase or replace the bootloader as a shortcut.
 A firmware reflash does not repair a partially replaced saved song. Retain
 recovery archives and inspect/plan a supported song restore before retrying.
 Returning to older firmware requires its matching application and pre-upgrade
-songs; faithful downgrade of 1.37 songs is not supported.
+songs; faithful downgrade of 1.38 songs is not supported.
 
 ## Everyday starting points
 
@@ -117,10 +108,13 @@ songs; faithful downgrade of 1.37 songs is not supported.
   These protect manual gestures, not all automation. Running edits apply next
   4/4 bar; turning back cancels. Stop/reset/scene/song boundaries cancel edits.
 - Hold Clock first, press Record: capture RAM snapshot. Clock then Load: recall
-  next bar, or immediately stopped. Either release order works. Clock alone
-  opens its menu on release; Shift+Clock tap tempo remains on press.
+  next bar, or immediately stopped. Clock then Run/Stop: undo the last edit.
+  Clock alone opens its menu on release; Shift+Clock tap tempo remains.
+- Hold Clock, Arp, MIDI, Tonality (or Shift, then MIDI) for a full-page menu;
+  hold a track button, or Scene then a number, for an overview.
 - Step Edit: select a slot with Shift+Motion Start; Shift+Transpose selects its
-  event type. See the guide for Hrm, Inv, Gli, CCi and note-delay examples.
+  event type. Hold Step Edit for the expanded view. See the guide for Hrm,
+  Inv, Gli, CCi and note-delay examples.
 
 ## Compatibility and limitations
 
@@ -132,13 +126,14 @@ songs; faithful downgrade of 1.37 songs is not supported.
   transient Bias-target overrides, including generated arp output. MIDI glide
   depends on the receiving synth; CV glide requires mono pitch groups.
 - Grid strokes preview current state, not future probability or automation.
-- Snapshot is one volatile RAM copy, not a backup/undo history; no external
+- Songs using Arp Speed Chord need 1.38. Host tools support 1.38 (schema5).
+- Snapshot is one volatile RAM copy, not a backup or undo history; no external
   synth state, global patterns or PRNG rewind. Load/clear/power-off invalidates it.
 - Finite queues and MIDI bandwidth remain limits; arbitrary overload is not
   lossless. Worst-case interrupt time and stack headroom are unmeasured.
 - The maintainer reports no failures in current practical testing. Coverage
   is not exhaustive: busy-load measurements and a hardware round-trip of the
-  new 1.37 simple-upload workflow remain useful community test targets.
+  1.38 simple-upload workflow remain useful community test targets.
 
 ## Build and contribute
 

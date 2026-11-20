@@ -40,7 +40,7 @@ fn json_value(data:&[u8],f:&Field)->Value{
 }
 pub fn validate(d:&[u8])->Result<(),String>{
  if d.len()!=SONG_SIZE{return Err("Wrong song size".into());}
- for f in fields(){let v=value(d,&f);let max=if d[0]>=35 && f.name.ends_with(".shared_delay_ticks"){103.}else{f.max};if !v.is_finite()||v<f.min||v>max{return Err(format!("Invalid{}={v}",f.name));}
+ for f in fields(){let v=value(d,&f);let max=if d[0]>=35 && f.name.ends_with(".shared_delay_ticks"){103.}else if d[0]>=38 && f.name.ends_with(".arp_speed_index"){17.}else{f.max};if !v.is_finite()||v<f.min||v>max{return Err(format!("Invalid{}={v}",f.name));}
  if f.name=="metronome" && v>2. && v<24.{return Err("Invalid metronome mode".into());}}
  // NULL song-list entries have opaque/stale payload. Active entries use UI limits.
  for i in 0..64{let o=48+6*i;let scene=d[o] as i8;if scene == -1{continue;}
@@ -66,12 +66,14 @@ pub fn export_fields(data:&[u8])->Result<Value,String>{
  for f in fields().into_iter().filter(|f|!f.name.ends_with(".shared_delay_ticks") && !f.name.ends_with(".ratchet")){map.insert(f.name.clone(),json_value(data,&f));}
  Ok(Value::Object(map))
 }
+/// Arp Speed 17 is Chord (firmware 1.38); earlier formats stop at 16.
 pub fn apply_fields(data:&mut [u8],input:&Value)->Result<(),String>{
  if data.len()!=SONG_SIZE{return Err("Wrong image size".into());}
  let map=input.as_object().ok_or("settings must be an object")?;let fs:Vec<_>=fields().into_iter().filter(|f|!f.name.ends_with(".shared_delay_ticks") && !f.name.ends_with(".ratchet")).collect();
  if map.len()!=fs.len() || map.keys().any(|k|!fs.iter().any(|f|&f.name==k)){return Err("Missing/unknown stored setting".into());}
  for f in fs{let v=map[&f.name].as_f64().ok_or_else(||format!("Non-numeric{}",f.name))?;
- if !v.is_finite()||v<f.min||v>f.max{return Err(format!("Invalid{}={v}",f.name));}
+ let max=if data[0]>=38 && f.name.ends_with(".arp_speed_index"){17.}else{f.max};
+ if !v.is_finite()||v<f.min||v>max{return Err(format!("Invalid{}={v}",f.name));}
  if !matches!(f.kind,Kind::F32) && v.fract()!=0.{return Err(format!("Integer required for{}",f.name));}
  let o=f.offset;match f.kind{
  Kind::U8=>data[o]=v as u8,Kind::I8=>data[o]=(v as i8) as u8,

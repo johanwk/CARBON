@@ -1,8 +1,8 @@
-#+title: One-level song undo - local 1.37-jwk-und3 candidate
+#+title: One-level song undo
 #+options: ^:nil -:nil
 
-Not part of published 1.37 RC1. No song format change: schema4/1.37 storage
-remains unchanged. Firmware hardware acceptance is pending.
+Included in community 1.38-rc1 (not in 1.37 RC1). Undo adds no stored song
+data. Broad hardware coverage is still pending; reports are welcome.
 
 * Controls
 :PROPERTIES:

@@ -38,7 +38,7 @@ pub fn export(data:&[u8],slot:usize)->Result<Value,String>{
  let o=1056+2*(t*64+s);let mut step=json!({"step":s+1,"delay_ticks":data[o],"ratchet":data[o+1],"events":events});if data[0]>=35{step.as_object_mut().unwrap().remove("delay_ticks");step["delay"]=delay_json(data[o]);}steps.push(step);}
  tracks.push(json!({"track":t+1,"steps":steps}));}
  let list=(0..64).map(|i|{let o=48+6*i;json!({"entry":i+1,"scene_code":data[o] as i8,"length_beats":i16::from_le_bytes([data[o+2],data[o+3]]),"transpose":data[o+4] as i8})}).collect::<Vec<_>>();
- Ok(json!({"format":"carbon-song","schema_version":if data[0]==37{4}else if data[0]==36{3}else if data[0]>=35{2}else{1},"firmware_profile":if data[0]==37{"carbon-1.37-scene-gates"}else if data[0]==36{"carbon-1.36-glide"}else if data[0]>=35{"carbon-1.35-note-delay"}else{"carbon-1.34-shared-events"},
+ Ok(json!({"format":"carbon-song","schema_version":if data[0]==38{5}else if data[0]==37{4}else if data[0]==36{3}else if data[0]>=35{2}else{1},"firmware_profile":if data[0]==38{"carbon-1.38-arp-chord"}else if data[0]==37{"carbon-1.37-scene-gates"}else if data[0]==36{"carbon-1.36-glide"}else if data[0]>=35{"carbon-1.35-note-delay"}else{"carbon-1.34-shared-events"},
  "metadata":{"title":"","description":"","extensions":{}},"dependencies":[],
  "provenance":{"capture_slot":slot,"raw_sha256":hash(data),"raw_hex":data.iter().map(|v|format!("{v:02x}")).collect::<String>()},
  "settings":song::export_fields(data)?,"song_list":list,"shared_tracks":tracks}))
@@ -52,7 +52,8 @@ pub fn export_archive(manifest:&Value,data:&[u8],slot:usize)->Result<Value,Strin
 }
 pub fn import(doc:&Value)->Result<(usize,Vec<u8>),String>{
  keys(doc,&["format","schema_version","firmware_profile","metadata","dependencies","provenance","settings","song_list","shared_tracks"])?;
- let scene_gates=doc["schema_version"]==4 && doc["firmware_profile"]=="carbon-1.37-scene-gates";
+ let arp_chord=doc["schema_version"]==5 && doc["firmware_profile"]=="carbon-1.38-arp-chord";
+ let scene_gates=arp_chord || (doc["schema_version"]==4 && doc["firmware_profile"]=="carbon-1.37-scene-gates");
  let glide=doc["schema_version"]==3 && doc["firmware_profile"]=="carbon-1.36-glide";
  let modern=scene_gates || glide || (doc["schema_version"]==2 && doc["firmware_profile"]=="carbon-1.35-note-delay");
  if doc["format"]!="carbon-song"||(!modern && (doc["schema_version"]!=1||doc["firmware_profile"]!="carbon-1.34-shared-events")){return Err("Unsupported schema/firmware capability profile".into());}
@@ -65,7 +66,7 @@ pub fn import(doc:&Value)->Result<(usize,Vec<u8>),String>{
  if text.len()!=SONG_SIZE*2 || !text.bytes().all(|b|b.is_ascii_hexdigit()){return Err("Invalid raw hex".into());}
  let mut data=(0..text.len()).step_by(2).map(|i|u8::from_str_radix(&text[i..i+2],16).unwrap()).collect::<Vec<_>>();
  if prov["raw_sha256"]!=hash(&data){return Err("Provenance hash mismatch".into());}
- if data[0] != (if scene_gates{37}else if glide{36}else if modern{35}else{34}){return Err("Profile must match provenance version; migrate explicitly".into());}
+ if data[0] != (if arp_chord{38}else if scene_gates{37}else if glide{36}else if modern{35}else{34}){return Err("Profile must match provenance version; migrate explicitly".into());}
  restore::validate_source(&data)?;song::validate(&data)?;song::apply_fields(&mut data,&doc["settings"])?;
  let list=doc["song_list"].as_array().ok_or("Missing song list")?;if list.len()!=64{return Err("Exactly64 list entries required".into());}
  for(i,e)in list.iter().enumerate(){keys(e,&["entry","scene_code","length_beats","transpose"])?;if num(&e["entry"],64)?!=i as u64+1{return Err("List positions duplicate/out of order".into());}
@@ -81,7 +82,7 @@ pub fn import(doc:&Value)->Result<(usize,Vec<u8>),String>{
  let names:&[&str]=match code{0|4|5=>&[],1|0xb0=>&["controller","value"],2=>&["percent"],3=>&["pair_index","rotation"],6=>&["scale_choice","root_choice"],7=>&["rotations","compact"],8=>&["duration_choice","curve"],9=>&["scenes"],0xc0=>&["program"],_=>&["pitch","velocity","length_ticks"]};
  if params.get("delay_ticks").is_some(){return Err("Independent note delays require future firmware; not silently quantized".into());}let mut expected=names.to_vec();if modern && code==0x90{expected.push("delay");data[o+3]=delay_code(&params["delay"],true)?;}keys(params,&expected)?;
  for(n,name)in names.iter().enumerate(){match *name{"scenes"=>{
- if !scene_gates{return Err("Scn requires schema4 / carbon-1.37-scene-gates".into());}
+ if !scene_gates{return Err("Scn requires schema4 or later (carbon-1.37-scene-gates)".into());}
  let scenes=params[*name].as_array().ok_or("Scn scenes must be an array")?;
  let mut mask=0u8;
  for value in scenes {let scene=num(value,6)?;if scene==0{return Err("Scene numbers must be 1..6".into());}
@@ -127,12 +128,38 @@ pub fn import(doc:&Value)->Result<(usize,Vec<u8>),String>{
    let mut d=base.clone();d["shared_tracks"][0]["steps"][0]["events"][0]["parameters"]["scenes"]=bad;assert!(import(&d).is_err());
   }
   let mut d=base.clone();d["shared_tracks"][0]["steps"][0]["events"][0]["parameters"]["mask"]=json!(0);assert!(import(&d).is_err());
-  for version in [34,35,36,38] {let mut bad=raw.clone();bad[0]=version;assert!(export(&bad,19).is_err());}
+  for version in [34,35,36] {let mut bad=raw.clone();bad[0]=version;assert!(export(&bad,19).is_err());}
   for (mask,reserved) in [(64,0),(255,0),(0,1)]{let mut bad=raw.clone();bad[1825]=mask;bad[1826]=reserved;assert!(export(&bad,19).is_err());}
   let mut d=base;d["schema_version"]=json!(3);d["firmware_profile"]=json!("carbon-1.36-glide");assert!(import(&d).is_err());
   let mut old=fixture();old[0]=36;let mut d=export(&old,19).unwrap();
   d["shared_tracks"][0]["steps"][0]["events"][0]=json!({"slot":1,"kind":"Scn","parameters":{"scenes":[1]}});assert!(import(&d).is_err());
  }
+ #[test]fn arp_chord_138_roundtrip_and_limits(){
+  let mut raw=fixture();raw[0]=38;
+  raw[1824..1830].copy_from_slice(&[9,5,0,255,0,0]);          // Scn still valid in 1.38
+  let speed=480+10;                                            // scene1.track1.arp_speed_index
+  raw[speed]=17;                                               // Chord
+  let doc=export(&raw,19).unwrap();
+  assert_eq!(doc["schema_version"],5);assert_eq!(doc["firmware_profile"],"carbon-1.38-arp-chord");
+  assert_eq!(doc["settings"]["scene1.track1.arp_speed_index"],17);
+  assert_eq!(import(&doc).unwrap().1,raw);
+  restore::validate_hardware_source(&raw,"--firmware-community-1.38").unwrap();
+  assert!(restore::validate_hardware_source(&raw,"--firmware-community-1.37").is_err());
+  let mut d=doc.clone();d["settings"]["scene1.track1.arp_speed_index"]=json!(18);assert!(import(&d).is_err());
+  // Chord (17) is not valid before 1.38.
+  let mut old=raw.clone();old[0]=37;assert!(export(&old,19).is_err());
+  old[speed]=16;let d37=export(&old,19).unwrap();
+  let mut d=d37.clone();d["settings"]["scene1.track1.arp_speed_index"]=json!(17);assert!(import(&d).is_err());
+  // Profile must match the image version in both directions.
+  let mut d=doc.clone();d["schema_version"]=json!(4);d["firmware_profile"]=json!("carbon-1.37-scene-gates");assert!(import(&d).is_err());
+  let mut d=d37;d["schema_version"]=json!(5);d["firmware_profile"]=json!("carbon-1.38-arp-chord");assert!(import(&d).is_err());
+  let mut bad=raw.clone();bad[0]=39;assert!(export(&bad,19).is_err());
+  let t=crate::json::parse(include_str!("../templates/default-1.38.json")).unwrap();
+  let (_,blank)=import(&t).unwrap();assert_eq!(&blank[..4],&[38,0,1,0]);
+  assert!(blank[1824..15648].chunks_exact(6).all(|e|e[0]==0));
+  restore::validate_hardware_source(&blank,"--firmware-community-1.38").unwrap();
+ }
+
  #[test]fn glide_136_roundtrip(){
   let mut raw=fixture();raw[0]=36;
   raw[1824..1830].copy_from_slice(&[8,4,32,255,0,0]);

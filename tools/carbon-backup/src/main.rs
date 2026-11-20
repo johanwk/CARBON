@@ -11,7 +11,7 @@ Everyday song transfers (JSON files):
   Example: backup song 37 song37.json
            upload song 37 song37.json
   CARBON Port 1 is automatic. One prompt covers stopped transport and, for
-  upload, the source-matching community firmware 1.36 or 1.37. Recovery backup and readback are automatic.
+  upload, the source-matching community firmware 1.36, 1.37 or 1.38. Recovery backup and readback are automatic.
   After upload, LOAD the song from the panel. No token or flags needed.
 
 Offline commands:
@@ -35,15 +35,15 @@ Advanced device commands:
   ports
   backup-song SLOT FILE INPUT OUTPUT --stopped [--pause-ms N]
   backup-bank FILE INPUT OUTPUT --stopped [--pause-ms N]
-  restore-song SOURCE BASE SLOT RECOVERY PORT --stopped --firmware-community-1.37 --confirm|TOKEN
-    Use --firmware-community-1.36 for 1.36 sources.
+  restore-song SOURCE BASE SLOT RECOVERY PORT --stopped --firmware-community-1.38 --confirm|TOKEN
+    Use --firmware-community-1.37 or 1.36 for older sources.
     WRITES one song slot1..64. Requires reviewed plan and fresh recovery backup.
 
 MIDI selection: --start-bar N --bars N --tracks 2,3|NAME --step-length auto|96
 Output ports: 0 DIN1, 1 DIN2, 3 USB-host, 4 USB-device (CV unsupported).
 Use --step-length 96 --bars 16 for a quarter-grid opening excerpt in 4/4.
 Conversion may drop/shift notes; inspect metadata.extensions.midi_import.
-Templates: schema4/1.37, schema3/1.36 or legacy schema2/1.35. Source programs/expression are not reproduced.
+Templates: schema5/1.38, schema4/1.37, schema3/1.36 or legacy schema2/1.35. Source programs/expression are not reproduced.
 See tools/carbon-backup/README.md for policies and transfer precautions.
 ";
 
@@ -218,8 +218,8 @@ fn run()->Result<(),String>{
     }
     if args.get(1).map(String::as_str)==Some("restore-song") {
         // Explicitly selected hardware test slots; backup identity must match.
-        if args.len()!=10 || args[7]!="--stopped" || !["--firmware-9c91ab0","--firmware-1.36-gli3","--firmware-community-1.36","--firmware-community-1.37"].contains(&args[8].as_str()) {
-            return Err("Usage: restore-song SOURCE TARGET_BACKUP TARGET_SLOT RECOVERY_FILE PORT_NAME --stopped --firmware-community-1.37|--firmware-community-1.36 APPROVAL_TOKEN|--confirm".into());
+        if args.len()!=10 || args[7]!="--stopped" || !["--firmware-9c91ab0","--firmware-1.36-gli3","--firmware-community-1.36","--firmware-community-1.37","--firmware-community-1.38"].contains(&args[8].as_str()) {
+            return Err("Usage: restore-song SOURCE TARGET_BACKUP TARGET_SLOT RECOVERY_FILE PORT_NAME --stopped --firmware-community-1.38|1.37|1.36 APPROVAL_TOKEN|--confirm".into());
         }
         let (_,source)=verify_song_archive(File::open(&args[2]).map_err(|e|e.to_string())?)?;
         let (target,base)=verify_song_archive(File::open(&args[3]).map_err(|e|e.to_string())?)?;

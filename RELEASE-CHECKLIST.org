@@ -1,4 +1,4 @@
-#+title: Community 1.37-rc1 verification checklist
+#+title: Community 1.38-rc1 verification checklist
 #+options: ^:nil -:nil
 
 Community release-candidate test targets. The maintainer has approved limited
@@ -13,60 +13,66 @@ for an assistant to flash hardware or write songs.
 :PROPERTIES:
 :CUSTOM_ID: prerelease-disposition
 :END:
+- [X] Maintainer approved separate release-candidate publication and assets.
 - [X] Remaining hardware coverage gaps explicitly accepted for a limited
   community prerelease; they are not marked tested.
-- [ ] Busy-pattern responsiveness checked; no measured interrupt/stack claim
-  until instrumentation provides actual values.
-- [ ] New 1.37 interactive transfer/default-template hardware round-trip.
+- [X] Host song tools updated for 1.38 (schema5, Chord arp speed, upload).
+- [ ] Release build from a clean checkout of the tagged commit; second clean
+  build gives an identical main.bin SHA256.
+- [ ] All C host suites, exchange layout and Rust tool tests pass on the
+  tagged commit.
+- [ ] Inspect exact source tree AND newly published history for private files.
 - [ ] Preserve existing notices/attribution and include corresponding source
   and build instructions with the firmware package.
-- [ ] Inspect exact source tree AND newly published history for private files.
-- [X] Maintainer approved separate release-candidate publication and assets.
+- [ ] Busy-pattern responsiveness checked; no measured interrupt/stack claim
+  until instrumentation provides actual values.
 
 * Representative hardware checks - pending for rc1
 :PROPERTIES:
 :CUSTOM_ID: representative-hardware-checks---pending-for-rc1
 :END:
-- [ ] Scn mask/LED editing, scene-dependent playback and save/reload in a
-  disposable song; check held-key release when leaving the editor.
-- [ ] Boot, correct System identity and familiar pre-upgrade song playback.
-- [ ] Save/reload a disposable song with Note delays, Gli and new control
-  events.
-- [ ] Internal clock, then external MIDI sync; MIDI and CV/gate output.
-- [ ] Local Gli and Bias CCi34/35, generated arp glide, Off and Stop.
-- [ ] Straight rate/pitch edits show queued targets and apply next bar. Return
-  to base cancels; Stop/reset/scene change cancels; multi-track edit works.
-- [ ] Capture, substantially edit notes/routes/controls, recall and recall
-  again. Loading another song invalidates; save alone does not.
-- [ ] Clock-first capture/recall with menu and Step Edit open, both release
-  orders, no unintended Record/Load/Save; Clock alone and Shift+Clock.
-- [ ] Recording/arming and panel song-I/O refuse capture/recall; a queued
-  recall cancelled by those states does not apply unexpectedly.
-- [ ] Representative live/arp/sustain/route changes: no stuck notes after
-  Stop/recall; verify old destination is released before new routing.
-- [ ] Busy six-track pattern: delays/ratchets, harmony/voicing and grid
-  updates; sustained use at high practical tempo with responsive controls and
-  sync. Record duration/tempo/routes, audible jitter/dropouts and UI behavior.
-- [ ] Snapshot clock-source changes examined separately; do not promise
-  seamless internal/external switching or restored synth patches.
-- [ ] Explicitly approved spare-slot 1.37 simple upload: recovery file
+- [ ] Boot shows =1.38-jwk-rc1= under SYS; mini sequencers visible at
+  startup; familiar pre-upgrade song plays.
+- [ ] Save/reload a disposable song with Arp Speed Chord, note delays, Gli and
+  control events.
+- [ ] Menu overviews (Clock, Arp, MIDI, Tonality, Shift+MIDI): short presses
+  keep their actions; Arp hold does not toggle; edits apply; Clock closes.
+- [ ] Track and scene overviews: selection/scene request still immediate;
+  Shift mute, scene copy and Scn mask editing unaffected.
+- [ ] Expanded Step Edit: hold toggles silently; short press replays; Shift
+  still opens Pattern Edit; all-slot Transpose leaves conditions unchanged.
+- [ ] Chord: single-note voicings per range in a named scale; multi-note
+  input; return to ordinary arp without stuck notes.
+- [ ] Humanize: velocity/length/lateness audible as expected on sequence and
+  arp; Off restores exact timing.
+- [ ] Undo: Clock+Run/Stop after clear, scene copy and a Step Edit visit;
+  next-bar timing while running; repeated undo restores the same point.
+- [ ] Explicitly approved spare-slot 1.38 simple upload: recovery file
   verified, full readback match, panel LOAD and playback. Do not save stale
   RAM.
+- [ ] Earlier checks still representative: internal and external MIDI sync,
+  MIDI and CV/gate, Scn, Straight/pitch modes, snapshot capture/recall, no
+  stuck notes after Stop/recall/route changes.
+- [ ] Busy six-track pattern at high practical tempo: responsive controls and
+  sync; record tempo/routes and any audible jitter/dropouts.
 
 * Recorded practical hardware evidence
 :PROPERTIES:
 :CUSTOM_ID: recorded-practical-hardware-evidence
 :END:
-The user reports Scn scene gates work as intended on 1.37-jwk-scn1. That is
-positive practical acceptance, not an exhaustive button/LED or transfer test
-matrix. The rc1 identity change does not add musical behavior.
+The maintainer reports, on the development candidates leading to rc1:
+editable menu overviews work well; track and scene overviews, grey read-only
+text and the 12-row menu layout work; expanded Step Edit works; Arp Chord
+range voicings are musically useful and the return to ordinary arp works far
+better after its fix; the startup mini-sequencer fix works. The rc1 identity
+change adds no musical behaviour. Hrm/Inv pitch results were checked by
+recording into Bitwig (note names there read one octave lower: naming only).
 
-User reports accept glide over MIDI/CV (CV clearer), effective pitch-grid
-preview, performance modes, snapshot/recall and snp3 queued-target readouts.
-Earlier acceptance covers note-delay triplets/persistence, sampled older
+Earlier acceptance covers Scn gates, glide over MIDI/CV, pitch-grid preview,
+performance modes, snapshot/recall, note-delay triplets/persistence, older
 songs, Hrm, Inv/Compact, Program Change, Euclidean/bar-relative timing and
-song transfers. Coverage differs by feature; every synth, route, boundary or
-simultaneous option combination is not tested. Physical 16 PPQ measurement
+song transfers up to 1.37. Coverage differs by feature; every synth, route,
+boundary or option combination is not tested. Physical 16 PPQ measurement
 remains unrecorded.
 
 * Focused source review disposition

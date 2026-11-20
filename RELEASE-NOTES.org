@@ -1,55 +1,88 @@
-#+title: CARBON community-1.37-rc1 prerelease
+#+title: CARBON community-1.38-rc1 prerelease
 #+options: ^:nil -:nil
 
 Unofficial CARBON firmware, not a Kilpatrick Audio release. System identity:
-=1.37-jwk-rc1=; numeric song version: 1.37. Use the accompanying build record
+=1.38-jwk-rc1=; numeric song version: 1.38. Use the accompanying build record
 for exact source, checksum and toolchain.
 
-* New since community 1.36 RC1
+* New since community 1.37 RC1
 :PROPERTIES:
-:CUSTOM_ID: new-since-community-1.36-rc1
+:CUSTOM_ID: new-since-community-1.37-rc1
 :END:
-- Scn gates: later slots on a step execute only in selected active scenes. No
-  probability draw or contribution to Pre history.
-- Scn sits between PC and Prb in the event-type cycle. New gates pass all
-  scenes.
-- Selecting one Scn slot takes over buttons 1--6 and their LEDs for mask
-  editing. Three paired-bar glyphs show the mask; the title spells out scene
-  membership. Buttons do not select tracks, mute, select/copy scenes; captured
-  releases remain consumed when leaving the editor.
-- JSON schema4/profile =carbon-1.37-scene-gates=, readable =scenes: [1,3,6]=,
-  validation/view/restore support and a blank 1.37 MIDI-import template.
-  Simple upload names the required 1.36/1.37 firmware from the source;
-  advanced 1.37 restore uses =--firmware-community-1.37=. No automatic
-  firmware detection.
 
-See [[file:SCENE-GATES.org]] and the [[file:tools/carbon-backup/README.md][host
-guide]]. All earlier community features remain included. This RC freezes the
-feature set.
+** A display that shows more
+- Full-page menu overviews: hold Clock, Arp, MIDI, Tonality, or Shift then
+  MIDI (System), for 800 ms. Motion Start selects a row, Length/Value edits
+  it, with two lines of help. Short presses keep their normal actions;
+  unshifted Arp, MIDI and Tonality now act on release, and a long Arp hold
+  does not toggle the arp.
+- Track overview: hold a track button for 800 ms to see that track in all six
+  scenes (motion range, step length, Bias Track, mute, root and scale).
+- Scene overview: hold Scene, then a number, for 800 ms to see that scene for
+  all six tracks. The scene is still selected immediately as before.
+- Expanded Step Edit: hold Step Edit for 800 ms to show Note, Vel, Gate and
+  Dly for all six slots, plus Ratchet and the shared step delay.
+
+** Editing and performance
+- Arp Speed *Chord*: each step's notes trigger up to four simultaneous
+  generated pitches, with scale-aware voicings for single notes.
+- Humanize (Clock menu, per track, not saved): chance and amount of velocity,
+  length and late-onset variation for sequenced notes and the arp.
+- One-level song undo: hold Clock, then press Run/Stop. Step Edit groups each
+  step visit into one undo point.
+- Transposing a whole step in Step Edit now changes note pitches only;
+  conditions, CCs and other events keep their values.
+- Turning Pattern (ratchet) in Step Edit no longer plays a misleading single
+  preview hit.
+
+** Fixes
+- Mini sequencers could be missing at startup until Step Edit was entered.
+
+** Documentation and tools
+- Illustrated user guide, reorganised by task: annotated display and Step
+  Edit, anatomy of a step, the four event families, and cards for Prb, Euc,
+  Hrm/Inv on a Bias track and Euclidean density. Screens are rendered by
+  CARBON's own display code from example data (=tools/screenshots=).
+- Host song tools support 1.38: JSON schema5/profile =carbon-1.38-arp-chord=,
+  backup, validation, view, MIDI import (new default template) and simple
+  upload; advanced restore uses =--firmware-community-1.38=.
+
+All earlier community features remain included.
+
+* Compatibility
+:PROPERTIES:
+:CUSTOM_ID: compatibility
+:END:
+Songs keep their 20480-byte size and the 1.37 layout. Songs saved with 1.38
+are marked 1.38. A song using Arp Speed Chord cannot be played as intended on
+1.37 or earlier firmware; keep pre-upgrade originals for older firmware.
+Faithful downgrade is not supported.
+
+The host tools refuse to relabel a 1.38 song as 1.37 or the reverse; there is
+no automatic migration. 1.37 and 1.36 JSON remain supported.
+
+Back up before installing or saving migrated songs. Host song replacement is
+non-atomic across sectors and requires panel LOAD afterward, not saving stale
+RAM. All target/approval/recovery/readback safeguards remain.
+
+Use the README's dfu-util procedure at *0x08020000* to preserve the factory
+bootloader. Never use stock dfu.sh, 0x08000000 or mass erase for this image.
 
 * Evidence and limitations
 :PROPERTIES:
 :CUSTOM_ID: evidence-and-limitations
 :END:
-The user reports Scn gates work as intended on 1.37-jwk-scn1 and no failures
-in current practical use. This RC changes its display identity, not musical
-behavior. Host tests cover all64 masks across six scenes, editor/LED/key
-ownership, persistence, JSON round-trips and simulated transfer protections.
+The maintainer runs the development candidate containing all these features.
+Practical hardware feedback is positive for the menu, track and scene
+overviews, expanded Step Edit and Arp Chord. Humanize and undo are included in
+that firmware but have less specific hardware feedback; reports are welcome.
+Testing is not exhaustive. Host tests cover gestures, display layouts for both
+LCD types, editor behaviour, playback and JSON/transfer paths.
 
-Practical feedback is not exhaustive validation. Busy-load CPU and stack
-high-water are unmeasured. The new 1.37 host transfer has fake-device
-coverage, not a hardware upload result. Optional remote LCD clients need glyph
-support. MIDI portamento remains synth-dependent; grid preview is not
-prediction; RAM snapshots are not persistent backups. See
+Not yet recorded on hardware: a 1.38 host-tool upload; busy-load CPU and
+stack high-water; every synth, route and option combination. The rc1 build
+differs from the tested candidate only in its identity string. See
 RELEASE-CHECKLIST.org.
-
-Back up before installing or saving migrated songs. Older firmware, including
-1.36 RC1, cannot interpret Scn; faithful downgrade is not supported. Host song
-replacement is non-atomic across sectors and requires panel LOAD afterward,
-not saving stale RAM. All target/approval/recovery/readback safeguards remain.
-
-Use the README's dfu-util procedure at *0x08020000* to preserve the factory
-bootloader. Never use stock dfu.sh, 0x08000000 or mass erase for this image.
 
 * Contributing and previous releases
 :PROPERTIES:
@@ -59,7 +92,7 @@ Report issues at https://github.com/johanwk/CARBON/issues with identity,
 reproduction steps, clock source, routes and synth setup. Share only files you
 have permission to publish. Successful setup reports are welcome too.
 
-The 1.36 release/tag and upstream PR #10/#11/#12 branches are unchanged. 1.37
-is a separate cumulative prerelease; it does not depend on upstream review or
-merger. Corresponding source and build instructions accompany it. Existing
-license and attribution notices are preserved.
+The 1.36 and 1.37 releases/tags and upstream PR #10/#11/#12 branches are
+unchanged. 1.38 is a separate cumulative prerelease. Corresponding source and
+build instructions accompany it. Existing license and attribution notices are
+preserved.

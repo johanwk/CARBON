@@ -1,12 +1,9 @@
-#+title: Humanize - local hum4 candidate
+#+title: Humanize
 #+options: ^:nil -:nil
 
-Identity: 1.38-jwk-hum4, uncommitted on work/arp-chord above 4b36c39.
-Preserves the local chd3 arp transition fix. No flash or publication
-performed. User reports hum1 works, but its fixed Centre offset sounds poor.
-hum2 removes Centre/jitter in favour of probabilistic late onset. hum2/hum3
-audition is pending. Wheel and track magnetism remain deferred. No pitch
-mutation or stored edits.
+Included in community 1.38-rc1. Development history: an early version with a
+fixed timing offset sounded poor and was replaced by probabilistic late
+onset. Humanize never changes pitch or stored notes.
 
 * Controls
 :PROPERTIES:
@@ -78,8 +75,8 @@ Session-only per track, not per scene. No saved field, migration, event code,
 numeric-version bump or JSON profile change. Load, Clear and reboot clear all
 settings. Scene/Stop/Continue/transport or track Reset retain them. Snapshot
 and Undo leave current Humanize preferences and random streams unchanged.
-Saving or raw backup cannot retain these settings. Host JSON/upload support
-remains through 1.37, not 1.38 Chord songs; no new compatibility is implied.
+Saving or raw backup cannot retain these settings. Host JSON/upload tools
+support 1.38 songs (schema5); Humanize settings are not part of them.
 
 Conditional/control and Bias/Hrm/Inv preparation remain unchanged. Gli and
 pitch snapshots retain existing semantics; output Hrm/root processing is

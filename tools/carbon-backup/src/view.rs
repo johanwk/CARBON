@@ -37,7 +37,7 @@ fn detail(e:&[u8])->(&'static str,String){let a=e[1];let b=e[2];let len=u16::fro
 pub fn render(data:&[u8],opts:&Options)->Result<String,String>{
  if data.len()!=SONG_SIZE{return Err("Wrong song size".into());}
  let version=u32::from_le_bytes(data[..4].try_into().unwrap());
- if version!=0x10022 && version!=0x10023 && version!=0x10024 && version!=0x10025{return Err("View requires a 1.34..1.37 image; no implicit migration".into());}
+ if !(0x10022..=0x10026).contains(&version){return Err("View requires a 1.34..1.38 image; no implicit migration".into());}
  crate::restore::validate_source(data)?;crate::song::validate(data)?;
  if opts.first_step<1||opts.last_step>64||opts.first_step>opts.last_step||opts.track.is_some_and(|t|!(1..=6).contains(&t)){return Err("Invalid view selection".into());}
  if opts.grid{return render_grid(data,opts);}

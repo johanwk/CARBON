@@ -18,7 +18,7 @@ Everyday song transfers:
 CARBON Port 1 is automatic; no firmware/stopped flags or token copying.
 Follow the confirmation prompt and keep CARBON stopped and undisturbed.
 Upload saves a recovery backup and verifies readback. Then LOAD the song.
-Upload supports community 1.36/1.37; confirm the source-matching firmware prompt.
+Upload supports community 1.36/1.37/1.38; confirm the source-matching firmware prompt.
 
 Other commands:
 
@@ -35,9 +35,9 @@ Selection: --start-bar N --bars N --tracks 2,3 --step-length auto|TICKS
 Convert defaults: USB-device output (4), quarter-note steps (96).
 Explicit options override defaults; use --output-port 0|1|3|4 for another port.
 At most64 quarter steps fit: longer selections are truncated and reported.
-Conversion replaces all musical tracks/scenes; default template is 1.37/schema4.
-Bundled default: tools/carbon-backup/templates/default-1.37.json
-Use an explicit default-1.36.json template for RC1; 1.35 is advanced-restore only.
+Conversion replaces all musical tracks/scenes; default template is 1.38/schema5.
+Bundled default: tools/carbon-backup/templates/default-1.38.json
+Use an explicit default-1.37.json or default-1.36.json template for older firmware; 1.35 is advanced-restore only.
 Custom template: convert MIDI TEMPLATE_JSON OUTPUT_JSON [options]
 No automatic upload. Read the embedded conversion report before transfer.
 Example:
@@ -64,7 +64,7 @@ case "$CMD" in
  convert)
   if [ "$#" -lt 2 ]; then echo 'Usage: ./carbon convert MIDI [TEMPLATE_JSON] OUTPUT_JSON [options]' >&2; exit 1; fi
   MIDI=$1; shift
-  TEMPLATE="$ROOT/tools/carbon-backup/templates/default-1.37.json"
+  TEMPLATE="$ROOT/tools/carbon-backup/templates/default-1.38.json"
   if [ "$#" -ge 2 ]; then
    case "$2" in --*) ;; *) TEMPLATE=$1; shift;; esac
   fi
