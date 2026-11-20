@@ -813,6 +813,14 @@ scene/reset/mute boundaries cancel pending attacks without claiming that all
 sounding tails end. Arp bypasses these delays; stopped audition is immediate.
 Live recording does not preserve arbitrary within-step timing.
 
+* Note names and DAW octave numbering
+
+CARBON names notes with middle C (MIDI note 60) as =C4=. Some DAWs,
+including Bitwig, call the same note =C3=. Only the name differs: the
+MIDI note number, and so the pitch, is identical. Expect every note to read
+one octave lower by name in such a DAW (=E4= on CARBON appears as =E3=).
+Check a note's number in the DAW's MIDI monitor or inspector if in doubt.
+
 * Hardware use
 
 ** Current verification and limitations

@@ -1,0 +1,126 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1260 770" font-family="Helvetica, Arial, sans-serif">
+<defs><marker id="dot" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="7" markerHeight="7"><circle cx="5" cy="5" r="4" fill="#d98a1f"/></marker></defs>
+<rect width="1260" height="770" fill="#fff"/>
+<text x="630.0" y="48" text-anchor="middle" font-size="32" font-weight="bold" fill="#222">Event card: Hrm and Inv on a Bias source (1/2)</text>
+<text x="630.0" y="80" text-anchor="middle" font-size="18" fill="#777">Shaping. Step Edit on Track 1, expanded, Hrm slot selected. Rendered from example data.</text>
+<rect x="422" y="102" width="416.0" height="616.0" rx="10" fill="#333"/>
+<image x="430" y="110" width="400.0" height="600.0" preserveAspectRatio="none" style="image-rendering:pixelated" href="data:image/png;base64,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"/>
+<g transform="translate(430 110) scale(1.25)">
+<defs><pattern id="hatch" width="4" height="4" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="4" height="4" fill="#3a3a3a"/><line x1="0" y1="0" x2="0" y2="4" stroke="#777" stroke-width="1.5"/></pattern><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#ddd"/></marker></defs>
+<path fill-rule="evenodd" fill="#101418" fill-opacity="0.97" d="M40,90 h238 v238 h-238 z M42,92 v31 h31 v-31 z"/>
+<rect x="42" y="92" width="31" height="31" fill="none" stroke="#fff" stroke-width="1"/>
+<text x="49" y="104" font-size="10" font-weight="bold" fill="#fff"></text>
+<text x="49" y="140" font-size="10" fill="#fff" font-weight="bold" text-anchor="start">One track steers the others</text>
+<text x="49" y="154" font-size="8.5" fill="#ddd" text-anchor="start">Track 1 is the Bias source. Tracks that choose</text>
+<text x="49" y="165" font-size="8.5" fill="#ddd" text-anchor="start">Bias Track: T1 (Tonality menu) follow it.</text>
+<text x="178" y="186" font-size="8.5" fill="#fff" font-weight="bold" text-anchor="middle">Hrm</text>
+<text x="214" y="186" font-size="8.5" fill="#fff" font-weight="bold" text-anchor="middle">Inv</text>
+<text x="252" y="186" font-size="8.5" fill="#fff" font-weight="bold" text-anchor="middle">Notes</text>
+<rect x="49" y="194" width="20" height="16" rx="3" fill="#c0504d"/>
+<text x="59" y="205.5" font-size="8.5" fill="#fff" font-weight="bold" text-anchor="middle">T1</text>
+<text x="74" y="205.5" font-size="8" fill="#ddd" text-anchor="start">Bias source (this step)</text>
+<rect x="165" y="196" width="26" height="12" rx="2" fill="#c0504d"/>
+<text x="178" y="205" font-size="7.5" fill="#fff" font-weight="bold" text-anchor="middle">yes</text>
+<rect x="201" y="196" width="26" height="12" rx="2" fill="#666"/>
+<text x="214" y="205" font-size="7.5" fill="#fff" font-weight="bold" text-anchor="middle">no</text>
+<text x="252" y="205.5" font-size="7.5" fill="#ddd" text-anchor="middle">steer</text>
+<rect x="49" y="216" width="20" height="16" rx="3" fill="#555"/>
+<text x="59" y="227.5" font-size="8.5" fill="#fff" font-weight="bold" text-anchor="middle">T2</text>
+<text x="74" y="227.5" font-size="8" fill="#ddd" text-anchor="start">Bias Track: T1</text>
+<rect x="165" y="218" width="26" height="12" rx="2" fill="#c0504d"/>
+<text x="178" y="227" font-size="7.5" fill="#fff" font-weight="bold" text-anchor="middle">yes</text>
+<rect x="201" y="218" width="26" height="12" rx="2" fill="#c0504d"/>
+<text x="214" y="227" font-size="7.5" fill="#fff" font-weight="bold" text-anchor="middle">yes</text>
+<text x="252" y="227.5" font-size="7.5" fill="#ddd" text-anchor="middle">+bias</text>
+<path d="M58,210 v4" stroke="#c0504d" stroke-width="1.5" marker-end="url(#arr)"/>
+<rect x="49" y="238" width="20" height="16" rx="3" fill="#555"/>
+<text x="59" y="249.5" font-size="8.5" fill="#fff" font-weight="bold" text-anchor="middle">T3</text>
+<text x="74" y="249.5" font-size="8" fill="#ddd" text-anchor="start">Bias Track: T1</text>
+<rect x="165" y="240" width="26" height="12" rx="2" fill="#c0504d"/>
+<text x="178" y="249" font-size="7.5" fill="#fff" font-weight="bold" text-anchor="middle">yes</text>
+<rect x="201" y="240" width="26" height="12" rx="2" fill="#c0504d"/>
+<text x="214" y="249" font-size="7.5" fill="#fff" font-weight="bold" text-anchor="middle">yes</text>
+<text x="252" y="249.5" font-size="7.5" fill="#ddd" text-anchor="middle">+bias</text>
+<path d="M58,232 v4" stroke="#c0504d" stroke-width="1.5" marker-end="url(#arr)"/>
+<rect x="49" y="260" width="20" height="16" rx="3" fill="#555"/>
+<text x="59" y="271.5" font-size="8.5" fill="#fff" font-weight="bold" text-anchor="middle">T4</text>
+<text x="74" y="271.5" font-size="8" fill="#ddd" text-anchor="start">Bias Track: off</text>
+<rect x="165" y="262" width="26" height="12" rx="2" fill="#666"/>
+<text x="178" y="271" font-size="7.5" fill="#fff" font-weight="bold" text-anchor="middle">no</text>
+<rect x="201" y="262" width="26" height="12" rx="2" fill="#666"/>
+<text x="214" y="271" font-size="7.5" fill="#fff" font-weight="bold" text-anchor="middle">no</text>
+<text x="252" y="271.5" font-size="7.5" fill="#ddd" text-anchor="middle">own</text>
+<text x="49" y="290" font-size="8.5" fill="#ddd" text-anchor="start">Hrm: scale/root for the source AND followers.</text>
+<text x="49" y="301" font-size="8.5" fill="#ddd" text-anchor="start">Inv: voicing for followers only, not the source.</text>
+<text x="49" y="320" font-size="7.5" fill="#aaa" text-anchor="start">Explanation drawn over the grid; not shown on CARBON.</text>
+</g>
+<rect x="540.0" y="561.25" width="30.0" height="27.5" fill="none" stroke="#d98a1f" stroke-width="2.5" rx="3"/>
+<rect x="580.0" y="576.25" width="30.0" height="27.5" fill="none" stroke="#d98a1f" stroke-width="2.5" rx="3"/>
+<rect x="620.0" y="576.25" width="30.0" height="27.5" fill="none" stroke="#d98a1f" stroke-width="2.5" rx="3"/>
+<rect x="485.0" y="227.5" width="33.75" height="33.75" fill="none" stroke="#d98a1f" stroke-width="2.5" rx="3"/>
+<rect x="490.0" y="546.25" width="290.0" height="12.5" fill="none" stroke="#d98a1f" stroke-width="2.5" rx="3"/>
+<rect x="580.0" y="606.25" width="70.0" height="27.5" fill="none" stroke="#d98a1f" stroke-width="2.5" rx="3"/>
+<line x1="360" y1="247.5" x2="480.0" y2="247.5" stroke="#d98a1f" stroke-width="2" marker-end="url(#dot)"/>
+<rect x="20" y="192.5" width="340" height="110" rx="8" fill="#fff8ec" stroke="#d98a1f" stroke-width="2"/>
+<circle cx="40" cy="214.5" r="13" fill="#d98a1f"/>
+<text x="40" y="220.5" text-anchor="middle" font-size="16" font-weight="bold" fill="#fff">1</text>
+<text x="62" y="221.5" font-size="21" font-weight="bold" fill="#222">What they do</text>
+<text x="36" y="246.5" font-size="17" fill="#333">Placed on a Bias source, they</text>
+<text x="36" y="268.5" font-size="17" fill="#333">change harmony and chord voicing</text>
+<text x="36" y="290.5" font-size="17" fill="#333">on the tracks that follow it.</text>
+<line x1="360" y1="413.0" x2="540.0" y2="582.5" stroke="#d98a1f" stroke-width="2" marker-end="url(#dot)"/>
+<rect x="20" y="358.0" width="340" height="110" rx="8" fill="#fff8ec" stroke="#d98a1f" stroke-width="2"/>
+<circle cx="40" cy="380.0" r="13" fill="#d98a1f"/>
+<text x="40" y="386.0" text-anchor="middle" font-size="16" font-weight="bold" fill="#fff">2</text>
+<text x="62" y="387.0" font-size="21" font-weight="bold" fill="#222">Source note</text>
+<text x="36" y="412.0" font-size="17" fill="#333">A3: the bias. Followers are</text>
+<text x="36" y="434.0" font-size="17" fill="#333">transposed by its distance from</text>
+<text x="36" y="456.0" font-size="17" fill="#333">C4.</text>
+<line x1="360" y1="552.0" x2="580.0" y2="597.5" stroke="#d98a1f" stroke-width="2" marker-end="url(#dot)"/>
+<rect x="20" y="484.0" width="340" height="136" rx="8" fill="#fff8ec" stroke="#d98a1f" stroke-width="2"/>
+<circle cx="40" cy="506.0" r="13" fill="#d98a1f"/>
+<text x="40" y="512.0" text-anchor="middle" font-size="16" font-weight="bold" fill="#fff">3</text>
+<text x="62" y="513.0" font-size="21" font-weight="bold" fill="#222">Hrm  -</text>
+<text x="62" y="539.0" font-size="21" font-weight="bold" fill="#222">Transpose / Length</text>
+<text x="36" y="564.0" font-size="17" fill="#333">Transpose: scale, Keep or 1-16</text>
+<text x="36" y="586.0" font-size="17" fill="#333">(here 2 = Major). Length/Value:</text>
+<text x="36" y="608.0" font-size="17" fill="#333">root Keep, Off or C-B.</text>
+<line x1="360" y1="693.0" x2="620.0" y2="627.5" stroke="#d98a1f" stroke-width="2" marker-end="url(#dot)"/>
+<rect x="20" y="636.0" width="340" height="114" rx="8" fill="#fff8ec" stroke="#d98a1f" stroke-width="2"/>
+<circle cx="40" cy="658.0" r="13" fill="#d98a1f"/>
+<text x="40" y="664.0" text-anchor="middle" font-size="16" font-weight="bold" fill="#fff">4</text>
+<text x="62" y="665.0" font-size="21" font-weight="bold" fill="#222">Inv  -</text>
+<text x="62" y="691.0" font-size="21" font-weight="bold" fill="#222">Transpose / Length</text>
+<text x="36" y="716.0" font-size="17" fill="#333">Transpose: rotations 0-5 (here 2).</text>
+<text x="36" y="738.0" font-size="17" fill="#333">Length/Value: Compact Off/On.</text>
+<line x1="900.0" y1="240.0" x2="497.5" y2="240.0" stroke="#d98a1f" stroke-width="2" marker-end="url(#dot)"/>
+<rect x="900.0" y="183.0" width="340" height="114" rx="8" fill="#fff8ec" stroke="#d98a1f" stroke-width="2"/>
+<circle cx="920.0" cy="205.0" r="13" fill="#d98a1f"/>
+<text x="920.0" y="211.0" text-anchor="middle" font-size="16" font-weight="bold" fill="#fff">5</text>
+<text x="942.0" y="212.0" font-size="21" font-weight="bold" fill="#222">Selected step  -</text>
+<text x="942.0" y="238.0" font-size="21" font-weight="bold" fill="#222">Motion Start</text>
+<text x="916.0" y="263.0" font-size="17" fill="#333">Step 1 of Track 1. The real grid</text>
+<text x="916.0" y="285.0" font-size="17" fill="#333">cell stays visible.</text>
+<line x1="900.0" y1="405.0" x2="770.0" y2="405.0" stroke="#d98a1f" stroke-width="2" marker-end="url(#dot)"/>
+<rect x="900.0" y="350.0" width="340" height="110" rx="8" fill="#fff8ec" stroke="#d98a1f" stroke-width="2"/>
+<circle cx="920.0" cy="372.0" r="13" fill="#d98a1f"/>
+<text x="920.0" y="378.0" text-anchor="middle" font-size="16" font-weight="bold" fill="#fff">7</text>
+<text x="942.0" y="379.0" font-size="21" font-weight="bold" fill="#222">Who follows whom</text>
+<text x="916.0" y="404.0" font-size="17" fill="#333">Set Bias Track on each follower.</text>
+<text x="916.0" y="426.0" font-size="17" fill="#333">Tip: mute the source to use it</text>
+<text x="916.0" y="448.0" font-size="17" fill="#333">only for steering.</text>
+<line x1="900.0" y1="552.5" x2="780.0" y2="552.5" stroke="#d98a1f" stroke-width="2" marker-end="url(#dot)"/>
+<rect x="900.0" y="508.5" width="340" height="88" rx="8" fill="#fff8ec" stroke="#d98a1f" stroke-width="2"/>
+<circle cx="920.0" cy="530.5" r="13" fill="#d98a1f"/>
+<text x="920.0" y="536.5" text-anchor="middle" font-size="16" font-weight="bold" fill="#fff">6</text>
+<text x="942.0" y="537.5" font-size="21" font-weight="bold" fill="#222">Full description</text>
+<text x="916.0" y="562.5" font-size="17" fill="#333">The selected event in words: Hrm:</text>
+<text x="916.0" y="584.5" font-size="17" fill="#333">Major / Keep.</text>
+<line x1="900.0" y1="656.5" x2="780.0" y2="612.5" stroke="#d98a1f" stroke-width="2" marker-end="url(#dot)"/>
+<rect x="900.0" y="612.5" width="340" height="88" rx="8" fill="#fff8ec" stroke="#d98a1f" stroke-width="2"/>
+<circle cx="920.0" cy="634.5" r="13" fill="#d98a1f"/>
+<text x="920.0" y="640.5" text-anchor="middle" font-size="16" font-weight="bold" fill="#fff">8</text>
+<text x="942.0" y="641.5" font-size="21" font-weight="bold" fill="#222">Unused rows</text>
+<text x="916.0" y="666.5" font-size="17" fill="#333">Gate and Dly show --- for Hrm and</text>
+<text x="916.0" y="688.5" font-size="17" fill="#333">Inv.</text>
+</svg>

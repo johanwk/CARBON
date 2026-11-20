@@ -1,0 +1,196 @@
+#+title: Step events: source inventory for visual documentation
+#+options: ^:nil -:nil
+
+* Status
+
+Working inventory for the Step Edit cards and diagrams. Facts below were
+read from the current source (=src/gui/step_edit.c=, =src/seq/seq_engine.c=,
+=src/seq/conditional.h=, =src/seq/song.h=, =src/config.h=) and checked
+against the user guide. Not yet hardware-verified as a whole. Companion to
+the draft =CONTROL-INVENTORY.org=.
+
+* The model: a step is a row of six slots
+
+- Each step holds up to six event slots, plus two step-wide settings:
+  Ratchet (1--8 repeats) and the shared Step delay.
+- Slots are evaluated LEFT TO RIGHT, in slot order. This order is the key
+  to most of the behaviour:
+  - A condition that fails blocks every LATER slot on that step, including
+    later conditions. Earlier slots are unaffected.
+  - Gli changes glide for Note slots to its RIGHT on the same step.
+- Each visit starts afresh: a failed condition does not affect the next
+  step or the next visit.
+- Empty slots are skipped; they do not end evaluation.
+
+* Event types
+
+Shift+Transpose cycles the type of ONE selected slot, in this order:
+
+=N -> CC -> CCi -> PC -> Scn -> Prb -> Euc -> Pre -> !Pr -> Hrm -> Inv -> Gli -> N=
+
+| Label | Name            | Transpose dial           | Length/Value dial       | Default        |
+|-------+-----------------+--------------------------+-------------------------+----------------|
+| N     | Note            | Pitch                    | Velocity (steps of 2)   | C4, vel 100    |
+| CC    | MIDI CC         | Controller number 0--127 | Value 0--127 (steps 2)  | CC1 = 64       |
+| CCi   | Internal CC     | Target parameter         | Value                   | CC28 (density) |
+| PC    | Program Change  | Program 1--128           | -                       | 1              |
+| Scn   | Scene gate      | (scene buttons 1--6)     | -                       | all scenes     |
+| Prb   | Probability     | Chance 0--100%           | -                       | 50%            |
+| Euc   | Euclidean loops | Pair A:B, 1:2 .. 7:8     | Rotation 0..B-1         | 1:2, rot 0     |
+| Pre   | Previous result | -                        | -                       | -              |
+| !Pr   | Not previous    | -                        | -                       | -              |
+| Hrm   | Harmony         | Scale: Keep or 1--16     | Root: Keep, Off, C--B   | Keep / Keep    |
+| Inv   | Inversion       | Rotations 0--5           | Compact Off/On          | 0 / Off        |
+| Gli   | Glide           | Duration Off, 1/128..1/1 | Curve 0--127 (64 lin.)  | 1/16, linear   |
+
+Note-only dials: Gate (note length), Speed (per-note delay with a slot
+selected; shared Step delay with all slots selected). Pattern edits the
+step-wide Ratchet. Gate and delay are ignored by every non-Note type.
+
+With ALL slots selected, Transpose moves Note pitches only; other types keep
+their values. Editing a control's values needs that slot selected.
+
+Turning Transpose, Length/Value or Gate on an empty step (or an empty
+selected slot) creates a Note; with Shift held it creates a CC instead.
+
+* Families (by the question each answers)
+
+| Family       | Question                                 | Events                  | Output          |
+|--------------+------------------------------------------+-------------------------+-----------------|
+| Sound        | What plays?                              | N                       | MIDI/CV note    |
+| Conditions   | Do the slots to the right run this time? | Scn, Prb, Euc, Pre, !Pr | none            |
+| Messages out | What else is sent to the synth?          | CC, PC                  | MIDI            |
+| Shaping      | How do this or other tracks change?      | CCi, Hrm, Inv, Gli      | none (internal) |
+
+Correction to the earlier proposal: Scn is a condition (a gate on later
+slots in this step), not a separate family.
+
+** Conditions in detail
+
+| Gate | Triggers when                                  | Feeds Pre/!Pr history |
+|------+------------------------------------------------+-----------------------|
+| Scn  | The playing scene is enabled in its mask       | No (no random draw)   |
+| Prb  | A random draw is below the chance              | Yes                   |
+| Euc  | Loop count fits A-of-B Euclidean distribution  | Yes                   |
+| Pre  | The previous contributing visit had a pass     | Yes                   |
+| !Pr  | The previous contributing visit had NO pass    | No                    |
+
+- History is per track: "triggered" if ANY evaluated Prb/Euc/Pre on the
+  last visit that had one passed. Pre/!Pr read the history from before
+  this visit (see wording section below).
+- Euc counts LOOPS of the track's motion window, not steps: 1:4 passes on
+  one loop in four. Rotation shifts which loop.
+- Each track has its own random stream; Reset does not restart it.
+
+** Shaping in detail
+
+| Event | Affects                                            | Lifetime                  |
+|-------+----------------------------------------------------+---------------------------|
+| CCi   | OTHER tracks that use this track as Bias Track     | Until changed/scene/reset |
+| Hrm   | This track and its Bias targets; Root is shared    | Until changed/scene/reset |
+| Inv   | OTHER tracks that use this track as Bias Track     | Until changed/scene/reset |
+| Gli   | Note slots to its right on this step               | This step only            |
+
+CCi targets: 16 step length, 17 transpose, 18 mute, 19 start, 20 length,
+21 direction, 22 gate time, 23 pattern, 24 arp on, 25 arp type, 26 arp
+speed, 27 arp gate, 28 Euclidean density, 29 rotation, 34 glide duration,
+35 glide curve.
+
+None of the shaping events is heard in stopped preview.
+
+* Settled wording and conventions
+
+** "Triggered" conditions (Pre and !Pr)
+
+Use "triggered" for a condition that passed. Newcomer wording:
+
+- Pre lets the slots to its right run only if a condition triggered the
+  last time this track checked conditions.
+- !Pr is the opposite: the slots to its right run only if nothing
+  triggered last time.
+
+Precise rule behind it, for the reference text and card footnotes:
+- "Last time" means the most recent visit (on this track) that evaluated
+  at least one Prb, Euc or Pre. Visits with no such condition are ignored.
+- It counts as triggered if ANY of those conditions on that visit
+  triggered, not only the final one. Example: a Prb that triggers followed
+  by one that fails still counts as triggered.
+- Scn and !Pr are never counted.
+
+** Families
+
+Hrm stays in Shaping, as listed above.
+
+** Gate length legend
+
+The Gate row shows note length as a musical value: the longest of these
+that does not exceed the stored length (values in between round down).
+
+| Shown | Length              | Shown | Length              |
+|-------+---------------------+-------+---------------------|
+| 64    | 1/64 note or less   | 8     | eighth              |
+| 64.   | dotted 1/64         | 8.    | dotted eighth       |
+| 32    | 1/32                | q     | quarter             |
+| 32.   | dotted 1/32         | q.    | dotted quarter      |
+| 16    | sixteenth           | h     | half                |
+| 16.   | dotted sixteenth    | h.    | dotted half         |
+|       |                     | w     | whole               |
+|       |                     | w+    | two whole notes or more |
+
+A dot means one and a half times the plain value. Source:
+=panel_utils_gate_time_to_str()=. New notes get half the track's step
+length. Track Gate (a percentage) and Humanize may change the played length.
+
+* Visual plan
+
+** Use the step grid area for explanation
+
+In Step Edit the main 8x8 grid only marks the selected step; its other
+cells carry little information while learning. Diagrams may therefore
+overlay the grid area with explanatory graphics, keeping the real
+selected-step cell visible and the real readout below untouched:
+
+- *Slot strip*: six boxes left to right, drawn over the grid, showing the
+  step's slots as family-coloured tiles with their labels and an arrow for
+  evaluation order. A failing condition greys out every tile to its right.
+- *Effect strip*: 16 or 32 visits of playback drawn as cells in the grid
+  space (it is already an 8-wide grid), e.g. Prb 50% hits and misses,
+  Euc 1:4 passing on one loop in four, Pre/!Pr answering each other.
+- *Scope arrows*: for CCi/Inv/Hrm, arrows from the source track to its Bias
+  targets, drawn as six small track rows in the grid space.
+
+The overlay is drawn in SVG by =annotate.py= (translucent panel over the
+grid rectangle), so the underlying screenshot stays an authentic rendering.
+Effect strips should be computed with the production evaluator in
+=conditional.h=, so pictures cannot drift from behaviour.
+
+** Planned set
+
+1. Anatomy of a step: slot strip, step-wide settings, dials.
+2. Family map: four families, their colours/icons, all twelve labels.
+3. One card per event type, same layout: rendered screen with overlay,
+   one-sentence purpose, dial table, effect strip, "combines with".
+4. Recipes: fill every 4th loop (Euc 1:4 before notes); call and answer
+   (Prb ... Pre / !Pr); scene-only accent (Scn); chord with Inv on a Bias
+   source; glide into a note (Gli before N).
+
+** Hrm and Inv from a Bias source (first cards drafted)
+
+User priority: the musical value is high, so this deserves a careful
+diagram set, not a single card. Mechanism from the source:
+- Hrm on a source track changes scale (and optionally the shared root) for
+  the source itself and every track using it as Bias Track.
+- Inv on a source changes voicing ONLY for the tracks following it, not the
+  source. Compact On narrows the voicing.
+- Both are resolved for all tracks before any note of that step plays, last
+  eligible slot wins, and both last until changed, scene change or reset.
+Visual idea: six small track rows drawn over the grid (scope arrows from
+the source to its followers), plus a piano-roll strip showing one chord
+progression voiced by Hrm changes and Inv rotations across several bars.
+Needs a fixture with real Bias routing; check pitch results with the
+production voicing code (=src/seq/voicing.h=).
+
+Drafted as two cards: =card-hrminv-1-setup.svg= (placing Hrm/Inv on the
+source, who follows) and =card-hrminv-2-pitches.svg= (one stored chord
+through four bars: bias only, + Hrm Major, + Inv), pitches from the
+production voicing/scale code. Not yet checked by ear on hardware.

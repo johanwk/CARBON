@@ -37,6 +37,11 @@ This builds the renderer, then writes:
 - =docs/screenshots/fixtures/*-lcda.png=: eight screens.
 - =docs/screenshots/main-display-annotated.svg=
 - =docs/screenshots/step-edit-annotated.svg=
+- =docs/screenshots/step-anatomy.svg=
+- =docs/screenshots/step-event-families.svg=
+- =docs/screenshots/card-prb.svg=, =card-euc.svg= (event cards)
+- =docs/screenshots/card-hrminv-1-setup.svg=, =card-hrminv-2-pitches.svg=
+- =docs/screenshots/banner.svg= (README banner, =banner.py=)
 
 Commit regenerated images together with the code change that altered them.
 
@@ -50,6 +55,11 @@ Commit regenerated images together with the code change that altered them.
 | 06-scene-overview                  | Scene overview (Scene 2)             |
 | 07-sys-overview                    | SYS fullscreen overview              |
 | 08-step-edit-expanded-slot         | Step Edit, expanded, slot 3 selected |
+| 09-step-anatomy                    | Step 12: N, Prb 50%, N, N (expanded) |
+| 10-card-prb                        | Step 3: Prb 50%, N C5; slot 1 chosen |
+| 11-card-euc                        | Step 8: Euc 3:8, N G4; slot 1 chosen |
+| 12-card-hrminv-setup               | T1 step 1: N A3, Hrm, Inv; Hrm chosen |
+| 13-card-hrminv-pitches             | T2 step 1: chord C4 E4 G4            |
 
 ** Other layouts and directories
 
@@ -88,6 +98,33 @@ highlight rectangle (LCD A pixels), heading and body.
 python3 tools/screenshots/annotate.py stepedit \
     docs/screenshots/fixtures/08-step-edit-expanded-slot-lcda.png out.svg
 #+end_src
+
+A diagram may also define an =overlay= function returning SVG in LCD A
+pixel coordinates. =step-anatomy= uses this to draw over the 8x8 grid,
+which carries little information in Step Edit, leaving a hole so the real
+selected cell stays visible. Overlays say on the image that they are not
+shown on CARBON. Family colours: green Note, blue condition, purple
+message out, red shaping (=FAMILY= in =annotate.py=).
+
+Event cards (=prb=, =euc=) add an effect strip: one cell per loop showing
+whether the note plays. Strip data is computed by =conditions.c.in=, which
+calls the production evaluator in =src/seq/conditional.h=; =render.sh=
+passes it with =--strips=. Prb uses the fixed host seed, so it is one
+example run; the device seeds from hardware randomness.
+
+The Hrm/Inv cards use a Bias source (Track 1) and a follower (Track 2).
+Follower pitches on card 2 are computed by =voicing.c.in= in playback
+order: =voicing_transform()= from =src/seq/voicing.h= (Inv), then the bias
+offset, then =scale_quantize_root()= from =src/seq/scale.c= (Hrm), song
+root C. Arp, drum tracks, Track Gate and CC overrides are not modelled.
+
+=banner.py= composes four fixture screens (Step Edit, Hrm/Inv pitches with
+its overlay, scene overview, Clock overview) with short tags for the top
+of =README.md=. Change =PANELS= in it to pick other screens.
+
+=families.py= draws the standalone family map: four colour-coded families,
+all twelve event types, and the Shift+Transpose cycle order from
+=step_edit.c=. Keep both in step with =STEP-EVENTS.org=.
 
 Design rules:
 - Boxes on each side follow the vertical order of their targets, so

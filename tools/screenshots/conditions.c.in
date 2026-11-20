@@ -1,0 +1,32 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later */
+/* Effect-strip data for documentation diagrams, computed with the production
+ * conditional evaluator. One visit per loop of the motion window.
+ * Prb uses the fixed host seed (conditional_init): one example run; the
+ * device seeds from its hardware random generator. Output: "key bits". */
+#include <stdio.h>
+#include <stdlib.h>
+#include "../../src/seq/conditional.h"
+static unsigned euc_index(unsigned a, unsigned b) {
+    for(unsigned i = 0; i < 28; i++) {
+        unsigned x, y; conditional_pair(i, &x, &y);
+        if(x == a && y == b) return i;
+    }
+    fprintf(stderr, "no pair %u:%u\n", a, b); exit(1);
+}
+static void euc(const char *key, unsigned a, unsigned b, unsigned rot, int loops) {
+    unsigned i = euc_index(a, b);
+    printf("%s ", key);
+    for(int loop = 0; loop < loops; loop++)
+        putchar(conditional_euclidean(loop, i, rot) ? '1' : '0');
+    putchar('\n');
+}
+int main(void) {
+    struct conditional_state s;
+    conditional_init(&s, 0);
+    printf("prb50 ");
+    for(int loop = 0; loop < 8; loop++) putchar(conditional_probability(&s, 50) ? '1' : '0');
+    putchar('\n');
+    euc("euc3of8", 3, 8, 0, 8);
+    euc("euc3of8r1", 3, 8, 1, 8);
+    return 0;
+}

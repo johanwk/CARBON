@@ -89,6 +89,9 @@ static int fx_hit(int track,int step) {
 static void fx_rotations(void) {
     for(int t=0;t<6;t++) for(fx_rot[t]=0;fx_rot[t]<fx_n[t] && !fx_hit(t,4);fx_rot[t]++);
 }
+/* Optional replacement contents for step 1 (index 0), for event cards. */
+static struct track_event *fx_ov;
+static struct track_event *fx_cell(int step) { return fx_ov && step == 0 ? fx_ov : fx_events[step]; }
 static void fixture_init(void) {
     fx_rotations();
     for(int s=0;s<6;s++) for(int t=0;t<6;t++) {
@@ -97,7 +100,8 @@ static void fixture_init(void) {
         fx_mute[s][t]=(s+t)%5==4; fx_bias[s][t]=t==2?0:-1; fx_scale[s][t]=(s+t)%4;
     }
     fx_start[1][5]=56; /* wrapped window 57~08 */
-    for(int i=0;i<64;i++) fx_delay[i]=SEQ_START_DELAY_INHERIT;
+    /* Step-wide defaults: ratchet 1 (range 1-8), shared delay Off. */
+    for(int i=0;i<64;i++) { fx_delay[i]=0; fx_ratchet[i]=1; }
     static const int melody[8]={48,55,51,60,53,58,56,63};
     for(int i=0;i<64;i++) if(fx_hit(0,i)) {
         fx_events[i][0]=(struct track_event){SONG_EVENT_NOTE,melody[(i/2)%8],100,0,48};
@@ -109,6 +113,23 @@ static void fixture_init(void) {
     e[2]=(struct track_event){SONG_EVENT_NOTE,67,92,0,48};
     e[3]=(struct track_event){SONG_EVENT_PROBABILITY,75,0,0,0};
     fx_ratchet[4]=2; fx_delay[4]=0;
+    /* Step 12 (index 11, a track-1 hit): anatomy example N, Prb, N, N. */
+    struct track_event *a=fx_events[11];
+    memset(fx_events[11],0,sizeof(fx_events[11]));
+    a[0]=(struct track_event){SONG_EVENT_NOTE,60,96,SEQ_START_DELAY_INHERIT,24};
+    a[1]=(struct track_event){SONG_EVENT_PROBABILITY,50,0,0,0};
+    a[2]=(struct track_event){SONG_EVENT_NOTE,64,90,SEQ_START_DELAY_INHERIT,24};
+    a[3]=(struct track_event){SONG_EVENT_NOTE,67,84,SEQ_START_DELAY_INHERIT,24};
+    fx_ratchet[11]=1; fx_delay[11]=0;
+    /* Step 3 (index 2): card example Prb 50% then a note. */
+    memset(fx_events[2],0,sizeof(fx_events[2]));
+    fx_events[2][0]=(struct track_event){SONG_EVENT_PROBABILITY,50,0,0,0};
+    fx_events[2][1]=(struct track_event){SONG_EVENT_NOTE,72,100,SEQ_START_DELAY_INHERIT,24};
+    /* Step 8 (index 7): card example Euc 3:8 then a note. */
+    memset(fx_events[7],0,sizeof(fx_events[7]));
+    { unsigned a,b; int i; for(i=0;i<28;i++){conditional_pair(i,&a,&b); if(a==3&&b==8) break;}
+      fx_events[7][0]=(struct track_event){SONG_EVENT_EUCLIDEAN,(uint8_t)i,0,0,0}; }
+    fx_events[7][1]=(struct track_event){SONG_EVENT_NOTE,67,100,SEQ_START_DELAY_INHERIT,24};
 }
 
 /* sequencer/song interface used by the GUI */
@@ -144,8 +165,8 @@ int seq_engine_pitch_mode(void) { return 0; } int seq_engine_pitch_pending(int t
 int seq_engine_pitch_value(int s,int t) { return 0; }
 void seq_engine_preview_step(int t,int step,struct seq_step_preview *p) {
     memset(p,0,sizeof(*p));
-    for(int i=0;i<SEQ_TRACK_POLY;i++) if(fx_events[step][i].type==SONG_EVENT_NOTE) {
-        p->pitch[p->count]=fx_events[step][i].data0; p->delay[p->count++]=0;
+    for(int i=0;i<SEQ_TRACK_POLY;i++) if(fx_cell(step)[i].type==SONG_EVENT_NOTE) {
+        p->pitch[p->count]=fx_cell(step)[i].data0; p->delay[p->count++]=0;
     }
 }
 void seq_engine_set_pitch_mode(int m) {} void seq_engine_set_straight(int e) {}
@@ -183,7 +204,7 @@ int song_get_motion_length(int s,int t) { return fx_len[s][t]; }
 int song_get_motion_start(int s,int t) { return fx_start[s][t]; }
 int song_get_mute(int s,int t) { return fx_mute[s][t]; }
 int song_get_num_step_events(int s,int t,int step) {
-    int n=0; for(int i=0;i<SEQ_TRACK_POLY;i++) n+=!!fx_events[step][i].type; return t==fx_first?n:fx_hit(t,step);
+    int n=0; for(int i=0;i<SEQ_TRACK_POLY;i++) n+=!!fx_cell(step)[i].type; return t==fx_first?n:fx_hit(t,step);
 }
 int song_get_pattern_type(int s,int t) { return 0; }
 int song_get_ratchet_mode(int s,int t,int step) { return fx_ratchet[step]; }
@@ -193,7 +214,7 @@ int song_get_scene_root(int s) { return fx_scene_root[s]; }
 int song_get_scene_sync(void) { return SONG_SCENE_SYNC_BEAT; }
 int song_get_start_delay(int s,int t,int step) { return fx_delay[step]; }
 int song_get_step_event(int s,int t,int step,int slot,struct track_event *e) {
-    *e=fx_events[step][slot]; return e->type ? 0 : -1;
+    *e=fx_cell(step)[slot]; return e->type ? 0 : -1;
 }
 int song_get_step_length(int s,int t) { return fx_rate[s][t]; }
 int song_get_swing(void) { return 50; }
@@ -272,6 +293,46 @@ int main(int argc,char **argv) {
         for(int l=0;l<GUI_NUM_STATUS_LINES;l++) printf("%d|%s|\n",l,gstate.status_lines[l]);
 #endif
         step_edit_toggle_details(); step_edit_set_enable(0);
+        boot(screen); step_edit_set_enable(1); step_edit_adjust_cursor(11,0);
+        step_edit_toggle_details(); bad|=shot(argv[1],"09-step-anatomy",screen);
+#ifdef RENDER_DUMP_TEXT
+        for(int l=0;l<GUI_NUM_STATUS_LINES;l++) printf("%d|%s|\n",l,gstate.status_lines[l]);
+#endif
+        step_edit_set_enable(0);
+        /* Event cards: expanded, slot 1 (the condition) selected. */
+        static const struct { int step; const char *name; } cards[]={{2,"10-card-prb"},{7,"11-card-euc"}};
+        for(unsigned c=0;c<2;c++) {
+            boot(screen); step_edit_set_enable(1); step_edit_adjust_cursor(cards[c].step,0);
+            step_edit_toggle_details(); step_edit_adjust_cursor(1,1);
+            bad|=shot(argv[1],cards[c].name,screen);
+#ifdef RENDER_DUMP_TEXT
+            for(int l=0;l<GUI_NUM_STATUS_LINES;l++) printf("%d|%s|\n",l,gstate.status_lines[l]);
+#endif
+            step_edit_set_enable(0);
+        }
+        /* Hrm/Inv cards: T1 is the Bias source, T2 a follower (Bias Track T1).
+         * Source step 1 = bar 2 of the pitch example: N A3, Hrm Major/Keep, Inv 2. */
+        static struct track_event src[SEQ_TRACK_POLY], fol[SEQ_TRACK_POLY];
+        src[0]=(struct track_event){SONG_EVENT_NOTE,57,100,SEQ_START_DELAY_INHERIT,24};
+        src[1]=(struct track_event){SONG_EVENT_HARMONY,1+SCALE_MAJOR,SONG_HARMONY_ROOT_KEEP,0,0};
+        src[2]=(struct track_event){SONG_EVENT_INVERSION,2,0,0,0};
+        fol[0]=(struct track_event){SONG_EVENT_NOTE,60,100,SEQ_START_DELAY_INHERIT,24};
+        fol[1]=(struct track_event){SONG_EVENT_NOTE,64,100,SEQ_START_DELAY_INHERIT,24};
+        fol[2]=(struct track_event){SONG_EVENT_NOTE,67,100,SEQ_START_DELAY_INHERIT,24};
+        fx_ov=src; boot(screen); step_edit_set_enable(1);
+        step_edit_toggle_details(); step_edit_adjust_cursor(2,1); /* select Hrm slot */
+        bad|=shot(argv[1],"12-card-hrminv-setup",screen);
+#ifdef RENDER_DUMP_TEXT
+        for(int l=0;l<GUI_NUM_STATUS_LINES;l++) printf("%d|%s|\n",l,gstate.status_lines[l]);
+#endif
+        step_edit_set_enable(0);
+        fx_ov=fol; boot(screen); fx_first=1; step_edit_set_enable(1);
+        step_edit_toggle_details();
+        bad|=shot(argv[1],"13-card-hrminv-pitches",screen);
+#ifdef RENDER_DUMP_TEXT
+        for(int l=0;l<GUI_NUM_STATUS_LINES;l++) printf("%d|%s|\n",l,gstate.status_lines[l]);
+#endif
+        step_edit_set_enable(0); fx_first=0; fx_ov=NULL;
         boot(screen); gui_overview_open(PANEL_MENU_CLOCK); bad|=shot(argv[1],"04-clock-overview",screen);
         boot(screen); gui_track_overview_open(5); bad|=shot(argv[1],"05-track-overview",screen);
         boot(screen); gui_scene_overview_open(1); bad|=shot(argv[1],"06-scene-overview",screen);

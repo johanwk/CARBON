@@ -1,0 +1,93 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1260 770" font-family="Helvetica, Arial, sans-serif">
+<defs><marker id="dot" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="7" markerHeight="7"><circle cx="5" cy="5" r="4" fill="#d98a1f"/></marker></defs>
+<rect width="1260" height="770" fill="#fff"/>
+<text x="630.0" y="48" text-anchor="middle" font-size="32" font-weight="bold" fill="#222">Anatomy of a step</text>
+<text x="630.0" y="80" text-anchor="middle" font-size="18" fill="#777">Step Edit, expanded view. Rendered from example data.</text>
+<rect x="422" y="102" width="416.0" height="616.0" rx="10" fill="#333"/>
+<image x="430" y="110" width="400.0" height="600.0" preserveAspectRatio="none" style="image-rendering:pixelated" href="data:image/png;base64,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"/>
+<g transform="translate(430 110) scale(1.25)">
+<defs><pattern id="hatch" width="4" height="4" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="4" height="4" fill="#3a3a3a"/><line x1="0" y1="0" x2="0" y2="4" stroke="#777" stroke-width="1.5"/></pattern><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#ddd"/></marker></defs>
+<path fill-rule="evenodd" fill="#101418" fill-opacity="0.97" d="M40,90 h238 v238 h-238 z M129,121 v31 h31 v-31 z"/>
+<rect x="129" y="121" width="31" height="31" fill="none" stroke="#fff" stroke-width="1"/>
+<text x="49" y="104" font-size="10" font-weight="bold" fill="#fff">Step 12: six slots, read</text>
+<text x="49" y="116" font-size="10" font-weight="bold" fill="#fff">left to right</text>
+<line x1="49" y1="157" x2="268" y2="157" stroke="#ddd" stroke-width="1.2" marker-end="url(#arr)"/>
+<text x="49" y="172" font-size="9.5" font-weight="bold" fill="#fff">When Prb triggers:</text><rect x="49" y="176" width="34" height="30" rx="3" fill="#3f9d4a"/><text x="66.0" y="188" text-anchor="middle" font-size="9" font-weight="bold" fill="#fff">N</text><text x="66.0" y="200" text-anchor="middle" font-size="8.5" fill="#fff">C4</text><rect x="86" y="176" width="34" height="30" rx="3" fill="#2f6fc0"/><text x="103.0" y="188" text-anchor="middle" font-size="9" font-weight="bold" fill="#fff">Prb</text><text x="103.0" y="200" text-anchor="middle" font-size="8.5" fill="#fff">50%</text><rect x="123" y="176" width="34" height="30" rx="3" fill="#3f9d4a"/><text x="140.0" y="188" text-anchor="middle" font-size="9" font-weight="bold" fill="#fff">N</text><text x="140.0" y="200" text-anchor="middle" font-size="8.5" fill="#fff">E4</text><rect x="160" y="176" width="34" height="30" rx="3" fill="#3f9d4a"/><text x="177.0" y="188" text-anchor="middle" font-size="9" font-weight="bold" fill="#fff">N</text><text x="177.0" y="200" text-anchor="middle" font-size="8.5" fill="#fff">G4</text><rect x="197" y="176" width="34" height="30" rx="3" fill="none" stroke="#888" stroke-width="0.8" stroke-dasharray="2 2"/><text x="214.0" y="194.0" text-anchor="middle" font-size="7" fill="#888">empty</text><rect x="234" y="176" width="34" height="30" rx="3" fill="none" stroke="#888" stroke-width="0.8" stroke-dasharray="2 2"/><text x="251.0" y="194.0" text-anchor="middle" font-size="7" fill="#888">empty</text>
+<text x="49" y="226" font-size="9.5" font-weight="bold" fill="#fff">When Prb does not trigger:</text><rect x="49" y="230" width="34" height="30" rx="3" fill="#3f9d4a"/><text x="66.0" y="242" text-anchor="middle" font-size="9" font-weight="bold" fill="#fff">N</text><text x="66.0" y="254" text-anchor="middle" font-size="8.5" fill="#fff">C4</text><rect x="86" y="230" width="34" height="30" rx="3" fill="#2f6fc0"/><text x="103.0" y="242" text-anchor="middle" font-size="9" font-weight="bold" fill="#fff">Prb</text><text x="103.0" y="254" text-anchor="middle" font-size="8.5" fill="#fff">50%</text><rect x="123" y="230" width="34" height="30" rx="3" fill="url(#hatch)" stroke="#999" stroke-width="0.8"/><text x="140.0" y="242" text-anchor="middle" font-size="9" font-weight="bold" fill="#888">N</text><text x="140.0" y="254" text-anchor="middle" font-size="8.5" fill="#888">E4</text><rect x="160" y="230" width="34" height="30" rx="3" fill="url(#hatch)" stroke="#999" stroke-width="0.8"/><text x="177.0" y="242" text-anchor="middle" font-size="9" font-weight="bold" fill="#888">N</text><text x="177.0" y="254" text-anchor="middle" font-size="8.5" fill="#888">G4</text><rect x="197" y="230" width="34" height="30" rx="3" fill="none" stroke="#888" stroke-width="0.8" stroke-dasharray="2 2"/><text x="214.0" y="248.0" text-anchor="middle" font-size="7" fill="#888">empty</text><rect x="234" y="230" width="34" height="30" rx="3" fill="none" stroke="#888" stroke-width="0.8" stroke-dasharray="2 2"/><text x="251.0" y="248.0" text-anchor="middle" font-size="7" fill="#888">empty</text>
+<text x="49" y="276" font-size="8.5" fill="#ddd">Slots to the right of a</text>
+<text x="49" y="287" font-size="8.5" fill="#ddd">condition that does not trigger</text>
+<text x="49" y="298" font-size="8.5" fill="#ddd">are skipped on this visit only.</text>
+<rect x="188" y="270" width="8" height="8" rx="1.5" fill="#3f9d4a"/>
+<text x="199" y="277" font-size="8.5" fill="#ddd">Note</text>
+<rect x="188" y="284" width="8" height="8" rx="1.5" fill="#2f6fc0"/>
+<text x="199" y="291" font-size="8.5" fill="#ddd">Condition</text>
+<rect x="188" y="298" width="8" height="8" rx="1.5" fill="url(#hatch)" stroke="#999" stroke-width="0.6"/>
+<text x="199" y="305" font-size="8.5" fill="#ddd">Skipped</text>
+<text x="49" y="320" font-size="7.5" font-style="italic" fill="#aaa">Explanation drawn over the grid; not shown on CARBON.</text>
+</g>
+<rect x="540.0" y="561.25" width="240.0" height="12.5" fill="none" stroke="#d98a1f" stroke-width="2.5" rx="3"/>
+<rect x="580.0" y="561.25" width="30.0" height="27.5" fill="none" stroke="#d98a1f" stroke-width="2.5" rx="3"/>
+<rect x="490.0" y="576.25" width="40.0" height="57.5" fill="none" stroke="#d98a1f" stroke-width="2.5" rx="3"/>
+<rect x="490.0" y="636.25" width="250.0" height="12.5" fill="none" stroke="#d98a1f" stroke-width="2.5" rx="3"/>
+<rect x="593.75" y="263.75" width="33.75" height="33.75" fill="none" stroke="#d98a1f" stroke-width="2.5" rx="3"/>
+<line x1="360" y1="247.5" x2="480.0" y2="247.5" stroke="#d98a1f" stroke-width="2" marker-end="url(#dot)"/>
+<rect x="20" y="192.5" width="340" height="110" rx="8" fill="#fff8ec" stroke="#d98a1f" stroke-width="2"/>
+<circle cx="40" cy="214.5" r="13" fill="#d98a1f"/>
+<text x="40" y="220.5" text-anchor="middle" font-size="16" font-weight="bold" fill="#fff">5</text>
+<text x="62" y="221.5" font-size="21" font-weight="bold" fill="#222">About the overlay</text>
+<text x="36" y="246.5" font-size="17" fill="#333">Drawn over the grid for this</text>
+<text x="36" y="268.5" font-size="17" fill="#333">guide. On CARBON you see the step</text>
+<text x="36" y="290.5" font-size="17" fill="#333">grid here.</text>
+<line x1="360" y1="498.0" x2="580.0" y2="582.5" stroke="#d98a1f" stroke-width="2" marker-end="url(#dot)"/>
+<rect x="20" y="454.0" width="340" height="88" rx="8" fill="#fff8ec" stroke="#d98a1f" stroke-width="2"/>
+<circle cx="40" cy="476.0" r="13" fill="#d98a1f"/>
+<text x="40" y="482.0" text-anchor="middle" font-size="16" font-weight="bold" fill="#fff">2</text>
+<text x="62" y="483.0" font-size="21" font-weight="bold" fill="#222">A condition</text>
+<text x="36" y="508.0" font-size="17" fill="#333">Prb 50%: slots to its right run</text>
+<text x="36" y="530.0" font-size="17" fill="#333">only when it triggers.</text>
+<line x1="360" y1="602.0" x2="490.0" y2="612.5" stroke="#d98a1f" stroke-width="2" marker-end="url(#dot)"/>
+<rect x="20" y="558.0" width="340" height="88" rx="8" fill="#fff8ec" stroke="#d98a1f" stroke-width="2"/>
+<circle cx="40" cy="580.0" r="13" fill="#d98a1f"/>
+<text x="40" y="586.0" text-anchor="middle" font-size="16" font-weight="bold" fill="#fff">3</text>
+<text x="62" y="587.0" font-size="21" font-weight="bold" fill="#222">Note settings</text>
+<text x="36" y="612.0" font-size="17" fill="#333">Note, Vel, Gate and Dly apply to</text>
+<text x="36" y="634.0" font-size="17" fill="#333">note slots; other types show ---.</text>
+<line x1="360" y1="706.0" x2="490.0" y2="642.5" stroke="#d98a1f" stroke-width="2" marker-end="url(#dot)"/>
+<rect x="20" y="662.0" width="340" height="88" rx="8" fill="#fff8ec" stroke="#d98a1f" stroke-width="2"/>
+<circle cx="40" cy="684.0" r="13" fill="#d98a1f"/>
+<text x="40" y="690.0" text-anchor="middle" font-size="16" font-weight="bold" fill="#fff">4</text>
+<text x="62" y="691.0" font-size="21" font-weight="bold" fill="#222">Whole-step settings</text>
+<text x="36" y="716.0" font-size="17" fill="#333">Ratchet and the shared Step delay</text>
+<text x="36" y="738.0" font-size="17" fill="#333">apply to the step, not one slot.</text>
+<line x1="900.0" y1="280.0" x2="627.5" y2="280.0" stroke="#d98a1f" stroke-width="2" marker-end="url(#dot)"/>
+<rect x="900.0" y="223.0" width="340" height="114" rx="8" fill="#fff8ec" stroke="#d98a1f" stroke-width="2"/>
+<circle cx="920.0" cy="245.0" r="13" fill="#d98a1f"/>
+<text x="920.0" y="251.0" text-anchor="middle" font-size="16" font-weight="bold" fill="#fff">6</text>
+<text x="942.0" y="252.0" font-size="21" font-weight="bold" fill="#222">Selected step  -</text>
+<text x="942.0" y="278.0" font-size="21" font-weight="bold" fill="#222">Motion Start</text>
+<text x="916.0" y="303.0" font-size="17" fill="#333">The real grid cell for step 12</text>
+<text x="916.0" y="325.0" font-size="17" fill="#333">stays visible.</text>
+<line x1="900.0" y1="397.0" x2="770.0" y2="348.75" stroke="#d98a1f" stroke-width="2" marker-end="url(#dot)"/>
+<rect x="900.0" y="353.0" width="340" height="88" rx="8" fill="#fff8ec" stroke="#d98a1f" stroke-width="2"/>
+<circle cx="920.0" cy="375.0" r="13" fill="#d98a1f"/>
+<text x="920.0" y="381.0" text-anchor="middle" font-size="16" font-weight="bold" fill="#fff">7</text>
+<text x="942.0" y="382.0" font-size="21" font-weight="bold" fill="#222">Condition triggers</text>
+<text x="916.0" y="407.0" font-size="17" fill="#333">Every slot runs: C4, E4 and G4</text>
+<text x="916.0" y="429.0" font-size="17" fill="#333">play.</text>
+<line x1="900.0" y1="525.0" x2="770.0" y2="416.25" stroke="#d98a1f" stroke-width="2" marker-end="url(#dot)"/>
+<rect x="900.0" y="457.0" width="340" height="136" rx="8" fill="#fff8ec" stroke="#d98a1f" stroke-width="2"/>
+<circle cx="920.0" cy="479.0" r="13" fill="#d98a1f"/>
+<text x="920.0" y="485.0" text-anchor="middle" font-size="16" font-weight="bold" fill="#fff">8</text>
+<text x="942.0" y="486.0" font-size="21" font-weight="bold" fill="#222">Condition does not</text>
+<text x="942.0" y="512.0" font-size="21" font-weight="bold" fill="#222">trigger</text>
+<text x="916.0" y="537.0" font-size="17" fill="#333">C4 still plays; E4 and G4 are</text>
+<text x="916.0" y="559.0" font-size="17" fill="#333">skipped this time. The next visit</text>
+<text x="916.0" y="581.0" font-size="17" fill="#333">starts afresh.</text>
+<line x1="900.0" y1="653.0" x2="780.0" y2="567.5" stroke="#d98a1f" stroke-width="2" marker-end="url(#dot)"/>
+<rect x="900.0" y="609.0" width="340" height="88" rx="8" fill="#fff8ec" stroke="#d98a1f" stroke-width="2"/>
+<circle cx="920.0" cy="631.0" r="13" fill="#d98a1f"/>
+<text x="920.0" y="637.0" text-anchor="middle" font-size="16" font-weight="bold" fill="#fff">1</text>
+<text x="942.0" y="638.0" font-size="21" font-weight="bold" fill="#222">Six event slots</text>
+<text x="916.0" y="663.0" font-size="17" fill="#333">Each step holds up to six events.</text>
+<text x="916.0" y="685.0" font-size="17" fill="#333">Empty slots do nothing.</text>
+</svg>

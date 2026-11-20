@@ -1,0 +1,183 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1260 770" font-family="Helvetica, Arial, sans-serif">
+<defs><marker id="dot" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="7" markerHeight="7"><circle cx="5" cy="5" r="4" fill="#d98a1f"/></marker></defs>
+<rect width="1260" height="770" fill="#fff"/>
+<text x="630.0" y="48" text-anchor="middle" font-size="32" font-weight="bold" fill="#222">Event card: Hrm and Inv on a Bias source (2/2)</text>
+<text x="630.0" y="80" text-anchor="middle" font-size="18" fill="#777">Effect on pitches. Screen: Step Edit on Track 2, the follower. Rendered from example data.</text>
+<rect x="422" y="102" width="416.0" height="616.0" rx="10" fill="#333"/>
+<image x="430" y="110" width="400.0" height="600.0" preserveAspectRatio="none" style="image-rendering:pixelated" href="data:image/png;base64,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"/>
+<g transform="translate(430 110) scale(1.25)">
+<defs><pattern id="hatch" width="4" height="4" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="4" height="4" fill="#3a3a3a"/><line x1="0" y1="0" x2="0" y2="4" stroke="#777" stroke-width="1.5"/></pattern><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#ddd"/></marker></defs>
+<path fill-rule="evenodd" fill="#101418" fill-opacity="0.97" d="M40,90 h238 v238 h-238 z M42,92 v31 h31 v-31 z"/>
+<rect x="42" y="92" width="31" height="31" fill="none" stroke="#fff" stroke-width="1"/>
+<text x="49" y="104" font-size="10" font-weight="bold" fill="#fff"></text>
+<rect x="45" y="131" width="229" height="64" rx="4" fill="none" stroke="#c0504d" stroke-width="1.2"/>
+<rect x="45" y="131" width="56" height="64" rx="4" fill="#c0504d"/>
+<text x="73" y="145" font-size="12" fill="#fff" font-weight="bold" text-anchor="middle">T1</text>
+<text x="73" y="157" font-size="7.5" fill="#fff" text-anchor="middle">source:</text>
+<text x="73" y="167" font-size="7.5" fill="#fff" text-anchor="middle">Inv and</text>
+<text x="73" y="177" font-size="7.5" fill="#fff" text-anchor="middle">Hrm are</text>
+<text x="73" y="187" font-size="7.5" fill="#fff" font-weight="bold" text-anchor="middle">set here</text>
+<text x="125.5" y="141" font-size="7.5" fill="#aaa" text-anchor="middle">Bar 1</text>
+<rect x="106" y="145" width="39" height="14" rx="2" fill="#3f9d4a"/>
+<text x="109" y="155" font-size="7.5" fill="#fff" font-weight="bold" text-anchor="start">N</text>
+<text x="142" y="155" font-size="7.5" fill="#fff" font-weight="bold" text-anchor="end">C4</text>
+<rect x="106" y="161" width="39" height="14" rx="2" fill="#c0504d"/>
+<text x="109" y="171" font-size="7.5" fill="#fff" font-weight="bold" text-anchor="start">Hrm</text>
+<text x="142" y="171" font-size="7.5" fill="#fff" font-weight="bold" text-anchor="end">Major</text>
+<rect x="106" y="177" width="39" height="14" rx="2" fill="#c0504d"/>
+<text x="109" y="187" font-size="7.5" fill="#fff" font-weight="bold" text-anchor="start">Inv</text>
+<text x="142" y="187" font-size="7.5" fill="#fff" font-weight="bold" text-anchor="end">0</text>
+<text x="168.5" y="141" font-size="7.5" fill="#aaa" text-anchor="middle">Bar 2</text>
+<rect x="149" y="145" width="39" height="14" rx="2" fill="#3f9d4a"/>
+<text x="152" y="155" font-size="7.5" fill="#fff" font-weight="bold" text-anchor="start">N</text>
+<text x="185" y="155" font-size="7.5" fill="#fff" font-weight="bold" text-anchor="end">A3</text>
+<rect x="149" y="161" width="39" height="14" rx="2" fill="#c0504d"/>
+<text x="152" y="171" font-size="7.5" fill="#fff" font-weight="bold" text-anchor="start">Inv</text>
+<text x="185" y="171" font-size="7.5" fill="#fff" font-weight="bold" text-anchor="end">2</text>
+<text x="211.5" y="141" font-size="7.5" fill="#aaa" text-anchor="middle">Bar 3</text>
+<rect x="192" y="145" width="39" height="14" rx="2" fill="#3f9d4a"/>
+<text x="195" y="155" font-size="7.5" fill="#fff" font-weight="bold" text-anchor="start">N</text>
+<text x="228" y="155" font-size="7.5" fill="#fff" font-weight="bold" text-anchor="end">F4</text>
+<rect x="192" y="161" width="39" height="14" rx="2" fill="#c0504d"/>
+<text x="195" y="171" font-size="7.5" fill="#fff" font-weight="bold" text-anchor="start">Inv</text>
+<text x="228" y="171" font-size="7.5" fill="#fff" font-weight="bold" text-anchor="end">1</text>
+<text x="254.5" y="141" font-size="7.5" fill="#aaa" text-anchor="middle">Bar 4</text>
+<rect x="235" y="145" width="39" height="14" rx="2" fill="#3f9d4a"/>
+<text x="238" y="155" font-size="7.5" fill="#fff" font-weight="bold" text-anchor="start">N</text>
+<text x="271" y="155" font-size="7.5" fill="#fff" font-weight="bold" text-anchor="end">G4</text>
+<rect x="235" y="161" width="39" height="14" rx="2" fill="none" stroke="#888" stroke-width="0.8" stroke-dasharray="2 1.5"/>
+<text x="238" y="171" font-size="7.5" fill="#999" text-anchor="start">Inv</text>
+<text x="271" y="171" font-size="7.5" fill="#999" text-anchor="end">1</text>
+<text x="49" y="207" font-size="9.5" fill="#fff" font-weight="bold" text-anchor="start">T2 stores C4 E4 G4 and plays:</text>
+<text x="49" y="226" font-size="8.5" fill="#fff" font-weight="bold" text-anchor="start">Bias only</text>
+<text x="49" y="237" font-size="7" fill="#aaa" text-anchor="start">from T1 note</text>
+<rect x="106" y="212" width="39" height="35" rx="3" fill="#22282e" stroke="#555" stroke-width="0.6"/>
+<text x="125.5" y="222" font-size="8.5" fill="#fff" text-anchor="middle">G4</text>
+<text x="125.5" y="233" font-size="8.5" fill="#fff" text-anchor="middle">E4</text>
+<text x="125.5" y="244" font-size="8.5" fill="#fff" text-anchor="middle">C4</text>
+<rect x="149" y="212" width="39" height="35" rx="3" fill="#22282e" stroke="#555" stroke-width="0.6"/>
+<text x="168.5" y="222" font-size="8.5" fill="#fff" text-anchor="middle">E4</text>
+<text x="168.5" y="233" font-size="8.5" fill="#fff" text-anchor="middle">C#4</text>
+<text x="168.5" y="244" font-size="8.5" fill="#fff" text-anchor="middle">A3</text>
+<rect x="192" y="212" width="39" height="35" rx="3" fill="#22282e" stroke="#555" stroke-width="0.6"/>
+<text x="211.5" y="222" font-size="8.5" fill="#fff" text-anchor="middle">C5</text>
+<text x="211.5" y="233" font-size="8.5" fill="#fff" text-anchor="middle">A4</text>
+<text x="211.5" y="244" font-size="8.5" fill="#fff" text-anchor="middle">F4</text>
+<rect x="235" y="212" width="39" height="35" rx="3" fill="#22282e" stroke="#555" stroke-width="0.6"/>
+<text x="254.5" y="222" font-size="8.5" fill="#fff" text-anchor="middle">D5</text>
+<text x="254.5" y="233" font-size="8.5" fill="#fff" text-anchor="middle">B4</text>
+<text x="254.5" y="244" font-size="8.5" fill="#fff" text-anchor="middle">G4</text>
+<text x="49" y="264" font-size="8.5" fill="#fff" font-weight="bold" text-anchor="start">+ Hrm</text>
+<text x="49" y="275" font-size="7" fill="#aaa" text-anchor="start">from T1 Hrm</text>
+<rect x="106" y="250" width="39" height="35" rx="3" fill="#22282e" stroke="#555" stroke-width="0.6"/>
+<text x="125.5" y="260" font-size="8.5" fill="#fff" text-anchor="middle">G4</text>
+<text x="125.5" y="271" font-size="8.5" fill="#fff" text-anchor="middle">E4</text>
+<text x="125.5" y="282" font-size="8.5" fill="#fff" text-anchor="middle">C4</text>
+<rect x="149" y="250" width="39" height="35" rx="3" fill="#22282e" stroke="#555" stroke-width="0.6"/>
+<text x="168.5" y="260" font-size="8.5" fill="#fff" text-anchor="middle">E4</text>
+<text x="168.5" y="271" font-size="8.5" fill="#c0504d" font-weight="bold" text-anchor="middle">C4</text>
+<text x="168.5" y="282" font-size="8.5" fill="#fff" text-anchor="middle">A3</text>
+<rect x="192" y="250" width="39" height="35" rx="3" fill="#22282e" stroke="#555" stroke-width="0.6"/>
+<text x="211.5" y="260" font-size="8.5" fill="#fff" text-anchor="middle">C5</text>
+<text x="211.5" y="271" font-size="8.5" fill="#fff" text-anchor="middle">A4</text>
+<text x="211.5" y="282" font-size="8.5" fill="#fff" text-anchor="middle">F4</text>
+<rect x="235" y="250" width="39" height="35" rx="3" fill="#22282e" stroke="#555" stroke-width="0.6"/>
+<text x="254.5" y="260" font-size="8.5" fill="#fff" text-anchor="middle">D5</text>
+<text x="254.5" y="271" font-size="8.5" fill="#fff" text-anchor="middle">B4</text>
+<text x="254.5" y="282" font-size="8.5" fill="#fff" text-anchor="middle">G4</text>
+<text x="49" y="302" font-size="8.5" fill="#fff" font-weight="bold" text-anchor="start">+ Inv</text>
+<text x="49" y="313" font-size="7" fill="#aaa" text-anchor="start">from T1 Inv</text>
+<rect x="106" y="288" width="39" height="35" rx="3" fill="#22282e" stroke="#555" stroke-width="0.6"/>
+<text x="125.5" y="298" font-size="8.5" fill="#fff" text-anchor="middle">G4</text>
+<text x="125.5" y="309" font-size="8.5" fill="#fff" text-anchor="middle">E4</text>
+<text x="125.5" y="320" font-size="8.5" fill="#fff" text-anchor="middle">C4</text>
+<rect x="149" y="288" width="39" height="35" rx="3" fill="#22282e" stroke="#555" stroke-width="0.6"/>
+<text x="168.5" y="298" font-size="8.5" fill="#c0504d" font-weight="bold" text-anchor="middle">C5</text>
+<text x="168.5" y="309" font-size="8.5" fill="#c0504d" font-weight="bold" text-anchor="middle">A4</text>
+<text x="168.5" y="320" font-size="8.5" fill="#fff" text-anchor="middle">E4</text>
+<rect x="192" y="288" width="39" height="35" rx="3" fill="#22282e" stroke="#555" stroke-width="0.6"/>
+<text x="211.5" y="298" font-size="8.5" fill="#c0504d" font-weight="bold" text-anchor="middle">F5</text>
+<text x="211.5" y="309" font-size="8.5" fill="#fff" text-anchor="middle">C5</text>
+<text x="211.5" y="320" font-size="8.5" fill="#fff" text-anchor="middle">A4</text>
+<rect x="235" y="288" width="39" height="35" rx="3" fill="#22282e" stroke="#555" stroke-width="0.6"/>
+<text x="254.5" y="298" font-size="8.5" fill="#c0504d" font-weight="bold" text-anchor="middle">G5</text>
+<text x="254.5" y="309" font-size="8.5" fill="#fff" text-anchor="middle">D5</text>
+<text x="254.5" y="320" font-size="8.5" fill="#fff" text-anchor="middle">B4</text>
+<text x="49" y="327" font-size="7" fill="#ddd" text-anchor="start">Coloured = changed by that row.</text>
+</g>
+<rect x="485.0" y="227.5" width="33.75" height="33.75" fill="none" stroke="#d98a1f" stroke-width="2.5" rx="3"/>
+<rect x="540.0" y="576.25" width="110.0" height="12.5" fill="none" stroke="#d98a1f" stroke-width="2.5" rx="3"/>
+<line x1="360" y1="189.0" x2="480.0" y2="247.5" stroke="#d98a1f" stroke-width="2" marker-end="url(#dot)"/>
+<rect x="20" y="132.0" width="340" height="114" rx="8" fill="#fff8ec" stroke="#d98a1f" stroke-width="2"/>
+<circle cx="40" cy="154.0" r="13" fill="#d98a1f"/>
+<text x="40" y="160.0" text-anchor="middle" font-size="16" font-weight="bold" fill="#fff">1</text>
+<text x="62" y="161.0" font-size="21" font-weight="bold" fill="#222">One chord, many</text>
+<text x="62" y="187.0" font-size="21" font-weight="bold" fill="#222">harmonies</text>
+<text x="36" y="212.0" font-size="17" fill="#333">T2 stores C-E-G once. T1 changes</text>
+<text x="36" y="234.0" font-size="17" fill="#333">what is heard, bar by bar.</text>
+<line x1="360" y1="328.0" x2="486.25" y2="313.75" stroke="#d98a1f" stroke-width="2" marker-end="url(#dot)"/>
+<rect x="20" y="262.0" width="340" height="132" rx="8" fill="#fff8ec" stroke="#d98a1f" stroke-width="2"/>
+<circle cx="40" cy="284.0" r="13" fill="#d98a1f"/>
+<text x="40" y="290.0" text-anchor="middle" font-size="16" font-weight="bold" fill="#fff">2</text>
+<text x="62" y="291.0" font-size="21" font-weight="bold" fill="#222">Set on T1, the source</text>
+<text x="36" y="316.0" font-size="17" fill="#333">Each bar, one T1 step holds a note</text>
+<text x="36" y="338.0" font-size="17" fill="#333">(the bias) and, where it changes,</text>
+<text x="36" y="360.0" font-size="17" fill="#333">an Inv value. Hrm Major is set</text>
+<text x="36" y="382.0" font-size="17" fill="#333">once, in bar 1.</text>
+<line x1="360" y1="454.0" x2="491.25" y2="392.5" stroke="#d98a1f" stroke-width="2" marker-end="url(#dot)"/>
+<rect x="20" y="410.0" width="340" height="88" rx="8" fill="#fff8ec" stroke="#d98a1f" stroke-width="2"/>
+<circle cx="40" cy="432.0" r="13" fill="#d98a1f"/>
+<text x="40" y="438.0" text-anchor="middle" font-size="16" font-weight="bold" fill="#fff">3</text>
+<text x="62" y="439.0" font-size="21" font-weight="bold" fill="#222">Bias only</text>
+<text x="36" y="464.0" font-size="17" fill="#333">Transposing the chord shape gives</text>
+<text x="36" y="486.0" font-size="17" fill="#333">A-C#-E: right shape, wrong key.</text>
+<line x1="360" y1="569.0" x2="491.25" y2="440.0" stroke="#d98a1f" stroke-width="2" marker-end="url(#dot)"/>
+<rect x="20" y="514.0" width="340" height="110" rx="8" fill="#fff8ec" stroke="#d98a1f" stroke-width="2"/>
+<circle cx="40" cy="536.0" r="13" fill="#d98a1f"/>
+<text x="40" y="542.0" text-anchor="middle" font-size="16" font-weight="bold" fill="#fff">4</text>
+<text x="62" y="543.0" font-size="21" font-weight="bold" fill="#222">+ Hrm</text>
+<text x="36" y="568.0" font-size="17" fill="#333">The scale pulls notes into C</text>
+<text x="36" y="590.0" font-size="17" fill="#333">major: A-C-E, a real A minor</text>
+<text x="36" y="612.0" font-size="17" fill="#333">chord.</text>
+<line x1="360" y1="695.0" x2="491.25" y2="487.5" stroke="#d98a1f" stroke-width="2" marker-end="url(#dot)"/>
+<rect x="20" y="640.0" width="340" height="110" rx="8" fill="#fff8ec" stroke="#d98a1f" stroke-width="2"/>
+<circle cx="40" cy="662.0" r="13" fill="#d98a1f"/>
+<text x="40" y="668.0" text-anchor="middle" font-size="16" font-weight="bold" fill="#fff">5</text>
+<text x="62" y="669.0" font-size="21" font-weight="bold" fill="#222">+ Inv</text>
+<text x="36" y="694.0" font-size="17" fill="#333">T1&#x27;s Inv value: 0 keeps root</text>
+<text x="36" y="716.0" font-size="17" fill="#333">position; 1 and 2 raise the lowest</text>
+<text x="36" y="738.0" font-size="17" fill="#333">one or two notes an octave.</text>
+<line x1="900.0" y1="240.0" x2="497.5" y2="240.0" stroke="#d98a1f" stroke-width="2" marker-end="url(#dot)"/>
+<rect x="900.0" y="185.0" width="340" height="110" rx="8" fill="#fff8ec" stroke="#d98a1f" stroke-width="2"/>
+<circle cx="920.0" cy="207.0" r="13" fill="#d98a1f"/>
+<text x="920.0" y="213.0" text-anchor="middle" font-size="16" font-weight="bold" fill="#fff">6</text>
+<text x="942.0" y="214.0" font-size="21" font-weight="bold" fill="#222">This screen: T2</text>
+<text x="916.0" y="239.0" font-size="17" fill="#333">The follower. Its stored chord</text>
+<text x="916.0" y="261.0" font-size="17" fill="#333">stays C4 E4 G4; nothing is set</text>
+<text x="916.0" y="283.0" font-size="17" fill="#333">here.</text>
+<line x1="900.0" y1="379.0" x2="762.5" y2="318.75" stroke="#d98a1f" stroke-width="2" marker-end="url(#dot)"/>
+<rect x="900.0" y="311.0" width="340" height="136" rx="8" fill="#fff8ec" stroke="#d98a1f" stroke-width="2"/>
+<circle cx="920.0" cy="333.0" r="13" fill="#d98a1f"/>
+<text x="920.0" y="339.0" text-anchor="middle" font-size="16" font-weight="bold" fill="#fff">8</text>
+<text x="942.0" y="340.0" font-size="21" font-weight="bold" fill="#222">Stays active until</text>
+<text x="942.0" y="366.0" font-size="21" font-weight="bold" fill="#222">changed</text>
+<text x="916.0" y="391.0" font-size="17" fill="#333">Bar 4 has no Inv of its own</text>
+<text x="916.0" y="413.0" font-size="17" fill="#333">(dashed): Inv 1 from bar 3 still</text>
+<text x="916.0" y="435.0" font-size="17" fill="#333">applies. The same holds for Hrm.</text>
+<line x1="900.0" y1="529.0" x2="770.0" y2="485.0" stroke="#d98a1f" stroke-width="2" marker-end="url(#dot)"/>
+<rect x="900.0" y="463.0" width="340" height="132" rx="8" fill="#fff8ec" stroke="#d98a1f" stroke-width="2"/>
+<circle cx="920.0" cy="485.0" r="13" fill="#d98a1f"/>
+<text x="920.0" y="491.0" text-anchor="middle" font-size="16" font-weight="bold" fill="#fff">7</text>
+<text x="942.0" y="492.0" font-size="21" font-weight="bold" fill="#222">Computed, not drawn</text>
+<text x="916.0" y="517.0" font-size="17" fill="#333">From CARBON&#x27;s voicing and scale</text>
+<text x="916.0" y="539.0" font-size="17" fill="#333">code. Song root C. Note names: C4</text>
+<text x="916.0" y="561.0" font-size="17" fill="#333">= MIDI note 60 (some DAWs call it</text>
+<text x="916.0" y="583.0" font-size="17" fill="#333">C3).</text>
+<line x1="900.0" y1="655.0" x2="780.0" y2="582.5" stroke="#d98a1f" stroke-width="2" marker-end="url(#dot)"/>
+<rect x="900.0" y="611.0" width="340" height="88" rx="8" fill="#fff8ec" stroke="#d98a1f" stroke-width="2"/>
+<circle cx="920.0" cy="633.0" r="13" fill="#d98a1f"/>
+<text x="920.0" y="639.0" text-anchor="middle" font-size="16" font-weight="bold" fill="#fff">9</text>
+<text x="942.0" y="640.0" font-size="21" font-weight="bold" fill="#222">What you edit</text>
+<text x="916.0" y="665.0" font-size="17" fill="#333">Only the stored chord. Hrm and Inv</text>
+<text x="916.0" y="687.0" font-size="17" fill="#333">are not placed on T2.</text>
+</svg>

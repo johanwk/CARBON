@@ -1,0 +1,33 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later */
+/* Pitch data for the Hrm/Inv documentation card, computed with the
+ * production stages in playback order (seq_engine_track_play_step):
+ *   1. voicing_transform() on the follower's stored notes (Inv/Compact)
+ *   2. + bias (source Note - SEQ_TRANSPOSE_CENTRE)  [step_pitch_input]
+ *   3. scale_quantize_root() with the effective scale/root [outproc]
+ * Output lines: "<row><bar> p,p,p" (e.g. "hrm1 57,60,64"); "src<bar> note,inv". */
+#include <stdio.h>
+#include "../../src/seq/voicing.h"
+#include "../../src/seq/scale.h"
+static const int chord[3] = {60, 64, 67};          /* follower: C4 E4 G4 */
+static const int bias_note[4] = {60, 57, 65, 67};  /* source: C4 A3 F4 G4 */
+static const int inv[4] = {0, 2, 1, 1};            /* source Inv per bar */
+static void row(const char *name, int scale, const int *rot) {
+    for(int bar = 0; bar < 4; bar++) {
+        int p[3] = {chord[0], chord[1], chord[2]};
+        if(rot) voicing_transform(p, 3, rot[bar], 0);
+        printf("%s%d ", name, bar);
+        for(int i = 0; i < 3; i++) {
+            int n = p[i] + bias_note[bar] - SEQ_TRANSPOSE_CENTRE;
+            printf("%s%d", i ? "," : "", scale < 0 ? n : scale_quantize_root(n, scale, 0));
+        }
+        putchar('\n');
+    }
+}
+int main(void) {
+    for(int bar = 0; bar < 4; bar++)   /* source step per bar: note, Inv value */
+        printf("src%d %d,%d\n", bar, bias_note[bar], inv[bar]);
+    row("bias", -1, 0);               /* bias only, no scale (Chromatic)   */
+    row("hrm", SCALE_MAJOR, 0);       /* + Hrm: Major (root C)             */
+    row("inv", SCALE_MAJOR, inv);     /* + Inv rotations per bar           */
+    return 0;
+}

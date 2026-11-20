@@ -25,3 +25,6 @@ __pycache__/
 
 # Rust host backup build products
 /tools/carbon-backup/target/
+
+# macOS Finder metadata
+.DS_Store
