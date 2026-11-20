@@ -80,6 +80,13 @@ static void test_details_layout(void) {
             gui_set_status_highlight_part(row,23,4,GFX_HIGHLIGHT_INVERT);
             assert(l->highlight[23]==GFX_HIGHLIGHT_INVERT);
         }
+        gui_clear_status_text_all();
+        gui_set_status_text_part(5,0,5,"Dly  ");
+        gui_set_status_text_part(5,25,4,"s7/8");
+        gui_set_status_highlight_part(5,25,4,GFX_HIGHLIGHT_INVERT);
+        struct gfx_label *last=&gstate.glabels[gui_status_label(5)];
+        assert(strlen(last->text)==29 && !strcmp(last->text+25,"s7/8"));
+        assert(last->w==232 && last->highlight[28]==GFX_HIGHLIGHT_INVERT);
         before=rectangles;
         assert(!gui_draw_preview_grids() && rectangles==before);
         gstate.active_step[0]=5;gstate.track_select[0]=1;gstate.arp_enable[0]=1;
@@ -94,7 +101,31 @@ static void test_details_layout(void) {
         assert(gstate.grid_overlay[12]==0xffcccc00);
     }
 }
+void log_info(char *fmt, ...) {}
+static void test_cold_gui_init(void) {
+    for(int lcd=0;lcd<2;lcd++) {
+        // GUI lives in .ccm, not the startup-zeroed .bss.
+        memset(&gstate,0xa5,sizeof(gstate));
+        assert(gui_init()==0);
+        assert(!gstate.step_details && !gstate.clock_help && !gstate.clock_help_drawn);
+        assert(!gstate.force_refresh && !gstate.force_reinit && !gstate.status_override);
+        gstate.screen_type=lcd;
+        gstate.GUI_GRID_X=lcd?25:40;gstate.GUI_GRID_Y=lcd?80:90;gstate.GUI_GRID_H=238;
+        gstate.GUI_PREVIEW_X=lcd?30:45;gstate.GUI_PREVIEW_Y=lcd?354:331;
+        gstate.GUI_PREVIEW_GRID_SPACING=lcd?44:36;
+        gstate.GUI_PREVIEW_SQUARE_W=gstate.GUI_PREVIEW_SQUARE_H=lcd?5:4;
+        gstate.GUI_PREVIEW_SELECT_Y=lcd?397:366;gstate.GUI_PREVIEW_SELECT_H=4;
+        gstate.GUI_PREVIEW_ARP_Y=lcd?404:372;
+        gstate.step_details_drawn=255; // gui_startup requests layout restoration
+        assert(gui_step_details_layout(0));
+        int before=rectangles;
+        assert(gui_draw_preview_grids());
+        assert(rectangles-before==6*(64+2)); // all cells plus select/arp bars
+        before=rectangles;assert(!gui_draw_preview_grids() && rectangles==before);
+    }
+}
 int main(void) {
+    test_cold_gui_init();
     test_details_layout();
     test_pitch_grid();
     char *label = gstate.glabels[GUI_LABEL_SONG_MODE].text;

@@ -208,19 +208,21 @@ static void test_expanded_details(void) {
     int captures=undo_captures;
     step_edit_toggle_details();
     assert(details_visible && step_details_preference && !count);
+    assert(!strncmp(rows[2],"Note ",5) && !strncmp(rows[3],"Vel  ",5));
+    assert(!strncmp(rows[4],"Gate ",5) && !strncmp(rows[5],"Dly  ",5));
     assert(undo_captures==captures && !memcmp(saved,events,sizeof(saved)));
-    assert(!strncmp(rows[1]+7,"Prb",3) && !strncmp(rows[2]+7,"75%",3));
-    assert(!strncmp(rows[3]+3,"96",2) && !strncmp(rows[3]+23,"88",2));
-    assert(!strncmp(rows[5]+3,"Step",4) && !strncmp(rows[5]+23,"OFF",3));
-    assert(!strncmp(rows[4]+7,"---",3) && !strncmp(rows[5]+7,"---",3));
+    assert(!strncmp(rows[1]+9,"Prb",3) && !strncmp(rows[2]+9,"75%",3));
+    assert(!strncmp(rows[3]+5,"96",2) && !strncmp(rows[3]+25,"88",2));
+    assert(!strncmp(rows[5]+5,"Step",4) && !strncmp(rows[5]+25,"OFF",3));
+    assert(!strncmp(rows[4]+9,"---",3) && !strncmp(rows[5]+9,"---",3));
     assert(strstr(rows[6],"Ratchet:1 Step delay:"));
     for(int adjustment=0;adjustment<4;adjustment++) {
         sedits.last_adjust_type=adjustment;step_edit_update_display();
-        assert(!strncmp(rows[3]+3,"96",2));
-        assert(!strncmp(rows[5]+3,"Step",4));
+        assert(!strncmp(rows[3]+5,"96",2));
+        assert(!strncmp(rows[5]+5,"Step",4));
     }
     sedits.event_pos=5;step_edit_update_display();
-    assert(!strncmp(rows[5]+23,"OFF",3));
+    assert(!strncmp(rows[5]+25,"OFF",3));
     step_edit_set_enable(0);assert(!details_visible && step_details_preference);
     sedits.enable=1;step_edit_update_display();assert(details_visible);
     step_edit_toggle_details();assert(!details_visible && !step_details_preference);

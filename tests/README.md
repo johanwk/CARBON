@@ -159,3 +159,27 @@ Step Edit group-transpose regression: mixed Note/control steps preserve all
 non-Note records byte-for-byte, including Prb66percent, in both directions and
 with/without Shift. Control-only groups remain unchanged; an individually
 selected Prb still edits its probability. Reproduced failure before the fix.
+
+## Read-only track overview (1.38-jwk-trk1)
+
+Root UI tests exercise the production shared overview renderer for all tracks
+and scenes on both LCD rectangles, all4096start/length windows, scale/root
+combinations including song inheritance and Off, all rate labels, selected-scene
+highlights, stored-versus-live/queued rates, read-only guards, dirty-row caching
+and overlay-preserving close. Panel tests exercise the production track-hold
+observer and input guards:799/800ms, all buttons, encoder cancellation, repeated
+press/release, multi-button chords in both orders, Shift/Scene/Scn exclusions
+and inactive encoders/Clock close. Existing menu/editor/playback suites remain.
+These fixtures do not establish physical hold feel, LCD legibility or realtime
+headroom. No song schema changes or additional Rust tests are required.
+
+## Scene overview (1.38-jwk-scn1)
+
+The same production renderer/hold observer now covers Scene-first numbered
+chords: all six destinations,799/800ms, repeats, either release order, early
+release, other-button/encoder cancellation, wrong order, Shift-copy and Scn
+exclusions. Scene overview tests check all tracks/scenes on both LCDs, root
+inheritance/Off, scale/type, selected-track highlights, pinned scene despite
+engine/panel changes, no-op edit/scroll, cached refresh and grid restoration.
+The immediate scene-request dispatch is unchanged; hardware scene-sync timing
+and physical chord feel still need confirmation.

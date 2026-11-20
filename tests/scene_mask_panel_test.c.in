@@ -75,7 +75,139 @@ static void test_edit_hold(void) {
     editing=1;recording=1;assert(!panel_step_edit_button(PANEL_SW_EDIT,&val));
     recording=0;
 }
+static void test_track_holds(void) {
+    for(int key=0;key<6;key++) {
+        memset(&pstate,0,sizeof(pstate));mask=-1;menu=PANEL_MENU_NONE;
+        panel_track_overview_input(PANEL_SW_1+key,1);
+        for(int ms=0;ms<799;ms++) assert(track_overview_tick(&pstate.track_keys)<0);
+        panel_track_overview_input(PANEL_SW_1+key,1); // repeat
+        assert(track_overview_tick(&pstate.track_keys)==key);
+        assert(track_overview_tick(&pstate.track_keys)<0);
+        panel_track_overview_input(PANEL_SW_1+key,0);
+        assert(!pstate.track_keys.down);
+        // Every other button and nonzero encoder cancels, including consumed inputs.
+        for(int other=0;other<=PANEL_ENC_TRANSPOSE;other++) {
+            if(other==PANEL_SW_1+key) continue;
+            memset(&pstate,0,sizeof(pstate));
+            panel_track_overview_input(PANEL_SW_1+key,1);
+            panel_track_overview_input(other,1);
+            for(int ms=0;ms<801;ms++) assert(track_overview_tick(&pstate.track_keys)<0);
+        }
+        // Already-held physical keys prohibit arming, in either chord order.
+        for(int other=0;other<PANEL_ENC_SPEED;other++) {
+            if(other==PANEL_SW_1+key) continue;
+            memset(&pstate,0,sizeof(pstate));
+            panel_track_overview_input(other,1);
+            panel_track_overview_input(PANEL_SW_1+key,1);
+            assert(!pstate.track_keys.candidate);
+        }
+        for(int guard=0;guard<4;guard++) {
+            memset(&pstate,0,sizeof(pstate));mask=-1;
+            if(guard==0)pstate.shift_state=1;
+            if(guard==1)pstate.scene_state=1;
+            if(guard==2)mask=63;
+            if(guard==3)pstate.track_hold_state[(key+1)%6]=1;
+            panel_track_overview_input(PANEL_SW_1+key,1);
+            assert(!pstate.track_keys.candidate);
+        }
+        mask=-1;memset(&pstate,0,sizeof(pstate));
+        panel_track_overview_input(PANEL_SW_1+key,1);
+        panel_track_overview_input(PANEL_SW_1+key,0);
+        assert(!pstate.track_keys.candidate && !pstate.track_keys.down);
+    }
+    help_active=1;help_mode=GUI_OVERVIEW_TRACK;int edits=help_edits,scroll=help_scroll;
+    for(int enc=PANEL_ENC_SPEED;enc<=PANEL_ENC_TRANSPOSE;enc++)
+        assert(panel_handle_clock_help_input(enc,1));
+    assert(edits==help_edits && scroll==help_scroll);
+    assert(!panel_handle_clock_help_input(PANEL_SW_1,0) && help_active);
+    assert(panel_handle_clock_help_input(PANEL_SW_CLOCK,1));
+    assert(panel_handle_clock_help_input(PANEL_SW_CLOCK,0) && !help_active);
+    help_mode=PANEL_MENU_CLOCK;
+}
+static void test_scene_holds(void) {
+    for(int scene=0;scene<6;scene++) {
+        for(int order=0;order<2;order++) {
+            memset(&pstate,0,sizeof(pstate));mask=-1;menu=PANEL_MENU_NONE;
+            panel_track_overview_input(PANEL_SW_SCENE,1);pstate.scene_state=1;
+            panel_track_overview_input(PANEL_SW_1+scene,1);
+            for(int ms=0;ms<799;ms++) assert(track_overview_tick(&pstate.track_keys)<0);
+            panel_track_overview_input(PANEL_SW_1+scene,1);
+            assert(track_overview_tick(&pstate.track_keys)==scene+6);
+            assert(track_overview_tick(&pstate.track_keys)<0);
+            panel_track_overview_input(order?PANEL_SW_SCENE:PANEL_SW_1+scene,0);
+            panel_track_overview_input(order?PANEL_SW_1+scene:PANEL_SW_SCENE,0);
+            assert(!pstate.track_keys.down && !pstate.track_keys.candidate);
+            // Either release before the threshold cancels.
+            memset(&pstate,0,sizeof(pstate));
+            panel_track_overview_input(PANEL_SW_SCENE,1);pstate.scene_state=1;
+            panel_track_overview_input(PANEL_SW_1+scene,1);
+            panel_track_overview_input(order?PANEL_SW_SCENE:PANEL_SW_1+scene,0);
+            for(int ms=0;ms<801;ms++) assert(track_overview_tick(&pstate.track_keys)<0);
+        }
+        for(int other=1;other<=PANEL_ENC_TRANSPOSE;other++) {
+            if(other==PANEL_SW_1+scene) continue;
+            memset(&pstate,0,sizeof(pstate));
+            panel_track_overview_input(PANEL_SW_SCENE,1);pstate.scene_state=1;
+            panel_track_overview_input(PANEL_SW_1+scene,1);
+            panel_track_overview_input(other,1);
+            assert(!pstate.track_keys.candidate);
+        }
+        for(int guard=0;guard<3;guard++) {
+            memset(&pstate,0,sizeof(pstate));mask=-1;
+            panel_track_overview_input(PANEL_SW_SCENE,1);pstate.scene_state=1;
+            if(guard==0)pstate.shift_state=1; // scene copy remains normal
+            if(guard==1)mask=63; // Scn owns numbered buttons
+            if(guard==2)pstate.track_hold_state[(scene+1)%6]=1;
+            panel_track_overview_input(PANEL_SW_1+scene,1);
+            assert(!pstate.track_keys.candidate);
+        }
+        mask=-1;memset(&pstate,0,sizeof(pstate));
+        panel_track_overview_input(PANEL_SW_1+scene,1);
+        panel_track_overview_input(PANEL_SW_SCENE,1);pstate.scene_state=1;
+        assert(!pstate.track_keys.candidate); // wrong order is not a scene hold
+    }
+    memset(&pstate,0,sizeof(pstate));help_active=1;help_mode=GUI_OVERVIEW_SCENE;
+    int edits=help_edits,scroll=help_scroll;
+    for(int enc=PANEL_ENC_SPEED;enc<=PANEL_ENC_TRANSPOSE;enc++)
+        assert(panel_handle_clock_help_input(enc,1));
+    assert(edits==help_edits && scroll==help_scroll);
+    assert(!panel_handle_clock_help_input(PANEL_SW_SCENE,0) && help_active);
+    assert(!panel_handle_clock_help_input(PANEL_SW_6,0) && help_active);
+    assert(panel_handle_clock_help_input(PANEL_SW_CLOCK,1));
+    assert(panel_handle_clock_help_input(PANEL_SW_CLOCK,0) && !help_active);
+    help_mode=PANEL_MENU_CLOCK;
+}
+static void test_sys_hold(void) {
+    for(int order=0;order<2;order++) {
+        memset(&pstate,0,sizeof(pstate));pstate.shift_state=1;
+        panel_sys_overview_input(PANEL_SW_MIDI,1);
+        for(int ms=0;ms<799;ms++) assert(overview_keys_tick(&pstate.sys_keys)<0);
+        assert(overview_keys_tick(&pstate.sys_keys)==0);
+        assert(overview_keys_tick(&pstate.sys_keys)<0);
+        panel_sys_overview_input(order?PANEL_SW_SHIFT:PANEL_SW_MIDI,0);
+        panel_sys_overview_input(order?PANEL_SW_MIDI:PANEL_SW_SHIFT,0);
+        assert(!pstate.sys_keys.down[0]);
+    }
+    for(int key=0;key<=PANEL_ENC_TRANSPOSE;key++) {
+        if(key==PANEL_SW_MIDI) continue;
+        memset(&pstate,0,sizeof(pstate));pstate.shift_state=1;
+        panel_sys_overview_input(PANEL_SW_MIDI,1);
+        panel_sys_overview_input(key,key==PANEL_SW_SHIFT?0:1);
+        for(int ms=0;ms<801;ms++) assert(overview_keys_tick(&pstate.sys_keys)<0);
+    }
+    memset(&pstate,0,sizeof(pstate));
+    panel_sys_overview_input(PANEL_SW_MIDI,1);pstate.shift_state=1;
+    panel_sys_overview_input(PANEL_SW_SHIFT,1);
+    assert(!pstate.sys_keys.down[0]); // MIDI-first cannot become SYS hold
+    panel_sys_overview_input(PANEL_SW_MIDI,0);
+    panel_sys_overview_input(PANEL_SW_MIDI,1);
+    panel_sys_overview_input(PANEL_SW_MIDI,0);
+    assert(overview_keys_tick(&pstate.sys_keys)<0);
+}
 int main(void) {
+ test_sys_hold();
+ test_scene_holds();
+ test_track_holds();
  test_edit_hold();
  test_help_input();
  memset(&pstate,0,sizeof(pstate)); memset(pstate.led_physical,255,sizeof(pstate.led_physical));

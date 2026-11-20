@@ -58,9 +58,16 @@ void seq_ctrl_adjust_bias_track(int change) {}
 void seq_ctrl_adjust_track_type(int change) {}
 void seq_ctrl_adjust_magic_range(int change) {}
 void seq_ctrl_adjust_magic_chance(int change) {}
-int song_get_track_type(int track) { return 0; }
+static int scene_values_ui;
+static int track_type_ui, motion_start_ui, motion_length_ui=16, rate_ui=SEQ_UTILS_STEP_16TH;
+int song_get_track_type(int track) { return track_type_ui; }
+int song_get_motion_start(int scene,int track) {return scene_values_ui ? scene*8+track : motion_start_ui;}
+int song_get_motion_length(int scene,int track) {return scene_values_ui ? scene+track+1 : motion_length_ui;}
+int song_get_step_length(int scene,int track) {return scene_values_ui ? scene+track : rate_ui;}
+int song_get_mute(int scene,int track) {return scene&1;}
 int song_get_transpose(int scene, int track) { return 0; }
-int song_get_bias_track(int scene, int track) { return -1; }
+static int bias_ui=-1;
+int song_get_bias_track(int scene, int track) { return bias_ui; }
 int song_get_magic_range(void) { return 12; }
 int song_get_magic_chance(void) { return 100; }
 void log_error(char *fmt, ...) { assert(!"unexpected error"); }
@@ -83,6 +90,20 @@ void seq_ctrl_adjust_midi_program(int map,int change) {edit_calls++;edit_kind=14
 void seq_ctrl_adjust_midi_channel(int map,int change) {edit_calls++;edit_kind=15;edit_item=map;edit_change=change;}
 void seq_ctrl_adjust_midi_port(int map,int change) {edit_calls++;edit_kind=16;edit_item=map;edit_change=change;}
 void seq_ctrl_adjust_scene_midi_program(int scene,int map,int change) {edit_calls++;edit_kind=17;edit_item=scene+map*6;edit_change=change;}
+int song_get_cvgate_pairs(void) {return SONG_CVGATE_PAIR_ABCD;}
+int song_get_cv_bend_range(void) {return 2;}
+int song_get_cvgate_pair_mode(int pair) {return 0;}
+int song_get_cv_output_scaling(int pair) {return 0;}
+int song_get_cvcal(int pair) {return 100+pair;}
+int song_get_cvoffset(int pair) {return pair;}
+void config_store_set_val(int32_t addr,int32_t val) {}
+EDIT_STUB(seq_ctrl_adjust_cv_bend_range,18)
+EDIT_STUB(seq_ctrl_adjust_cvgate_pairs,19)
+#define CV_EDIT(name,kind) void name(int pair,int change) {edit_calls++;edit_kind=kind;edit_item=pair;edit_change=change;}
+CV_EDIT(seq_ctrl_adjust_cvgate_pair_mode,20)
+CV_EDIT(seq_ctrl_adjust_cv_output_scaling,21)
+CV_EDIT(seq_ctrl_adjust_cvcal,22)
+CV_EDIT(seq_ctrl_adjust_cvoffset,23)
 static int help_draws;
 void gfx_fill_rect(int x,int y,int w,int h,uint32_t color) {assert(x>=0 && y>=0 && w>0 && h>0);}
 void gfx_draw_string(struct gfx_label *label) {
@@ -90,10 +111,24 @@ void gfx_draw_string(struct gfx_label *label) {
     assert(label->x+label->w<=gstate.GUI_GRID_X+gstate.GUI_GRID_W);
     assert(label->y+label->h<=gstate.GUI_GRID_Y+gstate.GUI_GRID_H);
     assert(strlen(label->text)<=29);
+    assert(label->text[0]!='=');
+    assert(!strstr(label->text,"Start:row Length:value"));
+    assert(label->fg_color==(gui_overview_read_only()?GUI_FONT_COLOR_GREY:GUI_FONT_COLOR_NORMAL));
+    if(!gui_overview_read_only()) {
+        assert(label->h==10 && (label->y-gstate.GUI_GRID_Y)%13==0);
+        int row=(label->y-gstate.GUI_GRID_Y)/13;
+        if(row==0 || row==14) assert(!label->text[0]);
+        assert(row<18);
+    }
     if(label->text[0]=='>') {
         int action=gstate.clock_help==PANEL_MENU_CLOCK &&
             (gstate.clock_help_selected==PANEL_MENU_CLOCK_CAPTURE || gstate.clock_help_selected==PANEL_MENU_CLOCK_RECALL);
+        action |= gstate.clock_help==PANEL_MENU_SYS && gstate.clock_help_selected==PANEL_MENU_SYS_VERSION;
         assert(label->highlight[15]==(action?GFX_HIGHLIGHT_NORMAL:GFX_HIGHLIGHT_INVERT));
+    }
+    if(gui_overview_read_only()) {
+        assert(label->highlight[15]==GFX_HIGHLIGHT_NORMAL);
+        assert(label->highlight[0]==(label->text[0]=='*'?GFX_HIGHLIGHT_INVERT:GFX_HIGHLIGHT_NORMAL));
     }
     help_draws++;
 }
@@ -118,13 +153,19 @@ static void test_clock_help(void) {
         gui_clock_help_scroll(999);assert(gstate.clock_help_selected==20);
         gui_clock_help_scroll(-999);assert(!gstate.clock_help_selected);
         timing_wait=1;timing_choice=4;clock_override=1;
-        assert(gui_draw_clock_help());assert(strstr(gstate.clock_help_rows[1],">bar*"));
-        timing_wait=0;assert(gui_draw_clock_help());assert(strstr(gstate.clock_help_rows[1],"CCi"));
+        assert(gui_draw_clock_help());assert(strstr(gstate.clock_help_rows[2],">bar*"));
+        timing_wait=0;assert(gui_draw_clock_help());assert(strstr(gstate.clock_help_rows[2],"CCi"));
+        assert(!strncmp(gstate.clock_help_rows[17],"Edit:",5));
+        clock_override=-1;gui_draw_clock_help();
+        assert(!gstate.clock_help_rows[14][0]);
+        assert(!strcmp(gstate.clock_help_rows[15],panel_menu_overview_help(PANEL_MENU_CLOCK,0,0)));
+        assert(!gstate.clock_help_rows[17][0]);
+        assert(!gstate.clock_help_rows[17][0]);
         clock_override=-1;
         gstate.clock_help_selected=PANEL_MENU_CLOCK_CAPTURE;
         for(snapshot_status=0;snapshot_status<3;snapshot_status++) {
             gui_draw_clock_help();
-            assert(strstr(gstate.clock_help_rows[9],snapshot_status?"Ready":"Empty"));
+            assert(strstr(gstate.clock_help_rows[13],snapshot_status?"Ready":"Empty"));
         }
         snapshot_status=0;
         gstate.grid_overlay_enable=1;gstate.grid_overlay[7]=1234;
@@ -135,12 +176,25 @@ static void test_clock_help(void) {
     }
 }
 static void test_overview_editors(void) {
-    const int modes[]={PANEL_MENU_CLOCK,PANEL_MENU_ARP,PANEL_MENU_MIDI,PANEL_MENU_TONALITY};
-    for(int lcd=0;lcd<2;lcd++) for(unsigned m=0;m<4;m++) {
+    const int modes[]={PANEL_MENU_CLOCK,PANEL_MENU_ARP,PANEL_MENU_MIDI,PANEL_MENU_TONALITY,PANEL_MENU_SYS};
+    for(int lcd=0;lcd<2;lcd++) for(unsigned m=0;m<5;m++) {
         gstate.GUI_GRID_X=lcd?25:40;gstate.GUI_GRID_Y=lcd?80:90;
         gui_overview_open(modes[m]);assert(gui_overview_mode()==modes[m]);
         for(int item=0;item<panel_menu_overview_count(modes[m]);item++) {
             gstate.clock_help_selected=item;
+            gui_draw_clock_help();
+            int top=item<12?0:item-11;
+            assert(!gstate.clock_help_rows[0][0]);
+            assert(gstate.clock_help_rows[1][0]);
+            for(int r=2;r<=13;r++) {
+                if(top+r-2<panel_menu_overview_count(modes[m])) {
+                    assert(gstate.clock_help_rows[r][0]==(top+r-2==item?'>':' '));
+                    assert(gstate.clock_help_rows[r][1]);
+                } else assert(!gstate.clock_help_rows[r][0]);
+            }
+            assert(!gstate.clock_help_rows[14][0]);
+            assert(!strcmp(gstate.clock_help_rows[15],panel_menu_overview_help(modes[m],item,0)));
+            assert(!strcmp(gstate.clock_help_rows[16],panel_menu_overview_help(modes[m],item,1)));
             struct clock_menu_row row;panel_menu_overview_row(modes[m],item,&row);
             assert(*row.name);
             for(int line=0;line<2;line++) assert(strlen(panel_menu_overview_help(modes[m],item,line))<=29);
@@ -167,7 +221,142 @@ static void test_overview_editors(void) {
     memset(ui_humanize,0,sizeof(ui_humanize));ui_songroot=-1;ui_swing=50;
     for(int i=0;i<6;i++) roots[i]=-2;
 }
+static void test_track_overview(void) {
+    for(int lcd=0;lcd<2;lcd++) {
+        gstate.GUI_GRID_X=lcd?25:40;gstate.GUI_GRID_Y=lcd?80:90;
+        gstate.GUI_GRID_W=240;gstate.GUI_GRID_H=238;
+        gstate.clock_help_drawn=0;
+        for(int track=0;track<6;track++) {
+            scene_values_ui=1;
+            track_type_ui=track&1;bias_ui=track;ui_scene=track;
+            gui_track_overview_open(track);
+            assert(gui_clock_help_active() && gui_overview_mode()==GUI_OVERVIEW_TRACK);
+            assert(gstate.overview_track==track);
+            int edits=edit_calls;unsigned cursor=gstate.clock_help_selected;
+            gui_overview_edit(100);gui_clock_help_scroll(100);
+            assert(edits==edit_calls && gstate.clock_help_selected==cursor);
+            assert(gui_draw_clock_help());int draws=help_draws;
+            assert(!gui_draw_clock_help() && draws==help_draws);
+            for(int scene=0;scene<6;scene++) {
+                char range[16],rate[16];
+                snprintf(range,sizeof(range),"%02d-%02d",scene*8+track+1,scene*8+track+scene+track+1);
+                panel_utils_step_len_to_str(rate,scene+track);
+                assert(strstr(gstate.clock_help_rows[2+2*scene],range));
+                assert(strstr(gstate.clock_help_rows[2+2*scene],rate));
+                assert(gstate.clock_help_rows[2+2*scene][1]=='1'+scene);
+                assert(gstate.clock_help_rows[2+2*scene][0]==(scene==track?'*':' '));
+                assert(strstr(gstate.clock_help_rows[2+2*scene],scene&1?"On":"Off"));
+            }
+        }
+        scene_values_ui=0;
+        char text[30],expected[32];
+        for(int start=0;start<64;start++) for(int len=1;len<=64;len++) {
+            motion_start_ui=start;motion_length_ui=len;
+            gui_track_overview_row(0,2,text);
+            snprintf(expected,sizeof(expected),"%02d%c%02d",start+1,start+len>64?'~':'-',(start+len-1)%64+1);
+            assert(strstr(text,expected) && strlen(text)<=29);
+        }
+        for(int scale=0;scale<SCALE_NUM_TONALITIES;scale++)
+            for(int root=-2;root<12;root++) for(int songroot=-1;songroot<12;songroot++) {
+                ui_scale=scale;roots[0]=root;ui_songroot=songroot;
+                gui_track_overview_row(0,3,text);
+                char scale_name[32];scale_type_to_name(scale_name,scale);
+                assert(strstr(text,scale_name) && strlen(text)<=29);
+                if(root==-2) {
+                    snprintf(expected,sizeof(expected),"Song(%s)",scale_root_name(songroot));
+                    assert(strstr(text,expected));
+                } else assert(strstr(text,root==-1?"Root Off":scale_root_name(root)));
+            }
+        for(int rate=0;rate<=SEQ_UTILS_STEP_BAR_DIV_13;rate++) {
+            rate_ui=rate;gui_track_overview_row(0,2,text);
+            panel_utils_step_len_to_str(expected,rate);assert(strstr(text,expected));
+        }
+        // Stored values remain independent of current overrides and queued rates.
+        rate_ui=SEQ_UTILS_STEP_HALF;timing_wait=1;clock_override=SEQ_UTILS_STEP_32ND;
+        gui_track_overview_row(0,2,text);assert(strstr(text,"1/2"));
+        timing_wait=0;clock_override=-1;
+        gstate.grid_overlay_enable=1;gstate.grid_overlay[7]=GUI_OVERLAY_COLOR_HIGH;
+        gui_draw_clock_help();ui_scene=(ui_scene+1)%6;
+        int before=help_draws;assert(gui_draw_clock_help() && help_draws==before+2);
+        gui_clock_help_set(0);assert(gui_clock_help_restore());
+        assert(!gui_clock_help_restore() && gstate.grid_overlay[7]==GUI_OVERLAY_COLOR_HIGH);
+    }
+    track_type_ui=0;bias_ui=-1;motion_start_ui=0;motion_length_ui=16;rate_ui=SEQ_UTILS_STEP_16TH;
+    ui_scene=ui_scale=0;ui_songroot=-1;for(int s=0;s<6;s++) roots[s]=-2;
+}
+static void test_scene_overview(void) {
+    for(int lcd=0;lcd<2;lcd++) {
+        gstate.GUI_GRID_X=lcd?25:40;gstate.GUI_GRID_Y=lcd?80:90;
+        gstate.GUI_GRID_W=240;gstate.GUI_GRID_H=238;gstate.clock_help_drawn=0;
+        scene_values_ui=1;
+        for(int scene=0;scene<6;scene++) {
+            ui_scene=(scene+1)%6; // engine/panel still elsewhere: target must remain pinned
+            gui_scene_overview_open(scene);
+            assert(gui_overview_mode()==GUI_OVERVIEW_SCENE && gstate.overview_track==scene);
+            int edits=edit_calls;unsigned cursor=gstate.clock_help_selected;
+            gui_overview_edit(100);gui_clock_help_scroll(-100);
+            assert(edits==edit_calls && cursor==gstate.clock_help_selected);
+            assert(gui_draw_clock_help());int draws=help_draws;
+            assert(!gui_draw_clock_help() && draws==help_draws);
+            for(int track=0;track<6;track++) {
+                char range[16],rate[16];
+                snprintf(range,sizeof(range),"%02d-%02d",scene*8+track+1,scene*8+track+scene+track+1);
+                panel_utils_step_len_to_str(rate,scene+track);
+                char *row=gstate.clock_help_rows[2+2*track];
+                assert(strstr(row,range) && strstr(row,rate));
+                assert(row[1]=='1'+track && row[0]==(seq_ctrl_get_track_select(track)?'*':' '));
+                assert(strstr(row,scene&1?"On":"Off"));
+            }
+            ui_scene=(ui_scene+1)%6;assert(!gui_draw_clock_help());
+        }
+        char text[30],expected[32];
+        for(int root=-2;root<12;root++) for(int songroot=-1;songroot<12;songroot++) {
+            roots[5]=root;ui_songroot=songroot;
+            gui_scene_overview_row(5,0,text);
+            assert(strlen(text)<=29 && strstr(text,"SCENE 6"));
+            if(root==-2) {
+                snprintf(expected,sizeof(expected),"Song(%s)",scale_root_name(songroot));
+                assert(strstr(text,expected));
+            } else assert(strstr(text,root==-1?"Root Off":scale_root_name(root)));
+        }
+        for(int type=0;type<2;type++) for(int scale=0;scale<SCALE_NUM_TONALITIES;scale++) {
+            track_type_ui=type;ui_scale=scale;
+            gui_scene_overview_row(5,13,text);
+            scale_type_to_name(expected,scale);assert(strstr(text,expected) && strlen(text)<=29);
+            assert(strstr(text,type==SONG_TRACK_TYPE_DRUM?"DRUM":"VOICE"));
+        }
+        gui_draw_clock_help();ui_scale=(ui_scale+1)%SCALE_NUM_TONALITIES;
+        int before=help_draws;assert(gui_draw_clock_help() && help_draws==before+6);
+        gstate.grid_overlay_enable=1;gstate.grid_overlay[7]=GUI_OVERLAY_COLOR_HIGH;
+        gui_clock_help_set(0);assert(gui_clock_help_restore());
+        assert(!gui_clock_help_restore() && gstate.grid_overlay[7]==GUI_OVERLAY_COLOR_HIGH);
+    }
+    scene_values_ui=track_type_ui=ui_scene=ui_scale=0;ui_songroot=-1;
+    for(int s=0;s<6;s++) roots[s]=-2;
+}
+static void test_sys_edit_dispatch(void) {
+    for(int lcd=0;lcd<2;lcd++) {
+        gstate.screen_type=lcd;
+        for(int item=0;item<20;item++) {
+            struct clock_menu_row row;panel_menu_sys_row(item,&row);
+            pmstate.menu_submode=item;panel_menu_display_sys();
+            assert(!strncmp(gstate.status_lines[3]+14,row.value,strlen(row.value)));
+            pmstate.menu_submode=2;pmstate.menu_mode=PANEL_MENU_NONE;
+            int before=edit_calls;
+            panel_menu_overview_edit(PANEL_MENU_SYS,item,1);
+            assert(pmstate.menu_submode==2 && pmstate.menu_mode==PANEL_MENU_NONE);
+            if(item==0 || item==19) assert(edit_calls==before);
+            else {
+                assert(edit_calls==before+1 && edit_change==1);
+                if(item>=3) assert(edit_item==(item-3)%4);
+            }
+        }
+    }
+}
 int main(void) {
+    test_sys_edit_dispatch();
+    test_scene_overview();
+    test_track_overview();
     test_clock_help();
     test_overview_editors();
     char expected[64];

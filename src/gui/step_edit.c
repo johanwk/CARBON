@@ -973,6 +973,8 @@ static void step_edit_update_title(void) {
 // update the display
 void step_edit_update_display(void) {
     int i, xpos, temp;
+    int expanded=sedits.enable && step_details_preference;
+    int first=expanded ? 5 : 3;
     char tempstr[GFX_LABEL_LEN];
     struct track_event event = {.delay = SEQ_START_DELAY_INHERIT};
     gui_step_details_set(sedits.enable && step_details_preference);
@@ -1004,25 +1006,25 @@ void step_edit_update_display(void) {
     if(sedits.event_pos >= 0) {
         for(i = 0; i < SEQ_TRACK_POLY; i ++) {
             if(i == sedits.event_pos) {
-                gui_set_status_highlight_part(2, 3 + (4 * i), 3,
+                gui_set_status_highlight_part(2, first + (4 * i), 3,
                     GFX_HIGHLIGHT_INVERT);
-                gui_set_status_highlight_part(3, 3 + (4 * i), 3,
+                gui_set_status_highlight_part(3, first + (4 * i), 3,
                     GFX_HIGHLIGHT_INVERT);
             }
             else {
-                gui_set_status_highlight_part(2, 3 + (4 * i), 3,
+                gui_set_status_highlight_part(2, first + (4 * i), 3,
                     GFX_HIGHLIGHT_NORMAL);
-                gui_set_status_highlight_part(3, 3 + (4 * i), 3,
+                gui_set_status_highlight_part(3, first + (4 * i), 3,
                     GFX_HIGHLIGHT_NORMAL);
             }
         }
     }
     else {
-        gui_set_status_highlight_part(2, 3, 25, GFX_HIGHLIGHT_NORMAL);
-        gui_set_status_highlight_part(3, 3, 25, GFX_HIGHLIGHT_NORMAL);
+        gui_set_status_highlight_part(2, first, 24, GFX_HIGHLIGHT_NORMAL);
+        gui_set_status_highlight_part(3, first, 24, GFX_HIGHLIGHT_NORMAL);
     }
 
-    xpos = 3;
+    xpos = first;
     //
     // display data for each event
     //
@@ -1149,13 +1151,13 @@ void step_edit_update_display(void) {
     }
     if(sedits.enable && step_details_preference) {
         // Keep the existing type and control-value columns; add note-only rows.
-        gui_set_status_text_part(1,0,3,"   ");
-        gui_set_status_text_part(2,0,3,"Nt ");
-        gui_set_status_text_part(3,0,3,"Vl ");
-        gui_set_status_text_part(4,0,3,"Gt ");
-        gui_set_status_text_part(5,0,3,"Dl ");
+        gui_set_status_text_part(1,0,5,"     ");
+        gui_set_status_text_part(2,0,5,"Note ");
+        gui_set_status_text_part(3,0,5,"Vel  ");
+        gui_set_status_text_part(4,0,5,"Gate ");
+        gui_set_status_text_part(5,0,5,"Dly  ");
         for(i=0;i<SEQ_TRACK_POLY;i++) {
-            xpos=3+4*i;
+            xpos=first+4*i;
             song_get_step_event(sedits.scene,sedits.track,sedits.step_pos,i,&event);
             gui_set_status_text_part(4,xpos,4,"---");
             gui_set_status_text_part(5,xpos,4,"---");

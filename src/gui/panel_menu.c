@@ -1041,112 +1041,118 @@ void panel_menu_display_midi(void) {
 }
 
 // display the system menu
-void panel_menu_display_sys(void) {
+
+static void panel_menu_sys_row(int item, struct clock_menu_row *row) {
     char tempstr[64];
     int temp;
-    gui_set_menu_title("SYSTEM");
-    switch(pmstate.menu_submode) {
+    memset(row,0,sizeof(*row));
+    switch(item) {
         case PANEL_MENU_SYS_VERSION:
-            gui_set_menu_subtitle("Unofficial Firmware");
+            snprintf(row->subtitle,sizeof(row->subtitle),"%s","Unofficial Firmware");
             // Keep the full version within the 13-character menu value field.
             snprintf(tempstr, sizeof(tempstr), "Ver: LCD %c",
                 (gui_get_screen_type() + 65));
-            gui_set_menu_param(tempstr);
+            snprintf(row->name,sizeof(row->name),"%.31s",tempstr);
             snprintf(tempstr, sizeof(tempstr), "%d.%02d-%s",
                 CARBON_VERSION_MAJOR,
                 CARBON_VERSION_MINOR,
                 CARBON_VERSION_VARIANT);
-            gui_set_menu_value(tempstr);
+            snprintf(row->value,sizeof(row->value),"%s",tempstr);
             break;
         case PANEL_MENU_SYS_CVGATE_PAIRS:
-            gui_set_menu_subtitle("");
-            gui_set_menu_param("CV/Gate Pairs");
+            snprintf(row->subtitle,sizeof(row->subtitle),"%s","");
+            snprintf(row->name,sizeof(row->name),"%s","CV/Gate Pairs");
             switch(song_get_cvgate_pairs()) {
                 case SONG_CVGATE_PAIR_ABCD:
-                    gui_set_menu_value("ABCD");
+                    snprintf(row->value,sizeof(row->value),"%s","ABCD");
                     break;
                 case SONG_CVGATE_PAIR_AABC:
-                    gui_set_menu_value("AABC");
+                    snprintf(row->value,sizeof(row->value),"%s","AABC");
                     break;
                 case SONG_CVGATE_PAIR_AABB:
-                    gui_set_menu_value("AABB");
+                    snprintf(row->value,sizeof(row->value),"%s","AABB");
                     break;
                 case SONG_CVGATE_PAIR_AAAA:
-                    gui_set_menu_value("AAAA");
+                    snprintf(row->value,sizeof(row->value),"%s","AAAA");
                     break;
                 default:
-                    gui_set_menu_value(" ");
+                    snprintf(row->value,sizeof(row->value),"%s"," ");
                     break;
             }
             break;
         case PANEL_MENU_SYS_CV_BEND_RANGE:
-            gui_set_menu_subtitle("");
-            gui_set_menu_param("CV Bend Range");
+            snprintf(row->subtitle,sizeof(row->subtitle),"%s","");
+            snprintf(row->name,sizeof(row->name),"%s","CV Bend Range");
             sprintf(tempstr, "%d", song_get_cv_bend_range());
-            gui_set_menu_value(tempstr);
+            snprintf(row->value,sizeof(row->value),"%s",tempstr);
             break;
             break;
         case PANEL_MENU_SYS_CVGATE_OUTPUT_MODE1:
         case PANEL_MENU_SYS_CVGATE_OUTPUT_MODE2:
         case PANEL_MENU_SYS_CVGATE_OUTPUT_MODE3:
         case PANEL_MENU_SYS_CVGATE_OUTPUT_MODE4:
-            temp = pmstate.menu_submode - PANEL_MENU_SYS_CVGATE_OUTPUT_MODE1;
-            gui_set_menu_subtitle("CV Output Mode");
+            temp = item - PANEL_MENU_SYS_CVGATE_OUTPUT_MODE1;
+            snprintf(row->subtitle,sizeof(row->subtitle),"%s","CV Output Mode");
             panel_utils_cvgate_pair_to_str(tempstr, temp);
-            gui_set_menu_param(tempstr);
+            snprintf(row->name,sizeof(row->name),"%.31s",tempstr);
             panel_utils_cvgate_pair_mode_to_str(tempstr,
                 song_get_cvgate_pair_mode(temp));
-            gui_set_menu_value(tempstr);
+            snprintf(row->value,sizeof(row->value),"%s",tempstr);
             break;
         case PANEL_MENU_SYS_CV_SCALING1:
         case PANEL_MENU_SYS_CV_SCALING2:
         case PANEL_MENU_SYS_CV_SCALING3:
         case PANEL_MENU_SYS_CV_SCALING4:
-            temp = pmstate.menu_submode - PANEL_MENU_SYS_CV_SCALING1;
-            gui_set_menu_subtitle("CV Output Scaling");
+            temp = item - PANEL_MENU_SYS_CV_SCALING1;
+            snprintf(row->subtitle,sizeof(row->subtitle),"%s","CV Output Scaling");
             sprintf(tempstr, "CV Output %d", (temp + 1));
-            gui_set_menu_param(tempstr);
+            snprintf(row->name,sizeof(row->name),"%.31s",tempstr);
             panel_utills_cv_output_scaling_to_str(tempstr,
                 song_get_cv_output_scaling(temp));
-            gui_set_menu_value(tempstr);
+            snprintf(row->value,sizeof(row->value),"%s",tempstr);
 
             break;
         case PANEL_MENU_SYS_CVCAL1:
         case PANEL_MENU_SYS_CVCAL2:
         case PANEL_MENU_SYS_CVCAL3:
         case PANEL_MENU_SYS_CVCAL4:
-            temp = pmstate.menu_submode - PANEL_MENU_SYS_CVCAL1;
-            gui_set_menu_subtitle("CV Span Calibrate");
+            temp = item - PANEL_MENU_SYS_CVCAL1;
+            snprintf(row->subtitle,sizeof(row->subtitle),"%s","CV Span Calibrate");
             sprintf(tempstr, "CV Span %d", (temp + 1));
-            gui_set_menu_param(tempstr);
+            snprintf(row->name,sizeof(row->name),"%.31s",tempstr);
             sprintf(tempstr, "%d", song_get_cvcal(temp));
-            gui_set_menu_value(tempstr);
+            snprintf(row->value,sizeof(row->value),"%s",tempstr);
             break;
         case PANEL_MENU_SYS_CVOFFSET1:
         case PANEL_MENU_SYS_CVOFFSET2:
         case PANEL_MENU_SYS_CVOFFSET3:
         case PANEL_MENU_SYS_CVOFFSET4:
-            temp = pmstate.menu_submode - PANEL_MENU_SYS_CVOFFSET1;
-            gui_set_menu_subtitle("CV Output Offset");
+            temp = item - PANEL_MENU_SYS_CVOFFSET1;
+            snprintf(row->subtitle,sizeof(row->subtitle),"%s","CV Output Offset");
             sprintf(tempstr, "CV Offset %d", (temp + 1));
-            gui_set_menu_param(tempstr);
+            snprintf(row->name,sizeof(row->name),"%.31s",tempstr);
             sprintf(tempstr, "%d", song_get_cvoffset(temp));
-            gui_set_menu_value(tempstr);
+            snprintf(row->value,sizeof(row->value),"%s",tempstr);
             break;
         case PANEL_MENU_SYS_MENU_TIMEOUT:
-            gui_set_menu_subtitle("Menu Timeout");
-            gui_set_menu_param("Timeout");
+            snprintf(row->subtitle,sizeof(row->subtitle),"%s","Menu Timeout");
+            snprintf(row->name,sizeof(row->name),"%s","Timeout");
             if(pmstate.menu_timeout == PANEL_MENU_TIMEOUT_MAX) {
                 sprintf(tempstr, "SHIFT EXIT");
             }
             else {
                 sprintf(tempstr, "%ds", (pmstate.menu_timeout / 1000));
             }
-            gui_set_menu_value(tempstr);
+            snprintf(row->value,sizeof(row->value),"%s",tempstr);
             break;
     }
 }
 
+void panel_menu_display_sys(void) {
+    struct clock_menu_row row;panel_menu_sys_row(pmstate.menu_submode,&row);
+    gui_set_menu_title("SYSTEM");
+    gui_set_menu_subtitle(row.subtitle);gui_set_menu_param(row.name);gui_set_menu_value(row.value);
+}
 const char *panel_menu_clock_help(int item, int line) {
     static const char *help[PANEL_MENU_CLOCK_NUM_SUBMODES][2] = {
         {"Scene/track step duration.", "CCi may override stored rate."},
@@ -1506,9 +1512,9 @@ void panel_menu_edit_midi(int change) {
 }
 
 // edit a value in the system menu
-void panel_menu_edit_sys(int change) {
+static void panel_menu_edit_sys_item(int item,int change) {
     int temp;
-    switch(pmstate.menu_submode) {
+    switch(item) {
         case PANEL_MENU_SYS_VERSION:
             break;
         case PANEL_MENU_SYS_CV_BEND_RANGE:
@@ -1521,28 +1527,28 @@ void panel_menu_edit_sys(int change) {
         case PANEL_MENU_SYS_CVGATE_OUTPUT_MODE2:
         case PANEL_MENU_SYS_CVGATE_OUTPUT_MODE3:
         case PANEL_MENU_SYS_CVGATE_OUTPUT_MODE4:
-            temp = pmstate.menu_submode - PANEL_MENU_SYS_CVGATE_OUTPUT_MODE1;
+            temp = item - PANEL_MENU_SYS_CVGATE_OUTPUT_MODE1;
             seq_ctrl_adjust_cvgate_pair_mode(temp, change);
             break;
         case PANEL_MENU_SYS_CV_SCALING1:
         case PANEL_MENU_SYS_CV_SCALING2:
         case PANEL_MENU_SYS_CV_SCALING3:
         case PANEL_MENU_SYS_CV_SCALING4:
-            temp = pmstate.menu_submode - PANEL_MENU_SYS_CV_SCALING1;
+            temp = item - PANEL_MENU_SYS_CV_SCALING1;
             seq_ctrl_adjust_cv_output_scaling(temp, change);
             break;
         case PANEL_MENU_SYS_CVCAL1:
         case PANEL_MENU_SYS_CVCAL2:
         case PANEL_MENU_SYS_CVCAL3:
         case PANEL_MENU_SYS_CVCAL4:
-            temp = pmstate.menu_submode - PANEL_MENU_SYS_CVCAL1;
+            temp = item - PANEL_MENU_SYS_CVCAL1;
             seq_ctrl_adjust_cvcal(temp, change);
             break;
         case PANEL_MENU_SYS_CVOFFSET1:
         case PANEL_MENU_SYS_CVOFFSET2:
         case PANEL_MENU_SYS_CVOFFSET3:
         case PANEL_MENU_SYS_CVOFFSET4:
-            temp = pmstate.menu_submode - PANEL_MENU_SYS_CVOFFSET1;
+            temp = item - PANEL_MENU_SYS_CVOFFSET1;
             seq_ctrl_adjust_cvoffset(temp, change);
             break;
         case PANEL_MENU_SYS_MENU_TIMEOUT:
@@ -1551,6 +1557,10 @@ void panel_menu_edit_sys(int change) {
                 PANEL_MENU_TIMEOUT_MIN, PANEL_MENU_TIMEOUT_MAX));
             break;
     }
+}
+
+void panel_menu_edit_sys(int change) {
+    panel_menu_edit_sys_item(pmstate.menu_submode,change);
     panel_menu_update_display();
 }
 
@@ -1632,6 +1642,7 @@ int panel_menu_overview_count(int mode) {
         case PANEL_MENU_ARP:return PANEL_MENU_ARP_NUM_SUBMODES;
         case PANEL_MENU_MIDI:return PANEL_MENU_MIDI_NUM_SUBMODES;
         case PANEL_MENU_TONALITY:return PANEL_MENU_TONALITY_NUM_SUBMODES;
+        case PANEL_MENU_SYS:return PANEL_MENU_SYS_NUM_SUBMODES;
         default:return 0;
     }
 }
@@ -1639,6 +1650,7 @@ const char *panel_menu_overview_title(int mode) {
     switch(mode) {
         case PANEL_MENU_CLOCK:return "CLOCK";case PANEL_MENU_ARP:return "ARP";
         case PANEL_MENU_MIDI:return "MIDI";case PANEL_MENU_TONALITY:return "TONALITY";
+        case PANEL_MENU_SYS:return "SYS";
         default:return "";
     }
 }
@@ -1655,6 +1667,13 @@ void panel_menu_overview_row(int mode,int item,struct clock_menu_row *row) {
                     item>=PANEL_MENU_MIDI_PROGRAM_B_SCENE1?'B':'A',
                     (item-PANEL_MENU_MIDI_PROGRAM_A_SCENE1)%6+1);
             break;
+        case PANEL_MENU_SYS:
+            panel_menu_sys_row(item,row);
+            if(item>=PANEL_MENU_SYS_CVGATE_OUTPUT_MODE1 && item<=PANEL_MENU_SYS_CVGATE_OUTPUT_MODE4)
+                snprintf(row->name,sizeof(row->name),"CV Mode %d",item-PANEL_MENU_SYS_CVGATE_OUTPUT_MODE1+1);
+            if(item>=PANEL_MENU_SYS_CV_SCALING1 && item<=PANEL_MENU_SYS_CV_SCALING4)
+                snprintf(row->name,sizeof(row->name),"CV Scaling %d",item-PANEL_MENU_SYS_CV_SCALING1+1);
+            break;
         case PANEL_MENU_TONALITY:panel_menu_tonality_row(item,row);break;
     }
 }
@@ -1663,6 +1682,16 @@ const char *panel_menu_overview_help(int mode,int item,int line) {
     if(mode==PANEL_MENU_CLOCK) {
         if(item==PANEL_MENU_CLOCK_STEP_LEN && line==1) return "CCi/* overrides edited base.";
         return panel_menu_clock_help(item,line);
+    }
+    if(mode==PANEL_MENU_SYS) {
+        if(item==PANEL_MENU_SYS_VERSION) return line?"Version and LCD; read only.":"Unofficial firmware identity.";
+        if(item==PANEL_MENU_SYS_CVGATE_PAIRS) return line?"Changes physical CV routing.":"Song CV/Gate pairing.";
+        if(item==PANEL_MENU_SYS_CV_BEND_RANGE) return line?"Range in semitones.":"Song CV pitch bend range.";
+        if(item<=PANEL_MENU_SYS_CVGATE_OUTPUT_MODE4) return line?"Changes physical output.":"Song CV/Gate output mode.";
+        if(item<=PANEL_MENU_SYS_CV_SCALING4) return line?"Match the connected synth.":"Song CV voltage scaling.";
+        if(item<=PANEL_MENU_SYS_CVCAL4) return line?"Use a meter; changes pitch.":"Song CV span calibration.";
+        if(item<=PANEL_MENU_SYS_CVOFFSET4) return line?"Use a meter; changes pitch.":"Song CV output offset.";
+        return line?"Global preference, not song.":"Menu/editor inactivity limit.";
     }
     if(mode==PANEL_MENU_ARP) {
         static const char *h[3][2]={
@@ -1700,5 +1729,6 @@ void panel_menu_overview_edit(int mode,int item,int change) {
         case PANEL_MENU_ARP:panel_menu_edit_arp_item(item,change);break;
         case PANEL_MENU_MIDI:panel_menu_edit_midi_item(item,change);break;
         case PANEL_MENU_TONALITY:panel_menu_edit_tonality_item(item,change);break;
+        case PANEL_MENU_SYS:panel_menu_edit_sys_item(item,change);break;
     }
 }

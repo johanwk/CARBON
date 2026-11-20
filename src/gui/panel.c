@@ -26,6 +26,7 @@
 #include "panel_menu.h"
 #include "pattern_edit.h"
 #include "step_edit.h"
+#include "track_overview_keys.h"
 #include "song_edit.h"
 #include "../iface/iface_panel.h"
 #include "../midi/midi_stream.h"
@@ -71,6 +72,8 @@ struct panel_state {
     struct snapshot_keys snapshot_keys;
     struct overview_keys overview_keys;
     struct overview_keys edit_keys;
+    struct overview_keys sys_keys;
+    struct track_overview_keys track_keys;
     struct scene_mask_keys scene_keys;
     uint8_t led_physical[PANEL_LED_NUM_LEDS];
     int8_t shift_state;  // shift button state
@@ -124,7 +127,9 @@ void panel_init(void) {
     int i;
 
     pstate.scene_keys = (struct scene_mask_keys){0};
+    pstate.track_keys = (struct track_overview_keys){0};
     pstate.edit_keys = (struct overview_keys){0};
+    pstate.sys_keys = (struct overview_keys){0};
     for(i=0;i<PANEL_LED_NUM_LEDS;i++) pstate.led_physical[i] = 0xff;
     // panel input queue
     pstate.key_queue_inp = 0;
@@ -185,9 +190,13 @@ void panel_timer_task(void) {
             snapshot_keys_tick(&pstate.snapshot_keys)) gui_clock_help_set(1);
 
     if(power_ctrl_get_power_state() == POWER_CTRL_STATE_ON) {
+        int track=track_overview_tick(&pstate.track_keys);
+        if(track>=6) gui_scene_overview_open(track-6);
+        else if(track>=0) gui_track_overview_open(track);
         if(overview_keys_tick(&pstate.edit_keys)>=0 && step_edit_get_enable() &&
                 seq_ctrl_get_record_mode()==SEQ_CTRL_RECORD_IDLE)
             step_edit_toggle_details();
+        if(overview_keys_tick(&pstate.sys_keys)>=0) gui_overview_open(PANEL_MENU_SYS);
         int key=overview_keys_tick(&pstate.overview_keys);
         if(key>=0) {
             static const int modes[3]={PANEL_MENU_ARP,PANEL_MENU_MIDI,PANEL_MENU_TONALITY};
@@ -374,6 +383,8 @@ void panel_handle_state_change(int event_type, int *data, int data_len) {
             pstate.snapshot_keys = (struct snapshot_keys){0};
             pstate.overview_keys = (struct overview_keys){0};
             pstate.edit_keys = (struct overview_keys){0};
+            pstate.sys_keys = (struct overview_keys){0};
+            pstate.track_keys = (struct track_overview_keys){0};
             switch(data[0]) {
                 case POWER_CTRL_STATE_STANDBY:
                     // turn off all panel LEDs
@@ -450,6 +461,8 @@ static int panel_handle_clock_help_input(int ctrl, int val) {
         return 1;
     }
     if(ctrl >= PANEL_ENC_SPEED) {
+        if(gui_overview_mode()==GUI_OVERVIEW_TRACK ||
+                gui_overview_mode()==GUI_OVERVIEW_SCENE) return 1; // read-only
         if(ctrl == PANEL_ENC_MOTION_START && val) gui_clock_help_scroll(seq_utils_enc_val_to_change(val));
         if(ctrl == PANEL_ENC_MOTION_LENGTH && val) gui_overview_edit(seq_utils_enc_val_to_change(val));
         return 1; // only selection and Value edit are active
@@ -497,7 +510,28 @@ static int panel_step_edit_button(int ctrl,int *val) {
     return 0;
 }
 
+static void panel_track_overview_input(int ctrl,int val) {
+    int track=ctrl>=PANEL_SW_1 && ctrl<=PANEL_SW_6 ? ctrl-PANEL_SW_1 : -1;
+    int allowed=!pstate.shift_state &&
+        !(panel_menu_get_mode()==PANEL_MENU_NONE && step_edit_scene_mask()>=0);
+    if(allowed && pstate.scene_state) allowed=2;
+    for(int i=0;i<SEQ_NUM_TRACKS;i++) if(pstate.track_hold_state[i]) allowed=0;
+    track_overview_key(&pstate.track_keys,ctrl,track,!!val,allowed);
+}
+
+// Observe Shift-first MIDI without delaying the existing short SYS action.
+static void panel_sys_overview_input(int ctrl,int val) {
+    if(ctrl==PANEL_SW_SHIFT && !val) overview_keys_cancel(&pstate.sys_keys);
+    int blocked=!pstate.shift_state || pstate.scene_state ||
+        pstate.snapshot_keys.down[SNAP_CLOCK];
+    for(int i=0;i<SEQ_NUM_TRACKS;i++) blocked |= pstate.track_hold_state[i];
+    overview_keys_event(&pstate.sys_keys,ctrl==PANEL_SW_MIDI?0:-1,!!val,blocked);
+}
+
 void panel_handle_seq_input(int ctrl, int val) {
+    panel_sys_overview_input(ctrl,val);
+    // Observe physical input before any owner consumes it; normal dispatch stays immediate.
+    panel_track_overview_input(ctrl,val);
     // Feed cancellations before any recognizer can consume another gesture.
     if(val && ctrl!=PANEL_SW_EDIT) overview_keys_cancel(&pstate.edit_keys);
     if(panel_overview_button(ctrl,&val)) return;

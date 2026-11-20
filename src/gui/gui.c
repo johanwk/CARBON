@@ -296,8 +296,8 @@ struct gui_state {
     char status_lines[GUI_NUM_STATUS_LINES][GFX_LABEL_LEN];  // temp strs that can be built up
     // Small cached text overlay, no framebuffer. Input changes only flags/cursor.
     volatile uint8_t clock_help, clock_help_selected;
-    uint8_t clock_help_drawn;
-    char clock_help_rows[14][30];
+    uint8_t clock_help_drawn, overview_track, overview_read_only_drawn;
+    char clock_help_rows[18][30];
     struct gfx_label clock_help_label;
     // refresh stuff
     uint8_t force_refresh;  // 0 = no refresh, 1 = force refresh
@@ -354,6 +354,9 @@ void gui_update_song_mode(void);
 // init the GUI and reset all vars
 int gui_init(void) {
     int i, j;
+    // .ccm is outside the startup-zeroed .bss and copied .data ranges.
+    // Initialize every flag/cache explicitly before applying label defaults.
+    memset(&gstate,0,sizeof(gstate));
 	log_info("starting up GUI...");
 
 #ifdef DEBUG_SIM
@@ -634,11 +637,25 @@ void gui_startup(void) {
 
 int gui_clock_help_active(void) { return gstate.clock_help; }
 int gui_overview_mode(void) {return gstate.clock_help;}
+void gui_track_overview_open(int track) {
+    if(track<0 || track>=SEQ_NUM_TRACKS) return;
+    gstate.overview_track=track;
+    gstate.clock_help=GUI_OVERVIEW_TRACK;
+}
+void gui_scene_overview_open(int scene) {
+    if(scene<0 || scene>=SEQ_NUM_SCENES) return;
+    gstate.overview_track=scene; // pinned index, independent of engine scene changes
+    gstate.clock_help=GUI_OVERVIEW_SCENE;
+}
+static int gui_overview_read_only(void) {
+    return gstate.clock_help==GUI_OVERVIEW_TRACK || gstate.clock_help==GUI_OVERVIEW_SCENE;
+}
 void gui_overview_open(int mode) {
     if(!panel_menu_overview_count(mode)) return;
     gstate.clock_help_selected=0;gstate.clock_help=mode;
 }
 void gui_overview_edit(int change) {
+    if(gui_overview_read_only()) return;
     panel_menu_overview_edit(gstate.clock_help,gstate.clock_help_selected,change);
 }
 void gui_clock_help_set(int enable) {
@@ -646,28 +663,92 @@ void gui_clock_help_set(int enable) {
     gstate.clock_help = enable ? PANEL_MENU_CLOCK : 0;
 }
 void gui_clock_help_scroll(int change) {
+    if(gui_overview_read_only()) return;
     gstate.clock_help_selected = seq_utils_clamp(gstate.clock_help_selected + change,
         0, panel_menu_overview_count(gstate.clock_help) - 1);
 }
 
+static void gui_overview_range(int scene,int track,int number,int selected,char text[30]) {
+        int start=seq_utils_clamp(song_get_motion_start(scene,track),0,63);
+        int length=seq_utils_clamp(song_get_motion_length(scene,track),1,64);
+        int end=(start+length-1)%64;
+        int bias=song_get_bias_track(scene,track);
+        char rate[16],source[4]="-";
+        panel_utils_step_len_to_str(rate,song_get_step_length(scene,track));
+        if(bias>=0 && bias<SEQ_NUM_TRACKS) snprintf(source,sizeof(source),"T%d",bias+1);
+        snprintf(text,30,"%c%c %02u%c%02u %-5.5s %-4s %s",
+            selected?'*':' ','0'+seq_utils_clamp(number,1,6),
+            (unsigned)start+1,start+length>64?'~':'-',(unsigned)end+1,
+            rate,source,song_get_mute(scene,track)?"On":"Off");
+}
+
+// Stored scene settings only: never substitute live CCi/Hrm or queued edits.
+static void gui_track_overview_row(int track,int row,char text[30]) {
+    if(row==0) {
+        snprintf(text,30,"TRACK %d / %s / stored",track+1,
+            song_get_track_type(track)==SONG_TRACK_TYPE_DRUM ? "DRUM" : "VOICE");
+        return;
+    }
+    if(row==1) {strcpy(text,"SC RANGE RATE  BIAS MUTE");return;}
+    int scene=(row-2)/2;
+    if(!(row&1)) {
+        gui_overview_range(scene,track,scene+1,scene==seq_ctrl_get_scene(),text);
+    } else {
+        char scale[32],root[12];
+        scale_type_to_name(scale,seq_utils_clamp(song_get_tonality(scene,track),0,SCALE_NUM_TONALITIES-1));
+        int scene_root=song_get_scene_root(scene);
+        if(scene_root==SONG_ROOT_INHERIT)
+            snprintf(root,sizeof(root),"Song(%s)",scale_root_name(song_get_root()));
+        else snprintf(root,sizeof(root),"%s",scene_root==SONG_ROOT_OFF?"Root Off":scale_root_name(scene_root));
+        snprintf(text,30,"   %.9s %.15s",root,scale);
+    }
+}
+
+static void gui_scene_overview_row(int scene,int row,char text[30]) {
+    if(row==0) {
+        char root[12];
+        int value=song_get_scene_root(scene);
+        if(value==SONG_ROOT_INHERIT)
+            snprintf(root,sizeof(root),"Song(%s)",scale_root_name(song_get_root()));
+        else snprintf(root,sizeof(root),"%s",value==SONG_ROOT_OFF?"Root Off":scale_root_name(value));
+        snprintf(text,30,"SCENE %c / %.9s / stored",'1'+seq_utils_clamp(scene,0,5),root);
+        return;
+    }
+    if(row==1) {strcpy(text,"TR RANGE RATE  BIAS MUTE");return;}
+    int track=(row-2)/2;
+    if(!(row&1)) {
+        gui_overview_range(scene,track,track+1,seq_ctrl_get_track_select(track),text);
+    } else {
+        char scale[32];
+        scale_type_to_name(scale,seq_utils_clamp(song_get_tonality(scene,track),0,SCALE_NUM_TONALITIES-1));
+        snprintf(text,30,"   %-5s %.15s",
+            song_get_track_type(track)==SONG_TRACK_TYPE_DRUM?"DRUM":"VOICE",scale);
+    }
+}
+
 static int gui_draw_clock_help(void) {
-    int mode=gstate.clock_help, count=panel_menu_overview_count(mode);
+    int mode=gstate.clock_help, track_view=gui_overview_read_only();
+    int count=track_view ? 1 : panel_menu_overview_count(mode);
     int selected = seq_utils_clamp(gstate.clock_help_selected,0,count-1), dirty = 0;
-    if(!gstate.clock_help_drawn) {
+    if(!gstate.clock_help_drawn || gstate.overview_read_only_drawn!=track_view) {
+        gstate.overview_read_only_drawn=track_view;
         gfx_fill_rect(gstate.GUI_GRID_X, gstate.GUI_GRID_Y,
             gstate.GUI_GRID_W, gstate.GUI_GRID_H, GUI_TEXT_BG_COLOR);
         memset(gstate.clock_help_rows, 0, sizeof(gstate.clock_help_rows));
         gstate.clock_help_drawn = 1;
         dirty = 1;
     }
-    int top = selected < 9 ? 0 : selected - 8;
-    for(int row = 0; row < 14; row++) {
+    int top = selected < 12 ? 0 : selected - 11;
+    for(int row = 0; row < (track_view ? 14 : 18); row++) {
         char text[30] = {0};
-        if(row == 0) snprintf(text, sizeof(text), "%s T%c S%c %02u/%02u", panel_menu_overview_title(mode),
+        if(mode==GUI_OVERVIEW_SCENE) gui_scene_overview_row(gstate.overview_track,row,text);
+        else if(track_view) gui_track_overview_row(gstate.overview_track,row,text);
+        else if(row == 0) {} // top breathing room above the menu heading
+        else if(row == 1) snprintf(text, sizeof(text), "%s T%c S%c %02u/%02u", panel_menu_overview_title(mode),
             '1'+seq_utils_clamp(seq_ctrl_get_first_track(),0,5),
             '1'+seq_utils_clamp(seq_ctrl_get_scene(),0,5), (unsigned)(selected+1)%100, (unsigned)count%100);
-        else if(row <= 9) {
-            int item = top + row - 1;
+        else if(row <= 13) {
+            int item = top + row - 2;
             if(item < count) {
                 struct clock_menu_row entry;
                 panel_menu_overview_row(mode,item, &entry);
@@ -692,29 +773,33 @@ static int gui_draw_clock_help(void) {
                     mode==PANEL_MENU_CLOCK && item == PANEL_MENU_CLOCK_TX_CV ? "CV Clock" : entry.name;
                 snprintf(text, sizeof(text), "%c%-13.13s %13.13s", item==selected?'>':' ', name, entry.value);
             }
-        } else if(row == 10) {
-            struct clock_menu_row entry;panel_menu_overview_row(mode,selected,&entry);
-            if(mode==PANEL_MENU_CLOCK && selected==PANEL_MENU_CLOCK_CAPTURE)
-                snprintf(entry.value,sizeof(entry.value),"%s",seq_engine_snapshot_status()?"Ready (status only)":"Empty (status only)");
-            if(mode==PANEL_MENU_CLOCK && selected==PANEL_MENU_CLOCK_RECALL)
-                snprintf(entry.value,sizeof(entry.value),"%s (status only)",
-                    seq_engine_snapshot_status()==2?"Next bar":seq_engine_snapshot_status()?"Ready":"Empty");
-            // Full selected base/queued editing value for long names.
-            snprintf(text,sizeof(text),"=%.28s",entry.value);
-            if(mode==PANEL_MENU_CLOCK && selected==PANEL_MENU_CLOCK_STEP_LEN)
+        } else {
+            // Only keep detail when CCi hides the base value being edited.
+            int edit_detail=mode==PANEL_MENU_CLOCK && selected==PANEL_MENU_CLOCK_STEP_LEN &&
+                seq_ctrl_get_scene()==seq_engine_get_current_scene() &&
+                seq_engine_get_internal_cc(seq_ctrl_get_first_track(),16,-1)>=0;
+            // Row 14 is always a blank separator; help stays in place.
+            int help_start=15;
+            if(edit_detail && row==17) {
+                struct clock_menu_row entry;panel_menu_overview_row(mode,selected,&entry);
                 snprintf(text,sizeof(text),"Edit:%.24s",entry.value);
-        } else if(row < 13) snprintf(text, sizeof(text), "%.29s", panel_menu_overview_help(mode,selected,row-11));
-        else strcpy(text, "Start:row Length:value");
+            } else if(row>=help_start && row<help_start+2)
+                snprintf(text,sizeof(text),"%.29s",panel_menu_overview_help(mode,selected,row-help_start));
+        }
         if(!strcmp(text, gstate.clock_help_rows[row])) continue;
         strcpy(gstate.clock_help_rows[row], text);
         struct gfx_label *label = &gstate.clock_help_label;
         memset(label, 0, sizeof(*label));
-        label->x = gstate.GUI_GRID_X + 2; label->y = gstate.GUI_GRID_Y + row*16;
-        label->w = 232; label->h = 14; label->font = GFX_FONT_SMALLTEXT_8X10;
-        label->fg_color = GUI_FONT_COLOR_NORMAL; label->bg_color = GUI_TEXT_BG_COLOR;
+        label->x = gstate.GUI_GRID_X + 2; label->y = gstate.GUI_GRID_Y + row*(track_view ? 16 : 13);
+        label->w = 232; label->h = track_view ? 14 : 10; label->font = GFX_FONT_SMALLTEXT_8X10;
+        label->fg_color = track_view ? GUI_FONT_COLOR_GREY : GUI_FONT_COLOR_NORMAL;
+        label->bg_color = GUI_TEXT_BG_COLOR;
         strcpy(label->text, text);
-        if(row>=1 && row<=9 && top+row-1==selected &&
-                !(mode==PANEL_MENU_CLOCK && (selected==PANEL_MENU_CLOCK_CAPTURE || selected==PANEL_MENU_CLOCK_RECALL)))
+        if(track_view && row>=2 && !(row&1) && text[0]=='*')
+            memset(label->highlight,GFX_HIGHLIGHT_INVERT,2);
+        if(!track_view && row>=2 && row<=13 && top+row-2==selected &&
+                !(mode==PANEL_MENU_CLOCK && (selected==PANEL_MENU_CLOCK_CAPTURE || selected==PANEL_MENU_CLOCK_RECALL)) &&
+                !(mode==PANEL_MENU_SYS && selected==PANEL_MENU_SYS_VERSION))
             memset(label->highlight+15,GFX_HIGHLIGHT_INVERT,13);
         gfx_fill_rect(label->x, label->y, label->w, label->h, label->bg_color);
         gfx_draw_string(label); dirty = 1;
@@ -746,7 +831,7 @@ static int gui_step_details_layout(int force) {
         struct gfx_label *label=&gstate.glabels[index];
         label->x=(!expanded && row>=4) ? UINT16_MAX : x;
         label->y=expanded ? base-36+12*row : base+12*row;
-        label->w=224;label->h=10;label->font=GUI_DISP_A_FONT_NORMAL;
+        label->w=expanded ? 232 : 224;label->h=10;label->font=GUI_DISP_A_FONT_NORMAL;
         label->fg_color=GUI_FONT_COLOR_NORMAL;label->bg_color=GUI_TEXT_BG_COLOR;
         label->dirty=1;
     }
@@ -900,6 +985,9 @@ static int gui_status_label(int line) {
 
 void gui_step_details_set(int enable) { gstate.step_details = !!enable; }
 
+// Expanded editor borrows one extra character; ordinary menus stay 28 wide.
+static int gui_status_width(void) { return gstate.step_details ? 29 : GUI_STATUS_LINE_LEN; }
+
 // clear all status text
 void gui_clear_status_text_all(void) {
     for(int line=0; line<GUI_NUM_STATUS_LINES; line++) gui_clear_status_text(line);
@@ -911,13 +999,13 @@ void gui_clear_status_text(int line) {
     if(line < 0 || line >= GUI_NUM_STATUS_LINES) {
         return;
     }
-    for(i = 0; i < GUI_STATUS_LINE_LEN; i ++) {
+    for(i = 0; i < gui_status_width(); i ++) {
         gstate.status_lines[line][i] = ' ';
     }
     gstate.status_lines[line][i] = 0x00;
     gui_set_label(gui_status_label(line), gstate.status_lines[line]);
     gui_set_label_highlight(gui_status_label(line),
-        0, GUI_STATUS_LINE_LEN, GFX_HIGHLIGHT_NORMAL);
+        0, gui_status_width(), GFX_HIGHLIGHT_NORMAL);
 }
 
 // set a line of status text
@@ -927,12 +1015,12 @@ void gui_set_status_text(int line, char *text) {
         return;
     }
     len = strlen(text);
-    if(len > GUI_STATUS_LINE_LEN) {
-        len = GUI_STATUS_LINE_LEN;
+    if(len > gui_status_width()) {
+        len = gui_status_width();
     }
     memcpy(gstate.status_lines[line], text, len);
     // pad out line
-    for(i = strlen(text); i < GUI_STATUS_LINE_LEN; i ++) {
+    for(i = strlen(text); i < gui_status_width(); i ++) {
         gstate.status_lines[line][i] = ' ';
     }
     gstate.status_lines[line][i] = 0x00;
@@ -959,7 +1047,7 @@ void gui_set_status_text_part(int line, int startch, int lench, char *text) {
     for(i = startch + strlen(text); i < (startch + lench); i ++) {
         gstate.status_lines[line][i] = ' ';
     }
-    gstate.status_lines[line][GUI_STATUS_LINE_LEN] = 0x00;
+    gstate.status_lines[line][gui_status_width()] = 0x00;
     gui_set_label(gui_status_label(line), gstate.status_lines[line]);
 }
 

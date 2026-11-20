@@ -1171,8 +1171,8 @@ Wheel and magnetism remain deferred.
 Hold Clock, Arp, MIDI or Tonality alone for800ms to open that menu over the
 main grid. Motion Start selects a row; Length/Value edits the highlighted
 value. Tap the same menu button or Clock to close, retaining edits. Other
-encoders are inactive. Up to nine entries are shown, with track/scene/item
-context, full selected-value detail and two help lines.
+encoders are inactive. Up to twelve entries are shown, with track/scene/item
+context, a blank separator row and two help lines. In scn3 the redundant =value detail is removed.
 
 Clock/Arp/MIDI/Tonality have21/3/22/14entries. MIDI scene Program rows label
 both output and scene. Edits use normal menu/controller rules, including
@@ -1187,8 +1187,8 @@ gesture cancels a pending menu hold/tap. Clock shortcuts before the threshold
 retain priority; a completed Clock help hold cannot become a snapshot action.
 
 Clock Step Length marks active CCi16 and queued >bar targets (* means a CCi
-override is also active); its Edit detail shows the actual base/queued value
-being edited. Other menus retain normal readout semantics: effective Scale
+override is also active); only while CCi16 is active, an Edit detail shows
+the actual base/queued value being edited. Other menus retain normal readout semantics: effective Scale
 may still reflect Hrm even when editing its base; arp CCi overrides retain
 precedence. Menus/editor timeouts pause while viewing, playback continues.
 Other buttons exit before their normal action; closing restores the grid.
@@ -1213,12 +1213,12 @@ arp bars, not the main step grid or its pitch strokes. Seven rows show:
 
 - Existing step title/context (including special control-event hints).
 - Event types for all six slots.
-- Nt: stored note pitch, edited with Transpose. Control slots retain their
+- Note: stored note pitch, edited with Transpose. Control slots retain their
   normal first value instead; this is not a separate transpose offset.
-- Vl: note velocity, edited with Length/Value. Control slots retain their
+- Vel: note velocity, edited with Length/Value. Control slots retain their
   normal second value instead.
-- Gt: note gate duration. Non-Note slots show ---.
-- Dl: per-note onset delay, edited with Speed when a slot is selected. Step
+- Gate: note gate duration. Non-Note slots show ---.
+- Dly: per-note onset delay, edited with Speed when a slot is selected. Step
   means inherit the shared step delay; OFF is an explicit zero delay. Relative
   labels remain available. Non-Note slots show ---.
 - Ratchet: whole-step ratchet setting (Pattern), followed by Step delay: the shared
@@ -1238,3 +1238,146 @@ label reads Ratchet, and turning Pattern in Step Edit no longer triggers a
 misleading single-hit audition (compact and expanded views). Normal sequence
 playback still plays ratchet repetitions; no repeated editor audition was added.
 This follow-up awaits hardware confirmation.
+
+* Track overview across scenes (local 1.38-jwk-trk1)
+
+Hold a track button alone for800ms to open a read-only overview over the main
+grid. Track selection happens immediately on press, as before; release leaves
+the overview open. Tap Clock to close. All encoders are inactive. Other button
+presses close the view and keep their normal action; holding another track can
+then open its overview. Viewing the six scenes does not select/play them.
+
+Fourteen rows show the track number and VOICE/DRUM, a column heading, then
+two lines for each scene. The selected panel scene has a highlighted *number.
+
+#+begin_example
+TRACK 2 / VOICE / stored
+SC RANGE RATE  BIAS MUTE
+*1 01-16 1/16  -    Off
+   C Major
+ 2 57~08 1/8   T1   On
+   Song(C) Nat Minor
+#+end_example
+
+Scenes3..6 follow in the same view. RANGE is the inclusive1-based motion
+start/end, not a playhead or playback direction. A tilde means the window wraps
+through step64 to1. RATE is stored Step Length, including triplet/dotted and
+bar-relative choices. BIAS shows T1..T6 or -; MUTE shows stored On/Off.
+VOICE/DRUM is track-wide. Each scene's second line shows its root and this
+track's stored scale. Song(C) means inheritance from song root C; Song(Off)
+and explicit Root Off are distinguished. Roots are scene-wide, not per track.
+Existing short scale names fit without truncation.
+
+The view refreshes stored values but does not substitute live CCi/Hrm values
+or pending next-bar targets. It makes no song edits, MIDI output or scene
+requests. Normal track selection still has its existing side effects (including
+ending recording); the long hold adds only the display. Menu/editor inactivity
+timers pause while viewing, while playback/note cleanup continue normally.
+Closing restores the grid and preserves the existing editor selection overlay.
+
+Any other button or nonzero encoder cancels an uncompleted hold. No hold is
+armed with another button down, Shift mute, Scene selection, Shift+Scene copy,
+held multitrack selection, or Scn scene-mask editing. Power changes clear the
+hold recognizer and close the overview. The trk1/trk2 view adds no scene-button overview or editing
+controls; the complementary scn1 scene view is described below.
+
+Host tests cover all tracks/scenes, both LCD layouts, all4096motion windows,
+all scales/roots/inheritance, rate labels, live refresh/highlighting, read-only
+encoder guards, caching/restoration and799/800ms/cancel/chord gesture paths.
+Hardware legibility, gesture feel and busy-playback headroom remain unverified.
+
+In local1.38-jwk-trk2, expanded Step Edit uses Note, Vel, Gate and Dly
+in a five-character label field (including spacing). Event columns move two
+characters right; the expanded display uses29characters instead of28 so the
+sixth slot still shows all four characters, including Step and relative delays.
+Compact Step Edit and ordinary menus retain their existing widths. Both-LCD
+geometry, slot-six text/highlights and the existing host suites pass. The trk1
+read-only track overview is retained unchanged; hardware checks remain pending.
+
+* Scene overview across tracks (local 1.38-jwk-scn1)
+
+Hold Scene FIRST, then press and hold a numbered button for800ms while keeping
+Scene down. This is select-and-inspect: the numbered press immediately makes
+the normal scene-change request (and ends recording as before). Scene Sync
+still controls when playback changes. The hold only opens the read-only view;
+it does not issue another request. A short Scene+number retains normal use.
+
+The view stays pinned to the numbered scene, even while the engine is still
+playing another scene or later changes scenes. It shows stored values, not
+CCi/Hrm overrides or queued performance targets. Fourteen rows contain the
+scene/root heading, column heading, then two lines for each of the six tracks:
+
+#+begin_example
+SCENE 3 / Song(C) / stored
+TR RANGE RATE  BIAS MUTE
+*1 01-16 1/16  -    Off
+   VOICE Major
+ 2 57~08 1/8   T1   On
+   DRUM  Chromatic
+#+end_example
+
+Tracks3..6 follow. Selected tracks have highlighted *numbers (multiple possible).
+Ranges, wrap notation, rates, bias and mute mean the same as in track overview.
+The shared scene root is in the heading, including Song(root) inheritance and
+Root Off. Each second line shows that track's VOICE/DRUM and stored scale.
+
+Release either/both buttons after opening to leave the view visible. Clock
+closes; all encoders are inactive. Other button presses close then perform
+normal actions. Releasing either chord button before800ms cancels the hold,
+without cancelling the scene request already made. Another button/encoder
+cancels detection; Shift+Scene+number copy and Scn mask editing retain priority.
+Number-first then Scene does not open a scene overview. Holding Scene alone
+has no new action. Power changes reset recognizers and close the view.
+
+Host tests cover scenes/tracks, roots/scales, both LCD bounds, selected-track
+highlights, pinned scene despite engine changes, read-only guards, cached live
+refresh/restoration and chord threshold/cancel/release/exclusion paths. User
+reported trk2 works really well; this scene extension awaits hardware checks.
+
+In local1.38-jwk-scn2, read-only track and scene overviews use the existing
+GUI grey (#999999) instead of normal bright white (#eeeeee). Selected track/
+scene markers retain their inversion. Editable menu overviews and Step Edit
+keep their existing colours. Switching between read-only and editable views
+invalidates the row cache so identical text cannot retain the wrong colour.
+Both-LCD renderer tests check these colours; physical contrast awaits review.
+
+In local1.38-jwk-scn5, the redundant Start:row Length:value footer is removed.
+Twelve parameter rows, blank separator, two help lines and the conditional
+Clock CCi Edit detail remain unchanged, as do the encoder controls.
+
+Local1.38-jwk-scn6 uses the removed footer space for a thirteenth parameter
+row. The blank separator, two help lines and conditional Clock CCi Edit detail
+still fit both LCDs at the same font size/13pixel spacing. Track/scene views
+are unchanged.
+
+Local1.38-jwk-scn7 fixes miniature track previews missing at startup until
+Step Edit was entered. GUI initialization now clears its entire CCM-resident
+state before applying defaults, including expanded-view/overview flags. A
+nonzero-memory startup regression verifies first-frame drawing of all six
+mini grids and selection/arp bars on both LCDs. Hardware confirmation pending.
+
+Local1.38-jwk-scn8 restores12parameter rows and adds a blank line above the
+menu heading for readability. The lower blank separator, help positions, font
+and spacing remain unchanged. Track/scene layouts and scn7 startup fix remain.
+
+* SYS overview (local 1.38-jwk-sys1)
+
+Hold Shift FIRST, then hold MIDI for800ms with Shift still down. Short
+Shift+MIDI keeps its immediate normal SYS-menu action; holding opens the
+editable overview. Release leaves it open; Clock closes. Motion Start selects
+a row and Length/Value edits, using the normal System handlers. Other encoders
+are inactive. Twelve rows with top breathing room and help separator follow
+the same layout as the other editable overviews.
+
+All20System items are included: version/LCD, CV/Gate pairing, bend range,
+four output modes, four scaling values, four span calibrations, four offsets
+and menu timeout. Version is status-only and is not highlighted for editing.
+CV Mode/Scaling rows include output numbers. Opening/scrolling does not edit
+settings or calibrate outputs. Value edits are real: CV routing, scaling, span
+and offset changes can affect connected hardware immediately. Use a meter
+when calibrating. Timeout uses the existing global configuration preference.
+
+Releasing either chord button before the threshold or using another control
+cancels detection. MIDI-first then Shift is not a SYS hold. Existing plain
+MIDI, Shift and power-reset paths remain. Both-LCD row/formatter/edit-dispatch
+and799/800ms/release/cancel tests pass. Hardware gesture/output checks pending.
