@@ -145,3 +145,8 @@ trap 'rm -rf "$TMP"' EXIT HUP INT TERM
     -ffunction-sections -fdata-sections -fsanitize=address,undefined \
     tests/undo_ctrl_test.c.in src/util/seq_utils.c "$LINK_GC" -o "$TMP/undo-ctrl"
 "$TMP/undo-ctrl"
+
+# Screenshot renderer smoke test: production gfx/GUI into host framebuffer.
+sh tools/screenshots/render.sh "$TMP/screens" both >/dev/null
+test "$(ls "$TMP/screens" | wc -l)" -eq 16
+echo "screenshot renderer passed"

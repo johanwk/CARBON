@@ -1,0 +1,74 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1260 770" font-family="Helvetica, Arial, sans-serif">
+<defs><marker id="dot" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="7" markerHeight="7"><circle cx="5" cy="5" r="4" fill="#d98a1f"/></marker></defs>
+<rect width="1260" height="770" fill="#fff"/>
+<text x="630.0" y="48" text-anchor="middle" font-size="32" font-weight="bold" fill="#222">CARBON main display</text>
+<text x="630.0" y="80" text-anchor="middle" font-size="18" fill="#777">Normal operation. Rendered from example data.</text>
+<rect x="422" y="102" width="416.0" height="616.0" rx="10" fill="#333"/>
+<image x="430" y="110" width="400.0" height="600.0" preserveAspectRatio="none" style="image-rendering:pixelated" href="data:image/png;base64,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"/>
+<rect x="483.75" y="172.5" width="87.5" height="15.0" fill="none" stroke="#d98a1f" stroke-width="2.5" rx="3"/>
+<rect x="483.75" y="195.0" width="287.5" height="12.5" fill="none" stroke="#d98a1f" stroke-width="2.5" rx="3"/>
+<rect x="483.75" y="210.0" width="280.0" height="12.5" fill="none" stroke="#d98a1f" stroke-width="2.5" rx="3"/>
+<rect x="486.25" y="523.75" width="287.5" height="57.5" fill="none" stroke="#d98a1f" stroke-width="2.5" rx="3"/>
+<rect x="580.0" y="172.5" width="112.5" height="15.0" fill="none" stroke="#d98a1f" stroke-width="2.5" rx="3"/>
+<rect x="700.0" y="172.5" width="75.0" height="15.0" fill="none" stroke="#d98a1f" stroke-width="2.5" rx="3"/>
+<rect x="480.0" y="222.5" width="297.5" height="297.5" fill="none" stroke="#d98a1f" stroke-width="2.5" rx="3"/>
+<rect x="490.0" y="591.25" width="280.0" height="57.5" fill="none" stroke="#d98a1f" stroke-width="2.5" rx="3"/>
+<line x1="360" y1="180.0" x2="483.75" y2="180.0" stroke="#d98a1f" stroke-width="2" marker-end="url(#dot)"/>
+<rect x="20" y="147.0" width="340" height="66" rx="8" fill="#fff8ec" stroke="#d98a1f" stroke-width="2"/>
+<circle cx="40" cy="169.0" r="13" fill="#d98a1f"/>
+<text x="40" y="175.0" text-anchor="middle" font-size="16" font-weight="bold" fill="#fff">1</text>
+<text x="62" y="176.0" font-size="21" font-weight="bold" fill="#222">Song number</text>
+<text x="36" y="201.0" font-size="17" fill="#333">Currently loaded song slot.</text>
+<line x1="360" y1="284.0" x2="483.75" y2="201.25" stroke="#d98a1f" stroke-width="2" marker-end="url(#dot)"/>
+<rect x="20" y="229.0" width="340" height="110" rx="8" fill="#fff8ec" stroke="#d98a1f" stroke-width="2"/>
+<circle cx="40" cy="251.0" r="13" fill="#d98a1f"/>
+<text x="40" y="257.0" text-anchor="middle" font-size="16" font-weight="bold" fill="#fff">2</text>
+<text x="62" y="258.0" font-size="21" font-weight="bold" fill="#222">Status indicators</text>
+<text x="36" y="283.0" font-size="17" fill="#333">RUN, REC, clock source, keyboard</text>
+<text x="36" y="305.0" font-size="17" fill="#333">transpose and LIVE. Dim when</text>
+<text x="36" y="327.0" font-size="17" fill="#333">inactive.</text>
+<line x1="360" y1="399.0" x2="483.75" y2="216.25" stroke="#d98a1f" stroke-width="2" marker-end="url(#dot)"/>
+<rect x="20" y="355.0" width="340" height="88" rx="8" fill="#fff8ec" stroke="#d98a1f" stroke-width="2"/>
+<circle cx="40" cy="377.0" r="13" fill="#d98a1f"/>
+<text x="40" y="383.0" text-anchor="middle" font-size="16" font-weight="bold" fill="#fff">3</text>
+<text x="62" y="384.0" font-size="21" font-weight="bold" fill="#222">Song mode line</text>
+<text x="36" y="409.0" font-size="17" fill="#333">Song-mode position, or performance</text>
+<text x="36" y="431.0" font-size="17" fill="#333">status and short notices.</text>
+<line x1="360" y1="552.5" x2="486.25" y2="552.5" stroke="#d98a1f" stroke-width="2" marker-end="url(#dot)"/>
+<rect x="20" y="508.5" width="340" height="88" rx="8" fill="#fff8ec" stroke="#d98a1f" stroke-width="2"/>
+<circle cx="40" cy="530.5" r="13" fill="#d98a1f"/>
+<text x="40" y="536.5" text-anchor="middle" font-size="16" font-weight="bold" fill="#fff">4</text>
+<text x="62" y="537.5" font-size="21" font-weight="bold" fill="#222">Mini sequencers</text>
+<text x="36" y="562.5" font-size="17" fill="#333">All six tracks at a glance, with</text>
+<text x="36" y="584.5" font-size="17" fill="#333">selection and arp-enable bars.</text>
+<line x1="900.0" y1="180.0" x2="692.5" y2="180.0" stroke="#d98a1f" stroke-width="2" marker-end="url(#dot)"/>
+<rect x="900.0" y="136.0" width="340" height="88" rx="8" fill="#fff8ec" stroke="#d98a1f" stroke-width="2"/>
+<circle cx="920.0" cy="158.0" r="13" fill="#d98a1f"/>
+<text x="920.0" y="164.0" text-anchor="middle" font-size="16" font-weight="bold" fill="#fff">5</text>
+<text x="942.0" y="165.0" font-size="21" font-weight="bold" fill="#222">Tempo</text>
+<text x="916.0" y="190.0" font-size="17" fill="#333">BPM; follows external clock when</text>
+<text x="916.0" y="212.0" font-size="17" fill="#333">synced.</text>
+<line x1="900.0" y1="284.0" x2="775.0" y2="180.0" stroke="#d98a1f" stroke-width="2" marker-end="url(#dot)"/>
+<rect x="900.0" y="240.0" width="340" height="88" rx="8" fill="#fff8ec" stroke="#d98a1f" stroke-width="2"/>
+<circle cx="920.0" cy="262.0" r="13" fill="#d98a1f"/>
+<text x="920.0" y="268.0" text-anchor="middle" font-size="16" font-weight="bold" fill="#fff">6</text>
+<text x="942.0" y="269.0" font-size="21" font-weight="bold" fill="#222">Scene</text>
+<text x="916.0" y="294.0" font-size="17" fill="#333">Panel scene. Scene + number</text>
+<text x="916.0" y="316.0" font-size="17" fill="#333">selects.</text>
+<line x1="900.0" y1="410.0" x2="777.5" y2="371.25" stroke="#d98a1f" stroke-width="2" marker-end="url(#dot)"/>
+<rect x="900.0" y="344.0" width="340" height="132" rx="8" fill="#fff8ec" stroke="#d98a1f" stroke-width="2"/>
+<circle cx="920.0" cy="366.0" r="13" fill="#d98a1f"/>
+<text x="920.0" y="372.0" text-anchor="middle" font-size="16" font-weight="bold" fill="#fff">7</text>
+<text x="942.0" y="373.0" font-size="21" font-weight="bold" fill="#222">Step grid</text>
+<text x="916.0" y="398.0" font-size="17" fill="#333">64 steps of the first selected</text>
+<text x="916.0" y="420.0" font-size="17" fill="#333">track: motion window, pattern</text>
+<text x="916.0" y="442.0" font-size="17" fill="#333">hits, playhead and note-pitch</text>
+<text x="916.0" y="464.0" font-size="17" fill="#333">marks.</text>
+<line x1="900.0" y1="620.0" x2="770.0" y2="620.0" stroke="#d98a1f" stroke-width="2" marker-end="url(#dot)"/>
+<rect x="900.0" y="576.0" width="340" height="88" rx="8" fill="#fff8ec" stroke="#d98a1f" stroke-width="2"/>
+<circle cx="920.0" cy="598.0" r="13" fill="#d98a1f"/>
+<text x="920.0" y="604.0" text-anchor="middle" font-size="16" font-weight="bold" fill="#fff">8</text>
+<text x="942.0" y="605.0" font-size="21" font-weight="bold" fill="#222">Status / menu area</text>
+<text x="916.0" y="630.0" font-size="17" fill="#333">Track settings in normal use; menu</text>
+<text x="916.0" y="652.0" font-size="17" fill="#333">or Step Edit readout when active.</text>
+</svg>

@@ -183,3 +183,10 @@ inheritance/Off, scale/type, selected-track highlights, pinned scene despite
 engine/panel changes, no-op edit/scroll, cached refresh and grid restoration.
 The immediate scene-request dispatch is unchanged; hardware scene-sync timing
 and physical chord feel still need confirmation.
+
+## Screenshot renderer smoke test
+
+The final step builds `tools/screenshots/render.sh` and renders both LCD
+layouts from prepared example data with the production graphics/GUI code.
+It checks that rendering completes, not pixel content. See
+`tools/screenshots/README.org` for generating documentation images.

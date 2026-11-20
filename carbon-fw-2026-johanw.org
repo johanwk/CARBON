@@ -1381,3 +1381,10 @@ Releasing either chord button before the threshold or using another control
 cancels detection. MIDI-first then Shift is not a SYS hold. Existing plain
 MIDI, Shift and power-reset paths remain. Both-LCD row/formatter/edit-dispatch
 and799/800ms/release/cancel tests pass. Hardware gesture/output checks pending.
+
+* Documentation screenshots
+
+Display images and annotated diagrams in =docs/screenshots/= are rendered
+on a computer by the production display code from example data; they are
+not photographs or captures of a device session. See
+[[file:tools/screenshots/README.org][Screenshot renderer]] to regenerate them.

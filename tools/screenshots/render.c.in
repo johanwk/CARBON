@@ -1,0 +1,281 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later */
+/*
+ * Host screenshot renderer for documentation.
+ *
+ * Production gfx.c, ROM fonts, gui.c, panel_menu.c and step_edit.c draw into
+ * a host RGB565 framebuffer instead of the ILI948x LCD. Sequencer/song state
+ * comes from the PREPARED FIXTURE below, not from a device. Images are
+ * therefore pixel renderings of example states, not captures of hardware.
+ *
+ * Usage: render OUTDIR [a|b|both]   (default a: original 3.95" panel)
+ */
+#define GUI_STATE_SECTION
+#include <stdarg.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include "../../src/gfx.c"
+#include "../../src/gui/gui.c"
+#include "../../src/gui/panel_menu.c"
+#include "../../src/gui/step_edit.c"
+
+/* ---------- host LCD: RGB565 framebuffer ---------- */
+static uint16_t fb[LCD_H][LCD_W];
+static int win_x, win_y, win_w, win_h, win_pos;
+void ILI948x_drv_init(void) {}
+void ILI948x_drv_init_LCD(void) {}
+void ILI948x_drv_deinit_LCD(void) {}
+void ILI948x_drv_clear(uint16_t c) { for(int y=0;y<LCD_H;y++) for(int x=0;x<LCD_W;x++) fb[y][x]=c; }
+void ILI948x_drv_set_xy(int x,int y,int w,int h) { win_x=x;win_y=y;win_w=w;win_h=h;win_pos=0; }
+void ILI948x_drv_send_pixels(uint16_t *p,int len) {
+    for(int i=0;i<len;i++,win_pos++) {
+        int x=win_x+win_pos%win_w, y=win_y+win_pos/win_w;
+        if(x>=0 && x<LCD_W && y>=0 && y<LCD_H) fb[y][x]=p[i];
+    }
+}
+
+/* ---------- PNG writer (stored deflate, no dependencies) ---------- */
+static uint32_t crc_table[256];
+static void crc_init(void) {
+    for(uint32_t n=0;n<256;n++) { uint32_t c=n; for(int k=0;k<8;k++) c=c&1?0xedb88320u^(c>>1):c>>1; crc_table[n]=c; }
+}
+static uint32_t crc_upd(uint32_t c,const uint8_t *b,size_t n) { while(n--) c=crc_table[(c^*b++)&255]^(c>>8); return c; }
+static void be32(FILE *f,uint32_t v) { uint8_t b[4]={v>>24,v>>16,v>>8,v}; fwrite(b,1,4,f); }
+static void chunk(FILE *f,const char *t,const uint8_t *d,uint32_t n) {
+    be32(f,n); fwrite(t,1,4,f); if(n) fwrite(d,1,n,f);
+    uint32_t c=crc_upd(0xffffffffu,(const uint8_t *)t,4); c=crc_upd(c,d,n); be32(f,c^0xffffffffu);
+}
+static int write_png(const char *path) {
+    size_t raw_n=(size_t)LCD_H*(1+LCD_W*3);
+    uint8_t *raw=malloc(raw_n), *z=malloc(raw_n+raw_n/65535*5+16);
+    size_t r=0;
+    for(int y=0;y<LCD_H;y++) {
+        raw[r++]=0;
+        for(int x=0;x<LCD_W;x++) {
+            uint16_t c=fb[y][x];
+            unsigned R=(c>>11)&31, G=(c>>5)&63, B=c&31;
+            raw[r++]=(R<<3)|(R>>2); raw[r++]=(G<<2)|(G>>4); raw[r++]=(B<<3)|(B>>2);
+        }
+    }
+    size_t zn=0; uint32_t a=1,b=0;
+    z[zn++]=0x78; z[zn++]=0x01;
+    for(size_t off=0;off<raw_n;) {
+        size_t len=raw_n-off>65535?65535:raw_n-off;
+        z[zn++]=off+len==raw_n; z[zn++]=len&255; z[zn++]=len>>8; z[zn++]=~len&255; z[zn++]=(~len>>8)&255;
+        memcpy(z+zn,raw+off,len); zn+=len; off+=len;
+    }
+    for(size_t i=0;i<raw_n;i++) { a=(a+raw[i])%65521; b=(b+a)%65521; }
+    z[zn++]=b>>8; z[zn++]=b; z[zn++]=a>>8; z[zn++]=a;
+    FILE *f=fopen(path,"wb"); if(!f) {free(raw);free(z);return -1;}
+    static const uint8_t sig[8]={137,80,78,71,13,10,26,10}; fwrite(sig,1,8,f);
+    uint8_t ihdr[13]={0,0,LCD_W>>8,LCD_W&255,0,0,LCD_H>>8,LCD_H&255,8,2,0,0,0};
+    chunk(f,"IHDR",ihdr,13); chunk(f,"IDAT",z,(uint32_t)zn); chunk(f,"IEND",NULL,0);
+    fclose(f); free(raw); free(z); return 0;
+}
+
+/* ---------- prepared fixture state (example, not device data) ---------- */
+static int fx_scene, fx_first, fx_screen, fx_selected[6]={1,0,0,0,0,0};
+static int fx_start[6][6], fx_len[6][6], fx_rate[6][6], fx_mute[6][6], fx_bias[6][6], fx_scale[6][6];
+static int fx_type[6]={0,0,0,0,1,1}, fx_scene_root[6]={-2,-2,7,-2,2,-2};
+static struct track_event fx_events[64][SEQ_TRACK_POLY];
+static int fx_ratchet[64], fx_delay[64];
+/* Euclidean-style hits: k of n, with n not dividing the 8-step grid row, so
+ * rows differ. Rotation is chosen so step 5 (index 4, the edited chord) hits. */
+static const int fx_k[6]={5,3,7,4,2,5}, fx_n[6]={13,10,12,11,7,9};
+static int fx_rot[6];
+static int fx_hit(int track,int step) {
+    return ((step+fx_rot[track])*fx_k[track])%fx_n[track] < fx_k[track];
+}
+static void fx_rotations(void) {
+    for(int t=0;t<6;t++) for(fx_rot[t]=0;fx_rot[t]<fx_n[t] && !fx_hit(t,4);fx_rot[t]++);
+}
+static void fixture_init(void) {
+    fx_rotations();
+    for(int s=0;s<6;s++) for(int t=0;t<6;t++) {
+        fx_start[s][t]=(s*8+t*4)%64; fx_len[s][t]=t==5&&s==1?16:16+8*(t%3);
+        fx_rate[s][t]=t==3?SEQ_UTILS_STEP_8TH:SEQ_UTILS_STEP_16TH;
+        fx_mute[s][t]=(s+t)%5==4; fx_bias[s][t]=t==2?0:-1; fx_scale[s][t]=(s+t)%4;
+    }
+    fx_start[1][5]=56; /* wrapped window 57~08 */
+    for(int i=0;i<64;i++) fx_delay[i]=SEQ_START_DELAY_INHERIT;
+    static const int melody[8]={48,55,51,60,53,58,56,63};
+    for(int i=0;i<64;i++) if(fx_hit(0,i)) {
+        fx_events[i][0]=(struct track_event){SONG_EVENT_NOTE,melody[(i/2)%8],100,0,48};
+        fx_events[i][0].delay=SEQ_START_DELAY_INHERIT;
+    }
+    struct track_event *e=fx_events[4];
+    e[0]=(struct track_event){SONG_EVENT_NOTE,60,96,SEQ_START_DELAY_INHERIT,24};
+    e[1]=(struct track_event){SONG_EVENT_NOTE,64,88,SEQ_START_DELAY_INHERIT,24};
+    e[2]=(struct track_event){SONG_EVENT_NOTE,67,92,0,48};
+    e[3]=(struct track_event){SONG_EVENT_PROBABILITY,75,0,0,0};
+    fx_ratchet[4]=2; fx_delay[4]=0;
+}
+
+/* sequencer/song interface used by the GUI */
+int32_t config_store_get_val(int32_t addr) { return addr==CONFIG_STORE_GUI_DISP_TYPE ? fx_screen : 30000; }
+void config_store_set_val(int32_t addr,int32_t v) {}
+void log_debug(char *f,...) {} void log_error(char *f,...) {} void log_info(char *f,...) {} void log_warn(char *f,...) {}
+float midi_clock_get_tempo(void) { return 120.0f; }
+int midi_clock_is_ext_synced(void) { return 0; }
+void outproc_deliver_msg(int scene,int track,struct midi_msg *m,int d,int mode) {}
+void state_change_register(void (*h)(int,int*,int),int c) {}
+int pattern_get_step_enable(int scene,int track,int pattern,int step) { return fx_hit(track,step); }
+int seq_ctrl_get_current_song(void) { return 7; }
+int seq_ctrl_get_first_track(void) { return fx_first; }
+int seq_ctrl_get_record_mode(void) { return SEQ_CTRL_RECORD_IDLE; }
+int seq_ctrl_get_run_state(void) { return 0; }
+int seq_ctrl_get_scene(void) { return fx_scene; }
+int seq_ctrl_get_song_mode(void) { return 0; }
+int seq_ctrl_get_track_select(int t) { return fx_selected[t]; }
+int seq_ctrl_load_song(int s) { return 0; } int seq_ctrl_save_song(int s) { return 0; }
+void seq_ctrl_clear_song(void) {} void seq_ctrl_record_pressed(void) {}
+void seq_ctrl_reset_pos(void) {} void seq_ctrl_reset_track(int t) {}
+int seq_engine_get_current_scene(void) { return fx_scene; }
+int seq_engine_get_effective_euclidean_density(int t) { return 100; }
+int seq_engine_get_effective_euclidean_rotation(int t) { return 0; }
+int seq_engine_get_effective_motion_length(int t) { return fx_len[fx_scene][t]; }
+int seq_engine_get_effective_root(int s) { return song_get_scene_root(s)==-2 ? 0 : song_get_scene_root(s); }
+int seq_engine_get_effective_tonality(int s,int t) { return fx_scale[s][t]; }
+int seq_engine_get_internal_cc(int t,int cc,int v) { return v; }
+static struct song_mode_state fx_mode={0,-1,0,0,0};
+struct song_mode_state *seq_engine_get_song_mode_state(void) { return &fx_mode; }
+int seq_engine_humanize_get(int t,int p) { return 0; } void seq_engine_humanize_set(int t,int p,int v) {}
+int seq_engine_pitch_mode(void) { return 0; } int seq_engine_pitch_pending(int t) { return 0; }
+int seq_engine_pitch_value(int s,int t) { return 0; }
+void seq_engine_preview_step(int t,int step,struct seq_step_preview *p) {
+    memset(p,0,sizeof(*p));
+    for(int i=0;i<SEQ_TRACK_POLY;i++) if(fx_events[step][i].type==SONG_EVENT_NOTE) {
+        p->pitch[p->count]=fx_events[step][i].data0; p->delay[p->count++]=0;
+    }
+}
+void seq_engine_set_pitch_mode(int m) {} void seq_engine_set_straight(int e) {}
+void seq_engine_snapshot_cancel(void) {} int seq_engine_snapshot_capture(void) { return 0; }
+int seq_engine_snapshot_recall(void) { return 0; } int seq_engine_snapshot_status(void) { return 1; }
+int seq_engine_straight_enabled(void) { return 0; }
+int seq_engine_timing_pending(int t,int k) { return 0; }
+int seq_engine_timing_value(int s,int t,int k) { return fx_rate[s][t]; }
+void seq_engine_undo_cancel(void) {} int seq_engine_undo_capture(void) { return 0; }
+void seq_engine_remote_compact(int t,int c) {} void seq_engine_remote_harmony_root(int v) {}
+void seq_engine_remote_harmony_scale(int t,int v) {} void seq_engine_remote_inversion(int t,int r) {}
+int song_snapshot_idle(void) { return 1; }
+int song_get_arp_enable(int s,int t) { return t==3; }
+int song_get_arp_gate_time(int s,int t) { return 12; }
+int song_get_arp_type(int s,int t) { return 0; }
+int song_get_bias_track(int s,int t) { return fx_bias[s][t]; }
+int song_get_cv_bend_range(void) { return 2; }
+int song_get_cv_output_scaling(int o) { return 0; }
+int song_get_cvcal(int o) { return 0; } int song_get_cvoffset(int o) { return 0; }
+int song_get_cvgate_pair_mode(int p) { return 0; } int song_get_cvgate_pairs(void) { return SONG_CVGATE_PAIR_ABCD; }
+int song_get_euclidean_density(int s,int t) { return 100; }
+int song_get_gate_time(int s,int t) { return 0x80; }
+int song_get_key_split(int t) { return 0; } int song_get_key_velocity_scale(void) { return 0; }
+int song_get_magic_chance(void) { return 100; } int song_get_magic_range(void) { return 12; }
+int song_get_metronome_mode(void) { return SONG_METRONOME_OFF; } int song_get_metronome_sound_len(void) { return 10; }
+int song_get_midi_autolive(void) { return 0; }
+int song_get_midi_channel_map(int t,int m) { return m<0?0:t; }
+int song_get_midi_clock_source(void) { return -1; }
+int song_get_midi_port_clock_out(int p) { return 0; }
+int song_get_midi_port_map(int t,int m) { return m ? -1 : 0; }
+int song_get_midi_program(int t,int m) { return -1; }
+int song_get_midi_remote_ctrl(void) { return 1; }
+int song_get_motion_dir(int s,int t) { return 0; }
+int song_get_motion_length(int s,int t) { return fx_len[s][t]; }
+int song_get_motion_start(int s,int t) { return fx_start[s][t]; }
+int song_get_mute(int s,int t) { return fx_mute[s][t]; }
+int song_get_num_step_events(int s,int t,int step) {
+    int n=0; for(int i=0;i<SEQ_TRACK_POLY;i++) n+=!!fx_events[step][i].type; return t==fx_first?n:fx_hit(t,step);
+}
+int song_get_pattern_type(int s,int t) { return 0; }
+int song_get_ratchet_mode(int s,int t,int step) { return fx_ratchet[step]; }
+int song_get_root(void) { return 0; }
+int song_get_scene_midi_program(int s,int t,int m) { return -1; }
+int song_get_scene_root(int s) { return fx_scene_root[s]; }
+int song_get_scene_sync(void) { return SONG_SCENE_SYNC_BEAT; }
+int song_get_start_delay(int s,int t,int step) { return fx_delay[step]; }
+int song_get_step_event(int s,int t,int step,int slot,struct track_event *e) {
+    *e=fx_events[step][slot]; return e->type ? 0 : -1;
+}
+int song_get_step_length(int s,int t) { return fx_rate[s][t]; }
+int song_get_swing(void) { return 50; }
+float song_get_tempo(void) { return 120.0f; }
+int song_get_tonality(int s,int t) { return fx_scale[s][t]; }
+int song_get_track_type(int t) { return fx_type[t]; }
+int song_get_transpose(int s,int t) { return 0; }
+/* edits are never performed while rendering */
+int song_add_step_event(int s,int t,int step,struct track_event *e) { return -1; }
+void song_clear_step_event(int s,int t,int step,int slot) {} void song_clear_step(int s,int t,int step) {}
+void song_set_ratchet_mode(int s,int t,int step,int r) {} void song_set_root(int r) {}
+void song_set_scene_root(int s,int r) {} void song_set_start_delay(int s,int t,int step,int d) {}
+int song_set_step_event(int s,int t,int step,int slot,struct track_event *e) { return -1; }
+#define NOEDIT1(n) void n(int c) {}
+#define NOEDIT2(n) void n(int a,int c) {}
+NOEDIT1(seq_ctrl_adjust_arp_gate_time) NOEDIT1(seq_ctrl_adjust_arp_speed) NOEDIT1(seq_ctrl_adjust_arp_type)
+NOEDIT1(seq_ctrl_adjust_bias_track) NOEDIT2(seq_ctrl_adjust_clock_out_rate) NOEDIT1(seq_ctrl_adjust_clock_source)
+NOEDIT1(seq_ctrl_adjust_cv_bend_range) NOEDIT2(seq_ctrl_adjust_cv_output_scaling) NOEDIT2(seq_ctrl_adjust_cvcal)
+NOEDIT2(seq_ctrl_adjust_cvgate_pair_mode) NOEDIT1(seq_ctrl_adjust_cvgate_pairs) NOEDIT2(seq_ctrl_adjust_cvoffset)
+NOEDIT1(seq_ctrl_adjust_key_split) NOEDIT1(seq_ctrl_adjust_key_velocity_scale) NOEDIT1(seq_ctrl_adjust_magic_chance)
+NOEDIT1(seq_ctrl_adjust_magic_range) NOEDIT1(seq_ctrl_adjust_metronome_mode) NOEDIT1(seq_ctrl_adjust_metronome_sound_len)
+NOEDIT1(seq_ctrl_adjust_midi_autolive) NOEDIT2(seq_ctrl_adjust_midi_channel) NOEDIT2(seq_ctrl_adjust_midi_port)
+NOEDIT2(seq_ctrl_adjust_midi_program) NOEDIT1(seq_ctrl_adjust_midi_remote_ctrl) NOEDIT1(seq_ctrl_adjust_scene_sync)
+NOEDIT1(seq_ctrl_adjust_step_length) NOEDIT1(seq_ctrl_adjust_swing) NOEDIT1(seq_ctrl_adjust_tonality)
+NOEDIT1(seq_ctrl_adjust_track_type) NOEDIT1(seq_ctrl_adjust_transpose)
+void seq_ctrl_adjust_scene_midi_program(int s,int m,int c) {}
+NOEDIT2(seq_ctrl_set_arp_enable) NOEDIT2(seq_ctrl_set_arp_gate_time) NOEDIT2(seq_ctrl_set_arp_speed)
+NOEDIT2(seq_ctrl_set_arp_type) NOEDIT2(seq_ctrl_set_euclidean_density) NOEDIT2(seq_ctrl_set_euclidean_rotation_scaled)
+NOEDIT2(seq_ctrl_set_gate_time) NOEDIT1(seq_ctrl_set_kbtrans) NOEDIT2(seq_ctrl_set_motion_dir)
+NOEDIT2(seq_ctrl_set_motion_length) NOEDIT2(seq_ctrl_set_motion_start) NOEDIT2(seq_ctrl_set_mute_select)
+NOEDIT2(seq_ctrl_set_pattern_type) NOEDIT1(seq_ctrl_set_run_state) NOEDIT1(seq_ctrl_set_scene)
+NOEDIT2(seq_ctrl_set_step_length) NOEDIT2(seq_ctrl_set_transpose)
+
+/* ---------- scenes ---------- */
+static void boot(int screen) {
+    fx_screen=screen; fx_scene=0; fx_first=0;
+    gui_init(); step_edit_init(); panel_menu_init(); gui_startup();
+    gui_update_song(seq_ctrl_get_current_song()); gui_update_tempo(120.0f); gui_update_scene(0);
+    gui_update_clock_source(-1);
+    for(int t=0;t<6;t++) {
+        gui_update_track_select(t,fx_selected[t]);
+        gui_update_arp_enable(0,t,song_get_arp_enable(0,t));
+        gui_update_track_mute(0,t,fx_mute[0][t]);
+        gui_update_motion_start(0,t,fx_start[0][t]);
+        gui_update_motion_length(0,t,fx_len[0][t]);
+        gui_update_active_step(t,(fx_start[0][t]+5)%64);
+    }
+    gui_update_first_track(0);
+}
+static void settle(void) { for(int i=0;i<4;i++) gui_refresh_task(); }
+static int shot(const char *dir,const char *name,int screen) {
+    char path[512]; snprintf(path,sizeof(path),"%s/%s-lcd%c.png",dir,name,'a'+screen);
+    settle(); if(write_png(path)) {fprintf(stderr,"cannot write %s\n",path);return 1;}
+    printf("%s\n",path); return 0;
+}
+int main(int argc,char **argv) {
+    if(argc<2 || argc>3) {fprintf(stderr,"usage: %s OUTDIR [a|b|both]\n",argv[0]);return 2;}
+    const char *which=argc==3?argv[2]:"a";
+    int first=0,last=0;
+    if(!strcmp(which,"b")) first=last=1;
+    else if(!strcmp(which,"both")) last=GUI_DISP_NUM_TYPES-1;
+    else if(strcmp(which,"a")) {fprintf(stderr,"layout must be a, b or both\n");return 2;}
+    crc_init(); fixture_init();
+    int bad=0;
+    for(int screen=first;screen<=last;screen++) {
+        boot(screen); bad|=shot(argv[1],"01-normal",screen);
+        boot(screen); step_edit_set_enable(1); step_edit_adjust_cursor(4,0);
+        bad|=shot(argv[1],"02-step-edit-compact",screen);
+        step_edit_toggle_details(); bad|=shot(argv[1],"03-step-edit-expanded",screen);
+#ifdef RENDER_DUMP_TEXT
+        for(int l=0;l<GUI_NUM_STATUS_LINES;l++) printf("%d|%s|\n",l,gstate.status_lines[l]);
+#endif
+        step_edit_adjust_cursor(3,1); /* Shift+Motion Start: select slot 3 */
+        bad|=shot(argv[1],"08-step-edit-expanded-slot",screen);
+#ifdef RENDER_DUMP_TEXT
+        for(int l=0;l<GUI_NUM_STATUS_LINES;l++) printf("%d|%s|\n",l,gstate.status_lines[l]);
+#endif
+        step_edit_toggle_details(); step_edit_set_enable(0);
+        boot(screen); gui_overview_open(PANEL_MENU_CLOCK); bad|=shot(argv[1],"04-clock-overview",screen);
+        boot(screen); gui_track_overview_open(5); bad|=shot(argv[1],"05-track-overview",screen);
+        boot(screen); gui_scene_overview_open(1); bad|=shot(argv[1],"06-scene-overview",screen);
+        boot(screen); gui_overview_open(PANEL_MENU_SYS); bad|=shot(argv[1],"07-sys-overview",screen);
+    }
+    return bad;
+}

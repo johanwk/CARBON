@@ -1,0 +1,112 @@
+#+title: Host LCD screenshot renderer
+#+options: ^:nil -:nil
+
+Renders CARBON display images on the computer using the production
+=src/gfx.c=, ROM bitmap fonts, =gui.c=, =panel_menu.c= and =step_edit.c=.
+Only the ILI948x LCD driver is replaced, by an RGB565 host framebuffer
+written as a 320x480 PNG.
+
+* Status: prepared fixtures, not device captures
+
+Song, sequencer and selection state comes from the example fixture in
+=render.c.in=. Images show exact logical pixels for that example state.
+They are NOT screenshots of a real session, and do not reproduce physical
+panel brightness, contrast or viewing angle. Published diagrams say
+"Rendered from example data".
+
+* Requirements
+
+- A host C compiler (=cc=; Apple Clang tested) with address/undefined
+  sanitizers.
+- Python 3 (standard library only).
+- Optional: =rsvg-convert= or a web browser to view/rasterize SVGs.
+
+No image libraries are needed: the renderer writes PNG itself and
+=pngcrush.py= recompresses it losslessly with Python's =zlib=.
+
+* Generate the documentation images
+
+From the repository root:
+
+#+begin_src sh
+sh tools/screenshots/render.sh
+#+end_src
+
+This builds the renderer, then writes:
+
+- =docs/screenshots/fixtures/*-lcda.png=: eight screens.
+- =docs/screenshots/main-display-annotated.svg=
+- =docs/screenshots/step-edit-annotated.svg=
+
+Commit regenerated images together with the code change that altered them.
+
+| File                               | View                                 |
+|------------------------------------+--------------------------------------|
+| 01-normal                          | Normal display                       |
+| 02-step-edit-compact               | Step Edit, compact                   |
+| 03-step-edit-expanded              | Step Edit, expanded, all slots       |
+| 04-clock-overview                  | Clock fullscreen overview            |
+| 05-track-overview                  | Track overview (Track 6)             |
+| 06-scene-overview                  | Scene overview (Scene 2)             |
+| 07-sys-overview                    | SYS fullscreen overview              |
+| 08-step-edit-expanded-slot         | Step Edit, expanded, slot 3 selected |
+
+** Other layouts and directories
+
+#+begin_src sh
+sh tools/screenshots/render.sh /tmp/screens      # LCD A, elsewhere
+sh tools/screenshots/render.sh /tmp/screens b    # LCD B only
+sh tools/screenshots/render.sh /tmp/screens both # both layouts
+#+end_src
+
+LCD A (original 3.95" panel) is the default: it matches the reference unit,
+so images can be checked against hardware. LCD B (newer 3.5" panel) shows
+the same content with a larger, less inset layout. Diagrams are produced
+only for the default LCD A documentation set; the user-facing diagrams do
+not name the layout.
+
+* Changing the example state
+
+Edit the fixture section of =render.c.in=:
+- =fixture_init()=: step events, ratchet and delay for track 1.
+- =fx_k=/=fx_n=: Euclidean-style hits (k of n steps) per track. Cycle
+  lengths do not divide the 8-step grid row, so grid rows differ.
+- Getter functions below it: scene, tracks, routing, scales, roots.
+
+Views are created in =main()= using the same calls as panel actions,
+e.g. =step_edit_set_enable()=, =gui_track_overview_open()=.
+Fixture functions never write song data.
+
+* Annotated diagrams (SVG)
+
+=annotate.py= places a rendered screen in the centre, with numbered
+callouts on both sides, each with a straight leader to a highlighted LCD
+region. Diagrams are defined in its =DIAGRAMS= table: side, target point,
+highlight rectangle (LCD A pixels), heading and body.
+
+#+begin_src sh
+python3 tools/screenshots/annotate.py stepedit \
+    docs/screenshots/fixtures/08-step-edit-expanded-slot-lcda.png out.svg
+#+end_src
+
+Design rules:
+- Boxes on each side follow the vertical order of their targets, so
+  leaders on one side do not cross. Check after editing callouts.
+- The screen is drawn at 1.25x so callout text stays readable.
+- Long headings of the form "Value  -  Control" break after the dash.
+- The PNG is embedded and scaled with pixelated rendering, so each SVG is
+  self-contained and scales sharply. Text is real SVG text: searchable,
+  editable and translatable.
+- Anchor coordinates come from LCD A constants in =src/gui/gui.c=; update
+  them if the layout changes.
+
+* Testing
+
+=tests/run-host-tests.sh= renders both layouts as a smoke test. It does
+not yet compare against approved reference pixels.
+
+* Next steps
+
+- Reference-image regression checks for approved images.
+- More diagrams (fullscreen menu overview, track/scene overviews).
+- Replace fixtures with state or drawing commands captured from a device.
