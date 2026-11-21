@@ -11,6 +11,14 @@ int panel_menu_get_mode(void) {return menu;}
 void panel_if_set_led(int led,uint8_t value) {leds[led]=value;writes++;}
 void panel_if_blink_led(int led,uint8_t off,uint8_t on) {leds[led]=-1;writes++;}
 void log_error(char *fmt,...) {assert(0);}
+/* Stubs for panel_handle_state_change dependencies (unused by these tests). */
+void gui_clear_status_text_all(void) {} void gui_set_status_override(int e) {}
+void gui_set_status_text(int line,char *text) {} void panel_if_set_rgb(int side,uint32_t color) {}
+int panel_menu_get_timeout(void) {return 0;} int seq_ctrl_get_first_track(void) {return 0;}
+int seq_ctrl_get_live_mode(void) {return 0;} int seq_ctrl_get_scene(void) {return 0;}
+int seq_ctrl_get_song_mode(void) {return 0;} int song_get_arp_enable(int s,int t) {return 0;}
+int song_get_euclidean_density(int s,int t) {return 100;} int song_get_euclidean_rotation(int s,int t) {return 0;}
+int song_get_motion_dir(int s,int t) {return 0;} int song_get_motion_length(int s,int t) {return 16;}
 static int help_active, help_scroll;
 int gui_clock_help_active(void) {return help_active;}
 void gui_clock_help_set(int enable) {help_active=enable;}
@@ -204,7 +212,30 @@ static void test_sys_hold(void) {
     panel_sys_overview_input(PANEL_SW_MIDI,0);
     assert(overview_keys_tick(&pstate.sys_keys)<0);
 }
+// Regression: LOAD release lost during the load lockout blocked track/scene overviews.
+static void test_load_lockout_release(void) {
+    memset(&pstate,0,sizeof(pstate));
+    panel_track_overview_input(PANEL_SW_LOAD,1);
+    snapshot_keys_event(&pstate.snapshot_keys,SNAP_LOAD,1,0);
+    // (release never arrives: input is locked out while loading)
+    panel_track_overview_input(PANEL_SW_1+2,1);
+    for(int ms=0;ms<900;ms++) assert(track_overview_tick(&pstate.track_keys)<0);
+    panel_track_overview_input(PANEL_SW_1+2,0);
+    int song=39;panel_handle_state_change(SCE_SONG_LOADED,&song,1);
+    assert(!pstate.snapshot_keys.down[SNAP_LOAD]);
+    panel_track_overview_input(PANEL_SW_1+2,1);
+    for(int ms=0;ms<799;ms++) assert(track_overview_tick(&pstate.track_keys)<0);
+    assert(track_overview_tick(&pstate.track_keys)==2);
+    panel_track_overview_input(PANEL_SW_1+2,0);
+    // Scene + track chord as well.
+    panel_track_overview_input(PANEL_SW_SCENE,1);pstate.scene_state=1;
+    panel_track_overview_input(PANEL_SW_1+4,1);
+    for(int ms=0;ms<799;ms++) assert(track_overview_tick(&pstate.track_keys)<0);
+    assert(track_overview_tick(&pstate.track_keys)==4+6);
+    memset(&pstate,0,sizeof(pstate));
+}
 int main(void) {
+ test_load_lockout_release();
  test_sys_hold();
  test_scene_holds();
  test_track_holds();

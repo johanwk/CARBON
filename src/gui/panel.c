@@ -326,6 +326,15 @@ void panel_restore_leds(void) {
     }
 }
 
+// Clear long-press/chord recognizers (not mode state such as Shift/Scene).
+static void panel_reset_hold_recognizers(void) {
+    pstate.snapshot_keys = (struct snapshot_keys){0};
+    pstate.overview_keys = (struct overview_keys){0};
+    pstate.edit_keys = (struct overview_keys){0};
+    pstate.sys_keys = (struct overview_keys){0};
+    pstate.track_keys = (struct track_overview_keys){0};
+}
+
 // handle state change
 void panel_handle_state_change(int event_type, int *data, int data_len) {
     switch(event_type) {
@@ -378,13 +387,16 @@ void panel_handle_state_change(int event_type, int *data, int data_len) {
                 gui_set_status_override(0);
             }
             break;
+        case SCE_SONG_LOADED:
+        case SCE_SONG_LOAD_ERROR:
+        case SCE_SONG_CLEARED:
+            // Panel input is dropped during the load lockout, so the release of
+            // the confirming LOAD press is lost. Forget all held-key state.
+            panel_reset_hold_recognizers();
+            break;
         case SCE_POWER_STATE:
             gui_clock_help_set(0);
-            pstate.snapshot_keys = (struct snapshot_keys){0};
-            pstate.overview_keys = (struct overview_keys){0};
-            pstate.edit_keys = (struct overview_keys){0};
-            pstate.sys_keys = (struct overview_keys){0};
-            pstate.track_keys = (struct track_overview_keys){0};
+            panel_reset_hold_recognizers();
             switch(data[0]) {
                 case POWER_CTRL_STATE_STANDBY:
                     // turn off all panel LEDs
