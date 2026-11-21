@@ -308,6 +308,8 @@ Start without Shift to go to a step.
   already sounding keep their pitch and length. When stopped, region edits
   play nothing; start playback to listen.
 - Ratchet, Clear and keyboard entry work on single steps only.
+- Changes to the song as a whole, such as squeezing a passage into fewer
+  steps, are easier on a computer: see [[*Larger edits on a computer][Larger edits on a computer]].
 
 * Step events
 
@@ -712,6 +714,36 @@ then CC 31 before the note they should affect.
 
 Prefer stepped automation: dense continuous streams work but make the
 display flicker.
+
+* Larger edits on a computer
+
+The CARBON panel is made for quick, hands-on changes. Changes to a whole
+song are often easier on a computer: compressing a passage into fewer
+steps, reorganising scenes, copying a part between tracks, or applying
+the same edit to many places.
+
+The host tools can download a song as a readable JSON file and upload it
+again. In between, you can edit the file yourself, with a script, or with
+the help of an AI assistant (an LLM): describe the change in words, and
+let the assistant edit the JSON.
+
+From the CARBON folder:
+
+1. Download: =./carbon backup song 12 song12.json=
+2. Edit a copy, or ask an assistant to edit it. Keep the original file.
+3. Check: =./carbon validate song12-new.json= and
+   =./carbon view song12-new.json --track 3=
+4. Upload: =./carbon upload song 12 song12-new.json=, then LOAD the song.
+
+Validation checks that the file is a correct song, not that the music is
+what you asked for. Listen before you rely on it. Upload saves a recovery
+copy of the replaced song first, and always asks you to confirm by typing,
+so nothing reaches the CARBON without your approval. The [[file:tools/carbon-backup/README.md][host-tool guide]]
+describes the JSON format and what to tell an assistant.
+
+An experimental converter can also turn a short passage of a MIDI file
+into a song; results are rough and usually need editing. See the
+[[file:tools/carbon-backup/README.md][host-tool guide]].
 
 * Compatibility and storage
 

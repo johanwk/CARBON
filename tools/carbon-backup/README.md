@@ -271,6 +271,31 @@ review. They are not required for everyday JSON transfers.
 Here `before34.backup` must be a previously captured backup of slot34; the
 recovery filename must be new. The advanced API retains its explicit flags.
 
+## Editing a song with an AI assistant
+
+Changes to a whole song (compressing a passage into fewer steps, moving a
+part between tracks, the same edit in many places) are often easier in
+the JSON than on the panel. An AI assistant (an LLM) can make such edits if
+you describe the change. Work on a copy, then validate, view, listen and
+upload as above. Useful instructions for the assistant:
+
+- Edit only `settings`, `song_list`, `shared_tracks` and `metadata`. Never
+  edit `provenance` (`raw_hex`, `raw_sha256`) or the `firmware_profile`.
+- Every track keeps exactly 64 steps and every step exactly 6 slots, in
+  order. Empty slots are `{"kind": "Empty", "parameters": {}}`.
+- Steps are shared by all six scenes; scenes choose the playing steps
+  (`motion_start_zero_based`, `motion_length`), step length and so on.
+- Note pitch is MIDI 0-127 (60 = C4 on CARBON), velocity 0-127, length in
+  96-PPQ ticks. A Note `delay` is `{"kind": "inherit"}` (use the step's
+  delay), `{"kind": "ticks", "ticks": 0-96}` or a relative fraction such as
+  `{"kind": "relative", "fraction": "1/2"}`.
+- Conditions (Prb, Euc, Pre, !Pr, Scn) act on the slots to their right.
+- Run `./carbon validate FILE.json` after each change and fix every error.
+
+Validation proves the file is a correct song, not that it is the music you
+asked for: check with `view` and by listening. Upload always asks you to
+confirm by typing, and saves a recovery copy of the replaced song first.
+
 ## Other useful commands
 
 ```sh
