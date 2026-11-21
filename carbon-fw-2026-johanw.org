@@ -303,8 +303,11 @@ Start without Shift to go to a step.
   *every scene* that plays them.
 - One undo point covers the whole region visit: Clock + Run/Stop restores
   the region as it was before you entered it.
-- Region edits do not play the step; listen in normal playback. Ratchet,
-  Clear and keyboard entry work on single steps only.
+- *Edit while it plays.* Playback continues while you edit the region, and
+  each change is heard the next time playback reaches those steps. Notes
+  already sounding keep their pitch and length. When stopped, region edits
+  play nothing; start playback to listen.
+- Ratchet, Clear and keyboard entry work on single steps only.
 
 * Step events
 
