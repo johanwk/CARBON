@@ -28,3 +28,6 @@ __pycache__/
 
 # macOS Finder metadata
 .DS_Store
+
+# Device recovery backups written by carbon-backup (local device data)
+carbon-recovery/
