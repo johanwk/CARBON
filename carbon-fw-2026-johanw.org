@@ -33,6 +33,8 @@ show them.
 - *Overviews*: hold a menu button for a full-page menu; hold a track or
   Scene + number to see settings across all scenes or all tracks.
 - *Expanded Step Edit*: all note values of a step visible at once.
+- *Region editing*: change pitch, velocity, length or delay of all playing
+  steps at once.
 - *Timing*: Euclidean density and rotation, bar-relative step lengths
   (1/3, 1/5, ...), individual note delays.
 - *More music in 64 steps*: with individual note delays, one step can hold
@@ -202,7 +204,7 @@ Pattern Edit.
 | Control              | Edits                                                 |
 |----------------------+-------------------------------------------------------|
 | Motion Start         | Selected step                                         |
-| Shift + Motion Start | Selected slot, or all slots                           |
+| Shift + Motion Start | Selected slot, all slots, or the region (see below)  |
 | Transpose            | Note pitch; first value of other event types          |
 | Shift + Transpose    | Event type of the selected slot                       |
 | Length/Value         | Note velocity; second value of other event types      |
@@ -261,6 +263,48 @@ Example: on a quarter-note step, three notes at =OFF=, =s1/3= and =s2/3=
 play as an even triplet. Ratchets delay the whole train of repeats.
 Stop cancels delayed notes that have not played yet. The arp ignores note
 delays, and recording does not capture timing within a step.
+
+** Region editing: all playing steps at once
+
+Region editing changes every playing step of the track in one turn: for
+example, make all notes a little shorter, or move a whole bass line up a
+fifth.
+
+*Enter:* in Step Edit, hold Shift and turn Motion Start *left* past
+"all slots". The title shows the region, and its steps turn *blue*:
+
+[[file:docs/screenshots/fixtures/15-step-edit-region-lcda.png]]
+
+Here, track 1 plays steps 9 to 32, so those 24 steps are blue. A wrapped
+range shows as, for example, =57~08=. The lines below show how many notes
+the region holds, and the range of their values.
+
+*Leave:* Shift + Motion Start right (back to all slots), or turn Motion
+Start without Shift to go to a step.
+
+| Control      | Region edit                                          |
+|--------------+------------------------------------------------------|
+| Transpose    | Note pitch of every note, in semitones               |
+| Length/Value | Velocity of every note                               |
+| Gate         | Length of every note                                 |
+| Speed        | Shared step delay, on steps that contain notes       |
+
+- The region is the track's *playing steps*: Motion Start and Length of
+  the edited scene. Steps switched off by Pattern or Euclidean density
+  are included.
+- Only *notes* change. Conditions, CCs and other events keep their values.
+  Steps without notes are left alone.
+- Each value changes as it would for a single step, and *stops at its
+  limit* (note 0-127, velocity 0-127, shortest/longest gate, no delay to
+  7/8). The others keep moving. So turning far to one side brings every
+  note to the same value, and the notes then move together: a quick way
+  to give a whole line one velocity, one length or one pitch.
+- Steps are shared by all scenes. A region edit changes those steps in
+  *every scene* that plays them.
+- One undo point covers the whole region visit: Clock + Run/Stop restores
+  the region as it was before you entered it.
+- Region edits do not play the step; listen in normal playback. Ratchet,
+  Clear and keyboard entry work on single steps only.
 
 * Step events
 

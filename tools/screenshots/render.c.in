@@ -361,6 +361,18 @@ int main(int argc,char **argv) {
             bad|=shot(argv[1],"14-card-euclid",screen);
             fx_euc=0; fx_density=100; fx_rotation=0; fx_start[0][0]=s0; fx_len[0][0]=l0;
         }
+        /* Region editing: track 1, playing steps 9-32 shown blue (overlay MED). */
+        {
+            int s0=fx_start[0][0], l0=fx_len[0][0];
+            fx_start[0][0]=8; fx_len[0][0]=24;
+            boot(screen); step_edit_set_enable(1); step_edit_adjust_cursor(12,0);
+            step_edit_adjust_cursor(-1,1); /* Shift + Start left: All -> Region */
+            bad|=shot(argv[1],"15-step-edit-region",screen);
+#ifdef RENDER_DUMP_TEXT
+            for(int l=0;l<GUI_NUM_STATUS_LINES;l++) printf("%d|%s|\n",l,gstate.status_lines[l]);
+#endif
+            step_edit_set_enable(0); fx_start[0][0]=s0; fx_len[0][0]=l0;
+        }
         boot(screen); gui_overview_open(PANEL_MENU_CLOCK); bad|=shot(argv[1],"04-clock-overview",screen);
         boot(screen); gui_track_overview_open(5); bad|=shot(argv[1],"05-track-overview",screen);
         boot(screen); gui_scene_overview_open(1); bad|=shot(argv[1],"06-scene-overview",screen);
