@@ -15,7 +15,13 @@ static int bias_targets[SEQ_NUM_TRACKS] = {-1,-1,-1,-1,-1,-1};
 static int target_lengths[SEQ_NUM_TRACKS] = {64,64,64,64,64,64};
 static int current_scene;
 int song_get_bias_track(int scene, int track) { return bias_targets[track]; }
-int song_get_motion_length(int scene, int track) { return 64; }
+/* Region tests use a 64-step store; other tests use the single 'events' step. */
+static int region_mode, region_start=0, region_len=64, overlay[SEQ_NUM_STEPS], notices;
+static struct track_event store[SEQ_NUM_STEPS][SEQ_TRACK_POLY];
+static int store_delay[SEQ_NUM_STEPS];
+int song_get_motion_length(int scene, int track) { return region_mode ? region_len : 64; }
+int song_get_motion_start(int scene, int track) { return region_start; }
+void gui_notice(const char *text) { notices++; }
 int seq_engine_get_current_scene(void) { return current_scene; }
 int seq_engine_get_effective_motion_length(int track) { return target_lengths[track]; }
 static char rows[7][64];
@@ -27,7 +33,7 @@ int seq_ctrl_get_first_track(void) { return 0; }
 void panel_menu_set_mode(int mode) {}
 void gui_grid_clear_overlay(void) {}
 void gui_grid_set_overlay_enable(int enable) {}
-void gui_grid_set_overlay_color(int step, int color) {}
+void gui_grid_set_overlay_color(int step, int color) {overlay[step]=color;}
 void gui_set_status_override(int enable) {}
 int panel_menu_get_timeout(void) { return 100; }
 int song_get_step_length(int scene, int track) { return 0; }
@@ -35,17 +41,18 @@ static int ratchet=1;
 int song_get_ratchet_mode(int scene, int track, int step) { return ratchet; }
 void song_set_ratchet_mode(int scene,int track,int step,int mode) {ratchet=mode;}
 static int shared_delay, delay_writes;
-int song_get_start_delay(int scene, int track, int step) { return shared_delay; }
-void song_set_start_delay(int scene, int track, int step, int delay) { shared_delay=delay; delay_writes++; }
+int song_get_start_delay(int scene, int track, int step) { return region_mode ? store_delay[step] : shared_delay; }
+void song_set_start_delay(int scene, int track, int step, int delay) {
+    if(region_mode) store_delay[step]=delay; else shared_delay=delay; delay_writes++; }
 int song_get_num_step_events(int scene, int track, int step) {
     int i, n = 0; for(i = 0; i < SEQ_TRACK_POLY; i ++) n += !!events[i].type;
     return n;
 }
 int song_get_step_event(int scene, int track, int step, int slot, struct track_event *e) {
-    *e = events[slot]; return e->type ? 0 : -1;
+    *e = region_mode ? store[step][slot] : events[slot]; return e->type ? 0 : -1;
 }
 int song_set_step_event(int scene, int track, int step, int slot, struct track_event *e) {
-    events[slot] = *e; return 0;
+    if(region_mode) store[step][slot] = *e; else events[slot] = *e; return 0;
 }
 int song_add_step_event(int scene, int track, int step, struct track_event *e) {
     for(int i=0;i<SEQ_TRACK_POLY;i++) if(!events[i].type) {events[i]=*e; return 0;}
@@ -249,7 +256,69 @@ static void test_silent_ratchet_edit(void) {
         assert(undo_captures==1 && events[0].data0==60 && events[0].data1==96);
     }
 }
+static struct track_event N(int pitch,int vel,int len) {
+    return (struct track_event){.type=SONG_EVENT_NOTE,.data0=pitch,.data1=vel,.delay=SEQ_START_DELAY_INHERIT,.length=len};
+}
+static void test_region_edit(void) {
+    setup(); region_mode=1; memset(store,0,sizeof(store)); memset(store_delay,0,sizeof(store_delay));
+    memset(overlay,0,sizeof(overlay)); notices=0;
+    region_start=56; region_len=16;               /* wraps: steps 57..64, 1..8 */
+    store[56][0]=N(60,100,24); store[56][1]=N(64,90,48);   /* chord, in region */
+    store[3][0]=N(48,20,12);                               /* in region (wrapped) */
+    store[3][1]=(struct track_event){.type=SONG_EVENT_CC,.data0=7,.data1=50};
+    store[20][0]=N(72,100,24);                             /* outside region */
+    store[60][0]=(struct track_event){.type=SONG_EVENT_PROBABILITY,.data0=50}; /* no notes */
+    sedits.enable=1; sedits.event_pos=STEP_EDIT_EVENT_POS_ALL; sedits.step_pos=10;
+    step_edit_adjust_cursor(-1,1);                 /* Shift + left: All -> Region */
+    assert(sedits.event_pos==STEP_EDIT_EVENT_POS_REGION);
+    step_edit_adjust_cursor(-1,1); assert(sedits.event_pos==STEP_EDIT_EVENT_POS_REGION); /* stops */
+    assert(overlay[56]==GUI_OVERLAY_MED && overlay[7]==GUI_OVERLAY_MED && overlay[20]==0 && overlay[8]==0);
+    assert(strstr(rows[0],"Region") && strstr(rows[0],"57~08"));
+    assert(strstr(rows[1],"3 notes on 2 of 16 steps"));
+    int before=undo_captures;
+    step_edit_adjust_note(2,0);
+    assert(store[56][0].data0==62 && store[56][1].data0==66 && store[3][0].data0==50);
+    assert(store[20][0].data0==72 && store[3][1].data0==7 && store[60][0].data0==50);
+    step_edit_adjust_velocity(-15,0);              /* single-step rule: 2 per detent, clamped */
+    assert(store[56][0].data1==70 && store[56][1].data1==60 && store[3][0].data1==0);
+    step_edit_adjust_gate_time(1,0);               /* single-step warp rule per note */
+    assert(store[56][0].length==27 && store[56][1].length==53 && store[3][0].length==14);
+    step_edit_adjust_start_delay(1,0);             /* only steps with notes */
+    assert(store_delay[56]==seq_utils_delay_adjust(0,1,0) && store_delay[3]==store_delay[56]);
+    assert(store_delay[60]==0 && store_delay[20]==0);
+    assert(undo_captures==before+1);               /* one undo point for the region visit */
+    /* Limits: values stop there, so a region can be levelled, then moved as one. */
+    step_edit_adjust_note(200,0);
+    assert(store[56][0].data0==127 && store[56][1].data0==127 && store[3][0].data0==127);
+    step_edit_adjust_note(-60,0);
+    assert(store[56][0].data0==67 && store[56][1].data0==67 && store[3][0].data0==67);
+    step_edit_adjust_note(-200,0);
+    assert(store[56][0].data0==0 && store[3][0].data0==0 && store[20][0].data0==72);
+    step_edit_adjust_velocity(100,0);
+    assert(store[56][0].data1==127 && store[56][1].data1==127 && store[3][0].data1==127);
+    step_edit_adjust_velocity(-10,0);
+    assert(store[56][0].data1==107 && store[56][1].data1==107 && store[3][0].data1==107);
+    for(int k=0;k<200;k++) step_edit_adjust_gate_time(-1,0);
+    assert(store[56][0].length==STEP_EDIT_SHORTEST_NOTE && store[56][1].length==STEP_EDIT_SHORTEST_NOTE);
+    assert(store[3][0].length==STEP_EDIT_SHORTEST_NOTE);
+    for(int k=0;k<400;k++) step_edit_adjust_gate_time(1,0);
+    assert(store[56][0].length==STEP_EDIT_LONGEST_NOTE && store[3][0].length==STEP_EDIT_LONGEST_NOTE);
+    for(int k=0;k<200;k++) step_edit_adjust_start_delay(1,0);
+    assert(store_delay[56]==SEQ_START_DELAY_MAX && store_delay[3]==SEQ_START_DELAY_MAX);
+    for(int k=0;k<200;k++) step_edit_adjust_start_delay(-1,0);
+    assert(store_delay[56]==0 && store_delay[3]==0 && store_delay[60]==0);
+    assert(!notices && undo_captures==before+1);
+    int r=ratchet; step_edit_adjust_ratchet_mode(1,0); assert(ratchet==r);
+    step_edit_clear_step(); assert(store[56][0].type==SONG_EVENT_NOTE);
+    assert(!count);                                /* no audition in region mode */
+    step_edit_adjust_cursor(1,1);                  /* Shift + right: back to All */
+    assert(sedits.event_pos==STEP_EDIT_EVENT_POS_ALL && overlay[57]==0 && overlay[10]==GUI_OVERLAY_HIGH);
+    step_edit_adjust_cursor(-1,1); step_edit_adjust_cursor(1,0); /* stepping leaves region */
+    assert(sedits.event_pos==STEP_EDIT_EVENT_POS_ALL && sedits.step_pos==11);
+    region_mode=0; region_start=0; region_len=64;
+}
 int main(void) {
+    test_region_edit();
     test_silent_ratchet_edit();
     test_expanded_details();
     test_group_transpose_notes_only();

@@ -49,6 +49,7 @@
 
 // constants
 #define STEP_EDIT_EVENT_POS_ALL -1
+#define STEP_EDIT_EVENT_POS_REGION -2  // all playing steps (motion start/length)
 #define STEP_EDIT_NOTE_SLOT_FREE -1
 #define STEP_EDIT_CCI_HINT_MS 2000
 
@@ -87,6 +88,9 @@ void step_edit_adjust_step(int change, int mode, int single, int shift);
 void step_edit_update_display(void);
 static void step_edit_update_title(void);
 static void step_edit_show_cci_hint(void);
+static void step_edit_region_overlay(int on);
+static int step_edit_region_adjust(int change, int mode);
+static void step_edit_region_display(void);
 static int step_edit_prepare_undo(void) {
     if(!song_snapshot_idle() || seq_ctrl_get_record_mode() != SEQ_CTRL_RECORD_IDLE) return -1;
     if(!sedits.undo_captured) {
@@ -181,8 +185,8 @@ void step_edit_handle_state_change(int event_type, int *data, int data_len) {
 void step_edit_handle_input(struct midi_msg *msg) {
     int i;
     struct track_event event = {.delay = SEQ_START_DELAY_INHERIT};
-    // we only care about MIDI if we're enabled
-    if(!sedits.enable) {
+    // we only care about MIDI if we're enabled (keyboard entry is per step)
+    if(!sedits.enable || sedits.event_pos == STEP_EDIT_EVENT_POS_REGION) {
         return;
     }
 
@@ -260,6 +264,8 @@ void step_edit_set_enable(int enable) {
             sedits.edit_timeout = panel_menu_get_timeout();
             sedits.scene = seq_ctrl_get_scene();
             sedits.track = seq_ctrl_get_first_track();
+            if(sedits.event_pos == STEP_EDIT_EVENT_POS_REGION)
+                sedits.event_pos = STEP_EDIT_EVENT_POS_ALL;  // a new visit starts on a step
             panel_menu_set_mode(PANEL_MENU_NONE);  // disable any menu mode
             gui_grid_clear_overlay();
             gui_grid_set_overlay_enable(1);
@@ -330,13 +336,26 @@ void step_edit_adjust_cursor(int change, int shift) {
 
     // select event pos
     if(shift) {
+        int was_region = sedits.event_pos == STEP_EDIT_EVENT_POS_REGION;
         sedits.event_pos = seq_utils_clamp(sedits.event_pos + change,
-            STEP_EDIT_EVENT_POS_ALL, SEQ_TRACK_POLY - 1);
+            STEP_EDIT_EVENT_POS_REGION, SEQ_TRACK_POLY - 1);
+        int is_region = sedits.event_pos == STEP_EDIT_EVENT_POS_REGION;
+        if(was_region != is_region) {
+            step_edit_stop_notes();
+            sedits.undo_captured = 0;  // region edits get their own undo point
+            step_edit_region_overlay(is_region);
+        }
         step_edit_show_cci_hint();
         step_edit_update_display();
     }
     // select step
     else {
+        // Moving to a step leaves region editing.
+        if(sedits.event_pos == STEP_EDIT_EVENT_POS_REGION) {
+            step_edit_region_overlay(0);
+            sedits.event_pos = STEP_EDIT_EVENT_POS_ALL;
+            sedits.undo_captured = 0;
+        }
         val = sedits.step_pos + change;
         if(val < 0) {
             val = SEQ_NUM_STEPS - 1;
@@ -426,7 +445,10 @@ void step_edit_adjust_note(int change, int shift) {
         return;
     }
 
-    if(sedits.event_pos == STEP_EDIT_EVENT_POS_ALL) {
+    if(sedits.event_pos == STEP_EDIT_EVENT_POS_REGION) {
+        if(!shift) step_edit_region_adjust(change, STEP_EDIT_ADJUST_NOTE);
+    }
+    else if(sedits.event_pos == STEP_EDIT_EVENT_POS_ALL) {
         step_edit_adjust_step(change, STEP_EDIT_ADJUST_NOTE, 0, shift);
     }
     else {
@@ -437,7 +459,10 @@ void step_edit_adjust_note(int change, int shift) {
 // adjust the step velocity
 void step_edit_adjust_velocity(int change, int shift) {
     sedits.edit_timeout = panel_menu_get_timeout();
-    if(sedits.event_pos == STEP_EDIT_EVENT_POS_ALL) {
+    if(sedits.event_pos == STEP_EDIT_EVENT_POS_REGION) {
+        if(!shift) step_edit_region_adjust(change, STEP_EDIT_ADJUST_VELO);
+    }
+    else if(sedits.event_pos == STEP_EDIT_EVENT_POS_ALL) {
         step_edit_adjust_step(change, STEP_EDIT_ADJUST_VELO, 0, shift);
     }
     else {
@@ -448,7 +473,10 @@ void step_edit_adjust_velocity(int change, int shift) {
 // adjust the step gate time
 void step_edit_adjust_gate_time(int change, int shift) {
     sedits.edit_timeout = panel_menu_get_timeout();
-    if(sedits.event_pos == STEP_EDIT_EVENT_POS_ALL) {
+    if(sedits.event_pos == STEP_EDIT_EVENT_POS_REGION) {
+        if(!shift) step_edit_region_adjust(change, STEP_EDIT_ADJUST_GATE_TIME);
+    }
+    else if(sedits.event_pos == STEP_EDIT_EVENT_POS_ALL) {
         step_edit_adjust_step(change, STEP_EDIT_ADJUST_GATE_TIME, 0, shift);
     }
     else {
@@ -458,6 +486,11 @@ void step_edit_adjust_gate_time(int change, int shift) {
 
 // adjust the start delay
 void step_edit_adjust_start_delay(int change, int shift) {
+    if(sedits.event_pos == STEP_EDIT_EVENT_POS_REGION) {
+        sedits.edit_timeout = panel_menu_get_timeout();
+        if(!shift) step_edit_region_adjust(change, STEP_EDIT_ADJUST_START_DELAY);
+        return;
+    }
     if(change && step_edit_prepare_undo() < 0) return;
     sedits.edit_timeout = panel_menu_get_timeout();
     step_edit_stop_notes();
@@ -480,6 +513,7 @@ void step_edit_adjust_start_delay(int change, int shift) {
 
 // adjust the ratchet mode
 void step_edit_adjust_ratchet_mode(int change, int shift) {
+    if(sedits.event_pos == STEP_EDIT_EVENT_POS_REGION) return;  // not a region parameter
     if(change && step_edit_prepare_undo() < 0) return;
     sedits.edit_timeout = panel_menu_get_timeout();
     song_set_ratchet_mode(sedits.scene, sedits.track, sedits.step_pos,
@@ -493,6 +527,7 @@ void step_edit_adjust_ratchet_mode(int change, int shift) {
 
 // clear the current step
 void step_edit_clear_step(void) {
+    if(sedits.event_pos == STEP_EDIT_EVENT_POS_REGION) return;  // no region-wide clear
     if(step_edit_prepare_undo() < 0) return;
     sedits.cci_hint_timeout = 0;
     sedits.edit_timeout = panel_menu_get_timeout();
@@ -921,6 +956,106 @@ static void step_edit_cci_value_title(char *title, int controller, int raw) {
     snprintf(title, GFX_LABEL_LEN, "CCi %d: %s %s", controller, label, value);
 }
 
+//
+// region editing: every playing step of the track (stored motion start and
+// length of the edit scene, wrapping). Pattern/Euclid masks are ignored.
+// Notes only; steps are shared by all scenes. One undo point per region visit.
+//
+static void step_edit_region(int *start, int *length) {
+    *start = seq_utils_clamp(song_get_motion_start(sedits.scene, sedits.track), 0, SEQ_NUM_STEPS - 1);
+    *length = seq_utils_clamp(song_get_motion_length(sedits.scene, sedits.track), 1, SEQ_NUM_STEPS);
+}
+static void step_edit_region_overlay(int on) {
+    int start, length;
+    step_edit_region(&start, &length);
+    for(int i = 0; i < length; i++)
+        gui_grid_set_overlay_color((start + i) % SEQ_NUM_STEPS, on ? GUI_OVERLAY_MED : GUI_OVERLAY_BLANK);
+    if(!on) gui_grid_set_overlay_color(sedits.step_pos, GUI_OVERLAY_HIGH);
+}
+// Returns 1 if anything changed. Every value stops at its limit (Note 0-127,
+// Vel 0-127, Gate and Dly at their single-step limits), so pushing a region
+// against a limit levels it to one value, which can then be moved as a set.
+// Vel/Gate use the single-step rules per note. Dly changes the shared step
+// delay on steps that contain at least one Note.
+static int step_edit_region_adjust(int change, int mode) {
+    int start, length, i, slot, changed = 0;
+    struct track_event event;
+    sedits.edit_timeout = panel_menu_get_timeout();
+    if(!change) {step_edit_update_display(); return 0;}
+    step_edit_region(&start, &length);
+    if(step_edit_prepare_undo() < 0) return 0;
+    step_edit_stop_notes();
+    for(i = 0; i < length; i++) {
+        int step = (start + i) % SEQ_NUM_STEPS, notes = 0;
+        for(slot = 0; slot < SEQ_TRACK_POLY; slot++) {
+            if(song_get_step_event(sedits.scene, sedits.track, step, slot, &event) != 0 ||
+                    event.type != SONG_EVENT_NOTE) continue;
+            notes++;
+            if(mode == STEP_EDIT_ADJUST_NOTE)
+                event.data0 = seq_utils_clamp(event.data0 + change,
+                    STEP_EDIT_LOWEST_NOTE, STEP_EDIT_HIGHEST_NOTE);
+            else if(mode == STEP_EDIT_ADJUST_VELO)
+                event.data1 = seq_utils_clamp(event.data1 + change * 2, 0, 127);
+            else if(mode == STEP_EDIT_ADJUST_GATE_TIME)
+                event.length = seq_utils_clamp(event.length +
+                    seq_utils_warp_change(event.length, change, 10),
+                    STEP_EDIT_SHORTEST_NOTE, STEP_EDIT_LONGEST_NOTE);
+            else continue;
+            song_set_step_event(sedits.scene, sedits.track, step, slot, &event);
+            changed = 1;
+        }
+        if(mode == STEP_EDIT_ADJUST_START_DELAY && notes) {
+            int old = song_get_start_delay(sedits.scene, sedits.track, step);
+            song_set_start_delay(sedits.scene, sedits.track, step, seq_utils_delay_adjust(old, change, 0));
+            changed = 1;
+        }
+    }
+    sedits.last_adjust_type = mode;
+    step_edit_update_display();
+    return changed;
+}
+static void step_edit_delay_str(char *s, int len, int delay) {
+    if(seq_utils_delay_relative_label(delay)) snprintf(s, len, "%s", seq_utils_delay_relative_label(delay));
+    else if(!delay) snprintf(s, len, "OFF");
+    else panel_utils_gate_time_to_str(s, delay);
+}
+// Ranges over the region; no audition (playback is the preview).
+static void step_edit_region_display(void) {
+    int start, length, i, slot, notes = 0, steps = 0;
+    int lo[4] = {999, 999, 99999, 999}, hi[4] = {-1, -1, -1, -1};
+    char a[16], b[16], line[GFX_LABEL_LEN];
+    struct track_event event;
+    step_edit_region(&start, &length);
+    for(i = 0; i < length; i++) {
+        int step = (start + i) % SEQ_NUM_STEPS, has = 0;
+        for(slot = 0; slot < SEQ_TRACK_POLY; slot++) {
+            if(song_get_step_event(sedits.scene, sedits.track, step, slot, &event) != 0 ||
+                    event.type != SONG_EVENT_NOTE) continue;
+            int v[3] = {event.data0, event.data1, event.length};
+            for(int k = 0; k < 3; k++) {if(v[k] < lo[k]) lo[k] = v[k]; if(v[k] > hi[k]) hi[k] = v[k];}
+            notes++; has = 1;
+        }
+        if(has) {
+            int d = song_get_start_delay(sedits.scene, sedits.track, step);
+            if(d < lo[3]) lo[3] = d;
+            if(d > hi[3]) hi[3] = d;
+            steps++;
+        }
+    }
+    snprintf(line, sizeof(line), "%d notes on %d of %d steps", notes, steps, length);
+    gui_set_status_text(1, line);
+    if(!notes) {gui_set_status_text(2, "No notes to edit"); return;}
+    panel_utils_note_to_name(a, lo[0], 1, 0); panel_utils_note_to_name(b, hi[0], 1, 0);
+    snprintf(line, sizeof(line), "Note %s-%s Vel %d-%d", a, b, lo[1], hi[1]);
+    gui_set_status_text(2, line);
+    panel_utils_gate_time_to_str(a, lo[2]); panel_utils_gate_time_to_str(b, hi[2]);
+    snprintf(line, sizeof(line), "Gate %.6s-%.6s", a, b);
+    gui_set_status_text(3, line);
+    step_edit_delay_str(a, sizeof(a), lo[3]); step_edit_delay_str(b, sizeof(b), hi[3]);
+    snprintf(line, sizeof(line), "Step Dly %.6s-%.6s", a, b);
+    gui_set_status_text(4, line);
+}
+
 static void step_edit_update_title(void) {
     char title[GFX_LABEL_LEN];
     int mask = step_edit_scene_mask();
@@ -929,6 +1064,15 @@ static void step_edit_update_title(void) {
         for(int i=0;i<6;i++) scenes[i] = mask & (1u << i) ? '1'+i : '-';
         scenes[6] = 0;
         snprintf(title, sizeof(title), "Scn: %s Keys toggle", scenes);
+        gui_set_status_text(0, title);
+        return;
+    }
+    if(sedits.event_pos == STEP_EDIT_EVENT_POS_REGION) {
+        int start, length;
+        step_edit_region(&start, &length);
+        int end = (start + length - 1) % SEQ_NUM_STEPS;
+        snprintf(title, sizeof(title), "Region - Track: %d %02d%c%02d", sedits.track + 1,
+            start + 1, start + length > SEQ_NUM_STEPS ? '~' : '-', end + 1);
         gui_set_status_text(0, title);
         return;
     }
@@ -980,6 +1124,10 @@ void step_edit_update_display(void) {
     gui_step_details_set(sedits.enable && step_details_preference);
     gui_clear_status_text_all();
     step_edit_update_title();
+    if(sedits.event_pos == STEP_EDIT_EVENT_POS_REGION) {
+        step_edit_region_display();
+        return;
+    }
 
     // left title
     gui_set_status_text_part(1, 0, 3, "R  ");  // ratchet title
