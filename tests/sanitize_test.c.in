@@ -1,0 +1,66 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later */
+/* Load-time repair. Shared fixtures (also used by tools/carbon-backup):
+ *   song-clear-1.38.bin        song_clear() image = the repair defaults
+ *   invalid-song-1.38.bin      known invalid values (see make_invalid)
+ *   invalid-song-1.38-repaired.bin  expected result; INVALID_SONG_REPAIRS repairs
+ * CARBON_WRITE_FIXTURES=1 regenerates them; otherwise they are compared. */
+#include <assert.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include "../src/seq/song.c"
+int ext_flash_get_state_for(uint8_t *owner) { return 0; }
+int ext_flash_save(int32_t address, int length, uint8_t *data) { return 0; }
+int ext_flash_load(int32_t address, int length, uint8_t *data) { return 0; }
+void state_change_fire0(int event) {}
+void state_change_fire1(int event, int value) {}
+void state_change_fire2(int event, int a, int b) {}
+void state_change_fire3(int event, int a, int b, int c) {}
+void log_error(char *fmt, ...) { fprintf(stderr, "%s\n", fmt); assert(!"unexpected error"); }
+#define INVALID_SONG_REPAIRS 9
+static int write_mode;
+static void fixture(const char *name, const void *data) {
+    char path[128]; snprintf(path, sizeof(path), "tests/fixtures/%s", name);
+    if(write_mode) {
+        FILE *f = fopen(path, "wb"); assert(f);
+        assert(fwrite(data, 1, sizeof(song), f) == sizeof(song)); fclose(f); return;
+    }
+    static uint8_t buf[sizeof(song)];
+    FILE *f = fopen(path, "rb"); assert(f && "missing fixture");
+    assert(fread(buf, 1, sizeof(buf), f) == sizeof(buf)); fclose(f);
+    if(memcmp(buf, data, sizeof(buf))) { fprintf(stderr, "fixture differs: %s\n", name); assert(0); }
+}
+static void make_invalid(void) {
+    song.trkevents[0][4][0] = (struct track_event){SONG_EVENT_NOTE, 230, 100, 255, 24}; // "D18"
+    song.trkevents[0][6][0] = (struct track_event){SONG_EVENT_NOTE, 60, 200, 255, 24};  // velocity
+    song.trkevents[2][10][3] = (struct track_event){0x42, 1, 2, 255, 0};               // unknown type
+    song.scene_sync = 255;
+    song.magic_chance = 0;
+    song.magic_range = 200;
+    song.snglist[0] = (struct song_list_entry){3, 0, 0};                               // 0 beats
+    song.trkscene[2][1].motion_len = 0;
+    song.trkparam[4].track_type = 7;
+}
+int main(void) {
+    write_mode = getenv("CARBON_WRITE_FIXTURES") != NULL;
+    memset(&song, 0, sizeof(song)); song_clear();
+    assert(song_sanitize() == 0);                       // defaults are valid
+    fixture("song-clear-1.38.bin", &song);
+    struct song_data clean = song;
+    make_invalid();
+    fixture("invalid-song-1.38.bin", &song);
+    assert(song_sanitize() == INVALID_SONG_REPAIRS);
+    assert(song_get_last_repair_count() == INVALID_SONG_REPAIRS);
+    fixture("invalid-song-1.38-repaired.bin", &song);
+    assert(song.trkevents[0][4][0].type == SONG_EVENT_NULL && song.scene_sync == 0);
+    assert(song.magic_range == 12 && song.magic_chance == 100 && song.trkscene[2][1].motion_len == 64);
+    assert(song.snglist[0].scene == SONG_LIST_SCENE_NULL && song.trkparam[4].track_type == 0);
+    // Everything not listed above is untouched.
+    struct song_data r = song; r.trkevents[0][4][0] = clean.trkevents[0][4][0];
+    r.trkevents[0][6][0] = clean.trkevents[0][6][0]; r.trkevents[2][10][3] = clean.trkevents[2][10][3];
+    r.snglist[0] = clean.snglist[0];
+    assert(!memcmp(&r, &clean, sizeof(r)));
+    assert(song_sanitize() == 0);                       // idempotent
+    puts(write_mode ? "sanitize fixtures written" : "song load-repair tests passed");
+    return 0;
+}

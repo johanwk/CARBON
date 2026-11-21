@@ -170,6 +170,12 @@ void seq_ctrl_handle_state_change(int event_type, int *data, int data_len) {
             seq_ctrl_set_track_select(0, 1);
             seq_ctrl_adjust_clock_source(0);  // force clock update
             state_change_fire1(SCE_CTRL_FIRST_TRACK, sstate.first_track);  // force update
+            if(song_get_last_repair_count() > 0) {
+                char notice[29];
+                snprintf(notice, sizeof(notice), "Repaired %d values; save",
+                    song_get_last_repair_count());
+                gui_notice(notice);
+            }
             break;
         case SCE_SONG_CLEARED:
             seq_ctrl_set_run_lockout(0);  // enable the UI and MIDI

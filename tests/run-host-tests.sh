@@ -41,6 +41,12 @@ trap 'rm -rf "$TMP"' EXIT HUP INT TERM
     tests/song_test.c.in src/util/seq_utils.c "$LINK_GC" -o "$TMP/song"
 "$TMP/song"
 
+"$CC" -x c -std=c11 -Wall -Wextra -Werror -Wno-cpp \
+    -Wno-unused-parameter -Wno-sign-compare \
+    -ffunction-sections -fdata-sections -fsanitize=address,undefined \
+    tests/sanitize_test.c.in src/util/seq_utils.c "$LINK_GC" -o "$TMP/sanitize"
+"$TMP/sanitize"
+
 "$CC" -x c -std=c11 -Wall -Wextra -Werror \
     -Wno-unused-parameter -Wno-sign-compare \
     -ffunction-sections -fdata-sections -fsanitize=address,undefined \

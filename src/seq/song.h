@@ -149,6 +149,11 @@ void song_clear(void);
 // to update whatever state they may need
 int song_load(int song_num);
 
+// repair invalid stored values in RAM (load-time); returns number of repairs
+int song_sanitize(void);
+// number of repairs made by the last load
+int song_get_last_repair_count(void);
+
 // save the current song to flash mem from RAM
 int song_save(int song_num);
 

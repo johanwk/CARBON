@@ -259,6 +259,7 @@ void song_timer_task(void) {
                 if(song.song_version < CARBON_VERSION_MAJMIN) {
                     song_set_version_to_current();
                 }
+                song_sanitize();  // RAM only; flash keeps the original until saved
                 state_change_fire1(SCE_SONG_LOADED, songs.loadsave_song);
             }
             break;
@@ -401,6 +402,136 @@ void song_clear(void) {
     // fire event
     state_change_fire1(SCE_SONG_CLEARED, songs.loadsave_song);
 }
+
+//
+// load-time repair: invalid stored values (old formats, stale padding) are
+// replaced by song_clear() defaults; invalid events become Empty. RAM only.
+// Rules must match tools/carbon-backup (shared fixtures in tests/fixtures).
+//
+static int song_last_repairs;
+int song_get_last_repair_count(void) { return song_last_repairs; }
+static int song_event_valid(const struct track_event *e) {
+    switch(e->type) {
+        case SONG_EVENT_NULL: case SONG_EVENT_PRE: case SONG_EVENT_NON_PRE: return 1;
+        case SONG_EVENT_INTERNAL_CC:
+            return (e->data0 >= 16 && e->data0 <= 29 && e->data1 <= 127) ||
+                (e->data0 == 34 && e->data1 <= 8) || (e->data0 == 35 && e->data1 <= 127);
+        case SONG_EVENT_GLIDE: return e->data0 <= 8 && e->data1 <= 127;
+        case SONG_EVENT_SCENE: return e->data0 <= 63 && e->data1 == 0;
+        case SONG_EVENT_PROBABILITY: return e->data0 <= 100;
+        case SONG_EVENT_EUCLIDEAN: return e->data0 <= 27 && e->data1 <= 7;
+        case SONG_EVENT_HARMONY: return e->data0 <= 16 && e->data1 <= 13;
+        case SONG_EVENT_INVERSION: return e->data0 <= 5 && e->data1 <= 1;
+        case SONG_EVENT_NOTE:
+            return e->data0 <= 127 && e->data1 <= 127 &&
+                (e->delay <= SEQ_START_DELAY_MAX || e->delay == SEQ_START_DELAY_INHERIT);
+        case SONG_EVENT_CC: return e->data0 <= 127 && e->data1 <= 127;
+        case SONG_EVENT_PROGCHG: return e->data0 <= 127;
+        default: return 0;
+    }
+}
+#define SONG_FIX(field, lo, hi, def) do { if(!((field) >= (lo) && (field) <= (hi))) \
+    { (field) = (def); repairs++; } } while(0)
+int song_sanitize(void) {
+    int repairs = 0, scene, track, step, slot, i;
+    if(!(song.tempo >= MIDI_CLOCK_TEMPO_MIN && song.tempo <= MIDI_CLOCK_TEMPO_MAX + 0.1f)) {
+        song.tempo = 120.0f; repairs++;
+    }
+    SONG_FIX(song.swing, SEQ_SWING_MIN, SEQ_SWING_MAX, 50);
+    if(song.metronome < 0 || song.metronome > SONG_METRONOME_NOTE_HIGH ||
+            (song.metronome > SONG_METRONOME_CV_RESET && song.metronome < SONG_METRONOME_NOTE_LOW)) {
+        song.metronome = SONG_METRONOME_INTERNAL; repairs++;
+    }
+    SONG_FIX(song.midi_key_vel_scale, SEQ_KEY_VEL_SCALE_MIN, SEQ_KEY_VEL_SCALE_MAX, 0);
+    SONG_FIX(song.cv_bend_range, CVPROC_BEND_RANGE_MIN, CVPROC_BEND_RANGE_MAX, 2);
+    SONG_FIX(song.cvgate_pairs, 0, SONG_CVGATE_NUM_PAIRS - 1, SONG_CVGATE_PAIR_ABCD);
+    for(i = 0; i < SONG_CVGATE_NUM_PAIRS; i++)
+        SONG_FIX(song.cvgate_pair_mode[i], SONG_CVGATE_MODE_VELO, SONG_CVGATE_MODE_MAX, SONG_CVGATE_MODE_NOTE);
+    for(i = 0; i < SONG_CVGATE_NUM_OUTPUTS; i++) {
+        SONG_FIX(song.cv_output_scaling[i], 0, SONG_CV_SCALING_MAX, SONG_CV_SCALING_1VOCT);
+        SONG_FIX(song.cvcal[i], CVPROC_CVCAL_MIN, CVPROC_CVCAL_MAX, 0);
+        SONG_FIX(song.cvoffset[i], CVPROC_CVOFFSET_MIN, CVPROC_CVOFFSET_MAX, 0);
+    }
+    for(i = 0; i < MIDI_PORT_NUM_TRACK_OUTPUTS; i++)
+        SONG_FIX(song.midi_clock_out[i], 0, SEQ_UTILS_CLOCK_PPQS - 1, SEQ_UTILS_CLOCK_OFF);
+    // Song list: an invalid active entry is cleared (NULL payload is opaque).
+    for(i = 0; i < SEQ_SONG_LIST_ENTRIES; i++) {
+        struct song_list_entry *e = &song.snglist[i];
+        if(e->scene == SONG_LIST_SCENE_NULL) continue;
+        if(e->scene < 0 || e->scene > SONG_LIST_SCENE_REPEAT ||
+                e->length_beats < SEQ_SONG_LIST_MIN_LENGTH || e->length_beats > SEQ_SONG_LIST_MAX_LENGTH ||
+                e->kbtrans < SEQ_TRANSPOSE_MIN || e->kbtrans > SEQ_TRANSPOSE_MAX) {
+            e->scene = SONG_LIST_SCENE_NULL; repairs++;
+        }
+    }
+    for(track = 0; track < SEQ_NUM_TRACKS; track++) {
+        struct track_param *t = &song.trkparam[track];
+        for(i = 0; i < SEQ_NUM_TRACK_OUTPUTS; i++) {
+            SONG_FIX(t->midi_program[i], SONG_MIDI_PROG_NULL, 127, SONG_MIDI_PROG_NULL);
+            SONG_FIX(t->midi_output_port[i], SONG_PORT_DISABLE, MIDI_PORT_NUM_TRACK_OUTPUTS - 1,
+                i ? SONG_PORT_DISABLE : MIDI_PORT_DIN1_OUT);
+            SONG_FIX(t->midi_output_chan[i], 0, MIDI_NUM_CHANNELS - 1, track);
+        }
+        SONG_FIX(t->midi_key_split, SONG_KEY_SPLIT_OFF, SONG_KEY_SPLIT_RIGHT, SONG_KEY_SPLIT_OFF);
+        SONG_FIX(t->track_type, SONG_TRACK_TYPE_VOICE, SONG_TRACK_TYPE_DRUM, SONG_TRACK_TYPE_VOICE);
+    }
+    for(scene = 0; scene < SEQ_NUM_SCENES; scene++) {
+        SONG_FIX(song.scene_root[scene], SONG_ROOT_INHERIT, 11, SONG_ROOT_INHERIT);
+        for(track = 0; track < SEQ_NUM_TRACKS; track++) {
+            struct track_scene *t = &song.trkscene[scene][track];
+            SONG_FIX(t->step_len, 0, SEQ_UTILS_STEP_LENS - 1, SEQ_UTILS_STEP_16TH);
+            SONG_FIX(t->tonality, 0, SCALE_NUM_TONALITIES - 1, SCALE_CHROMATIC);
+            SONG_FIX(t->transpose, SEQ_TRANSPOSE_MIN, SEQ_TRANSPOSE_MAX, 0);
+            SONG_FIX(t->bias_track, SONG_TRACK_BIAS_NULL, SEQ_NUM_TRACKS - 1, SONG_TRACK_BIAS_NULL);
+            SONG_FIX(t->motion_start, 0, SEQ_NUM_STEPS - 1, 0);
+            SONG_FIX(t->motion_len, 1, SEQ_NUM_STEPS, SEQ_NUM_STEPS);
+            SONG_FIX(t->gate_time, SEQ_GATE_TIME_MIN, SEQ_GATE_TIME_MAX, 0x80);
+            SONG_FIX(t->pattern_type, 0, SEQ_NUM_PATTERNS - 1, 31);
+            SONG_FIX(t->dir_reverse, 0, 1, 0);
+            SONG_FIX(t->mute, 0, 1, 0);
+            SONG_FIX(t->arp_speed, 0, SEQ_UTILS_ARP_SPEEDS - 1, SEQ_UTILS_STEP_16TH);
+            SONG_FIX(t->arp_type, 0, ARP_NUM_TYPES - 1, ARP_TYPE_UP1);
+            SONG_FIX(t->arp_gate_time, ARP_GATE_TIME_MIN, ARP_GATE_TIME_MAX,
+                seq_utils_step_len_to_ticks(SEQ_UTILS_STEP_16TH) >> 1);
+            SONG_FIX(t->arp_enable, 0, 1, 0);
+            for(i = 0; i < SEQ_NUM_TRACK_OUTPUTS; i++)
+                SONG_FIX(song.scene_midi_program[scene][track][i], SONG_MIDI_PROG_NULL, 127, SONG_MIDI_PROG_NULL);
+            SONG_FIX(song.euclidean_density[scene][track], SEQ_EUCLIDEAN_DENSITY_MIN,
+                SEQ_EUCLIDEAN_DENSITY_MAX, SEQ_EUCLIDEAN_DENSITY_DEFAULT);
+            SONG_FIX(song.euclidean_rotation[scene][track], SEQ_EUCLIDEAN_ROTATION_MIN,
+                SEQ_EUCLIDEAN_ROTATION_MAX, SEQ_EUCLIDEAN_ROTATION_DEFAULT);
+        }
+    }
+#ifndef SONG_NOTES_PER_SCENE
+    for(track = 0; track < SEQ_NUM_TRACKS; track++) {
+        for(step = 0; step < SEQ_NUM_STEPS; step++) {
+            struct track_step_param *p = &song.trkstepparam[track][step];
+            SONG_FIX(p->start_delay, SEQ_START_DELAY_MIN, SEQ_START_DELAY_MAX, SEQ_START_DELAY_MIN);
+            SONG_FIX(p->ratchet, SEQ_RATCHET_MIN, SEQ_RATCHET_MAX, SEQ_RATCHET_MIN);
+            for(slot = 0; slot < SEQ_TRACK_POLY; slot++) {
+                struct track_event *e = &song.trkevents[track][step][slot];
+                if(!song_event_valid(e)) {
+                    *e = (struct track_event){.type = SONG_EVENT_NULL, .delay = SEQ_START_DELAY_INHERIT};
+                    repairs++;
+                }
+            }
+        }
+    }
+#endif
+    SONG_FIX(song.midi_remote_ctrl, 0, 1, 0);
+    SONG_FIX(song.metronome_sound_len, METRONOME_SOUND_LENGTH_MIN, METRONOME_SOUND_LENGTH_MAX,
+        METRONOME_SOUND_LENGTH_DEFAULT);
+    SONG_FIX(song.midi_clock_source, SONG_MIDI_CLOCK_SOURCE_INT, SONG_MIDI_CLOCK_SOURCE_USB_DEV_IN,
+        SONG_MIDI_CLOCK_SOURCE_INT);
+    SONG_FIX(song.midi_autolive, 0, 1, 1);
+    SONG_FIX(song.scene_sync, SONG_SCENE_SYNC_BEAT, SONG_SCENE_SYNC_TRACK1, SONG_SCENE_SYNC_BEAT);
+    SONG_FIX(song.magic_range, SONG_MAGIC_RANGE_MIN, SONG_MAGIC_RANGE_MAX, 12);
+    SONG_FIX(song.magic_chance, SONG_MAGIC_CHANCE_MIN, SONG_MAGIC_CHANCE_MAX, 100);
+    SONG_FIX(song.root, SONG_ROOT_OFF, 11, SONG_ROOT_OFF);
+    song_last_repairs = repairs;
+    return repairs;
+}
+#undef SONG_FIX
 
 // load a song from flash memory to RAM - returns -1 on error
 // change events are not generated for each item loaded

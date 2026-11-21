@@ -3,14 +3,12 @@
 //! one message per change. Songs without a 1.34..1.38 header are not guessed.
 use crate::{restore,song,SONG_SIZE};
 
-const DEFAULT:&str=include_str!("../templates/default-1.38.json");
+/// Firmware song_clear() image, written by tests/sanitize_test.c.in. The
+/// firmware load-time repair uses the same defaults, so both repair alike.
+const SONG_CLEAR:&[u8]=include_bytes!("../../../tests/fixtures/song-clear-1.38.bin");
 const EMPTY:[u8;6]=[0,0,0,255,0,0];
 
-fn defaults()->Result<Vec<u8>,String>{
- let doc=crate::json::parse(DEFAULT)?;
- let hex=doc["provenance"]["raw_hex"].as_str().ok_or("Default template missing raw image")?;
- (0..hex.len()).step_by(2).map(|i|u8::from_str_radix(&hex[i..i+2],16).map_err(|e|e.to_string())).collect()
-}
+fn defaults()->Result<Vec<u8>,String>{Ok(SONG_CLEAR.to_vec())}
 fn kind_name(code:u8)->String{
  match code{0=>"Empty".into(),1=>"CCi".into(),2=>"Prb".into(),3=>"Euc".into(),4=>"Pre".into(),5=>"!Pr".into(),6=>"Hrm".into(),7=>"Inv".into(),8=>"Gli".into(),9=>"Scn".into(),0x90=>"Note".into(),0xb0=>"CC".into(),0xc0=>"PC".into(),c=>format!("unknown type {c}")}
 }
@@ -53,6 +51,13 @@ pub fn check(data:&[u8])->Vec<String>{
   assert_eq!(&r[o..o+1],&[255]);assert_eq!(&r[1824+144..1824+150],&EMPTY);
   assert!(restore::validate_source(&r).is_ok() && song::validate(&r).is_ok());
   assert_eq!(check(&d),msgs);
+ }
+ /// Same input, same bytes and count as the firmware (tests/sanitize_test.c.in).
+ #[test]fn matches_firmware_fixtures(){
+  let bad=include_bytes!("../../../tests/fixtures/invalid-song-1.38.bin");
+  let want=include_bytes!("../../../tests/fixtures/invalid-song-1.38-repaired.bin");
+  let(r,msgs)=repair(bad).unwrap();assert_eq!(msgs.len(),9,"{msgs:?}");assert!(r==want.to_vec());
+  assert!(repair(SONG_CLEAR).unwrap().1.is_empty());
  }
  #[test]fn old_header_rejected(){let mut d=good();d[0]=30;assert!(repair(&d).is_err());assert!(repair(&[0;4]).is_err());}
 }
