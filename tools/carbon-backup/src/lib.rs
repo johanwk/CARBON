@@ -9,6 +9,7 @@ pub mod midi;
 pub mod song;
 pub mod transfer;
 pub mod restore;
+pub mod repair;
 // SPDX-License-Identifier: GPL-3.0-or-later
 use sha2::{Digest, Sha256};
 use serde_json::{json, Value};

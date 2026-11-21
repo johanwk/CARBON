@@ -6,7 +6,7 @@ use std::{env,fs::{File,OpenOptions},path::Path,sync::mpsc,time::{Duration,Insta
 const HELP:&str = "CARBON song tools - MIDI import, JSON editing and safe single-song transfer
 
 Everyday song transfers (JSON files):
-  backup song SLOT FILE.json             Save one song from CARBON
+  backup song SLOT FILE.json [--strict]  Save one song from CARBON
   upload song SLOT FILE.json             Replace one song on CARBON
   Example: backup song 37 song37.json
            upload song 37 song37.json
@@ -27,7 +27,9 @@ Offline commands:
   plan-restore SOURCE BASE SLOT replace  Preview single-song replacement
 
 Device commands (explicit invocation only):
-  download SLOT FILE.json               Read a saved song as JSON
+  download SLOT FILE.json [--strict]    Read a saved song as JSON
+    Invalid values are repaired with a warning (FILE.original.backup keeps
+    the song as read). --strict stops instead.
   upload FILE.json SLOT                 Replace one song; automatic recovery backup
     Default CARBON Port 1; interactive stopped/firmware confirmation. No flags needed.
 
@@ -102,7 +104,19 @@ fn simple_transfer(args:&[String])->Result<(),String>{
         })?;
         println!("Song{slot} uploaded and full readback verified. SHA256 {result}\nLOAD song{slot} from the panel; do not save stale RAM over it.");
     }else{
-        let doc=song_transfer::download(&mut device,slot,true)?;
+        let strict=args.iter().any(|a|a=="--strict");
+        let (doc,original,repairs)=song_transfer::download_checked(&mut device,slot,true,strict)?;
+        if !repairs.is_empty(){
+            let orig=path.with_extension("original.backup");
+            let timestamp=SystemTime::now().duration_since(UNIX_EPOCH).map_err(|e|e.to_string())?.as_secs();
+            let manifest=song_manifest(&original,slot,song_transfer::PORT,song_transfer::PORT,timestamp)?;
+            let mut f=OpenOptions::new().write(true).create_new(true).open(&orig).map_err(|e|e.to_string())?;
+            write_song_archive(&mut f,&original,&manifest)?;f.sync_all().map_err(|e|e.to_string())?;drop(f);
+            if verify_song_archive(File::open(&orig).map_err(|e|e.to_string())?)?.1!=original{return Err("Original backup readback mismatch".into());}
+            eprintln!("WARNING: song{slot} had {} invalid value(s); repaired in the JSON:",repairs.len());
+            for r in &repairs{eprintln!("  {r}");}
+            eprintln!("Unrepaired song saved as {}. CARBON itself is unchanged.",orig.display());
+        }
         let bytes=serde_json::to_vec_pretty(&doc).map_err(|e|e.to_string())?;
         let file=output.as_mut().ok_or("Missing output file")?;
         file.write_all(&bytes).map_err(|e|e.to_string())?;file.sync_all().map_err(|e|e.to_string())?;

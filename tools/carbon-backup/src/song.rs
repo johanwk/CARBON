@@ -38,15 +38,32 @@ fn json_value(data:&[u8],f:&Field)->Value{
  let v=value(data,f);
  if matches!(f.kind,Kind::F32){json!(v)}else{json!(v as i64)}
 }
+fn field_ok(d:&[u8],f:&Field)->bool{
+ let v=value(d,f);let max=if d[0]>=35 && f.name.ends_with(".shared_delay_ticks"){103.}else if d[0]>=38 && f.name.ends_with(".arp_speed_index"){17.}else{f.max};
+ v.is_finite() && v>=f.min && v<=max && !(f.name=="metronome" && v>2. && v<24.)
+}
+// NULL song-list entries have opaque/stale payload. Active entries use UI limits.
+fn list_entry_ok(d:&[u8],i:usize)->bool{
+ let o=48+6*i;let scene=d[o] as i8;if scene == -1{return true;}
+ let beats=i16::from_le_bytes([d[o+2],d[o+3]]);let transpose=d[o+4] as i8;
+ (0..=7).contains(&scene)&&(1..=256).contains(&beats)&&(-24..=24).contains(&transpose)
+}
 pub fn validate(d:&[u8])->Result<(),String>{
  if d.len()!=SONG_SIZE{return Err("Wrong song size".into());}
- for f in fields(){let v=value(d,&f);let max=if d[0]>=35 && f.name.ends_with(".shared_delay_ticks"){103.}else if d[0]>=38 && f.name.ends_with(".arp_speed_index"){17.}else{f.max};if !v.is_finite()||v<f.min||v>max{return Err(format!("Invalid{}={v}",f.name));}
- if f.name=="metronome" && v>2. && v<24.{return Err("Invalid metronome mode".into());}}
- // NULL song-list entries have opaque/stale payload. Active entries use UI limits.
- for i in 0..64{let o=48+6*i;let scene=d[o] as i8;if scene == -1{continue;}
- let beats=i16::from_le_bytes([d[o+2],d[o+3]]);let transpose=d[o+4] as i8;
- if !(0..=7).contains(&scene)||!(1..=256).contains(&beats)||!(-24..=24).contains(&transpose){return Err(format!("Invalid song-list entry{}",i+1));}}
+ for f in fields(){if !field_ok(d,&f){return Err(if f.name=="metronome"{"Invalid metronome mode".into()}else{format!("Invalid{}={}",f.name,value(d,&f))});}}
+ for i in 0..64{if !list_entry_ok(d,i){return Err(format!("Invalid song-list entry{}",i+1));}}
  Ok(())
+}
+/// Replace invalid stored fields with the bytes of a valid default image and
+/// clear invalid active song-list entries. Returns one message per repair.
+pub fn repair_fields(d:&mut [u8],defaults:&[u8])->Vec<String>{
+ let mut out=vec![];
+ for f in fields(){if !field_ok(d,&f){let before=value(d,&f);let o=f.offset;let n=width(f.kind);
+  d[o..o+n].copy_from_slice(&defaults[o..o+n]);
+  out.push(format!("Setting {}: {} -> {} (default)",f.name,before,value(d,&f)));}}
+ for i in 0..64{if !list_entry_ok(d,i){let o=48+6*i;
+  out.push(format!("Song list entry {}: scene {} beats {} transpose {} -> cleared",i+1,d[o] as i8,i16::from_le_bytes([d[o+2],d[o+3]]),d[o+4] as i8));d[o]=255;}}
+ out
 }
 pub fn diff(a:&[u8],b:&[u8])->Result<Value,String>{
  if a.len()!=SONG_SIZE||b.len()!=SONG_SIZE{return Err("Wrong song size".into());}

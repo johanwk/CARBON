@@ -44,21 +44,28 @@ pub fn diff(before:&[u8],after:&[u8])->Result<Value,String>{
       "unmodelled_changes":changed.iter().filter(|i| !(1824usize..15648).contains(*i)).collect::<Vec<_>>(),
       "warning":"Stored fields decoded below; event indices/raw bytes retained; opaque changes identified"}))
 }
+/// One stored event (6 bytes) is valid for song format version 1.`version`.
+pub fn event_valid(version:u8,e:&[u8])->bool{
+    match e[0] {
+        0|4|5=>true,
+        1=>((16..=29).contains(&e[1]) && e[2]<=127) || (version>=36 && ((e[1]==34 && e[2]<=8)||(e[1]==35 && e[2]<=127))),
+        8=>version>=36 && e[1]<=8 && e[2]<=127,
+        9=>version>=37 && e[1]<=63 && e[2]==0,
+        2=>e[1]<=100,3=>e[1]<=27 && e[2]<=7,
+        6=>e[1]<=16 && e[2]<=13,7=>e[1]<=5 && e[2]<=1,
+        0x90=>e[1]<=127 && e[2]<=127 && (version==34 || e[3]<=103 || e[3]==255),
+        0xb0=>e[1]<=127 && e[2]<=127,0xc0=>e[1]<=127,_=>false
+    }
+}
+/// Complete 1.34..1.38 SONG image header and trailer.
+pub fn header_valid(data:&[u8])->bool{
+    data.len()==SONG_SIZE && [34,35,36,37,38].contains(&data[0]) && data[1..4]==[0,1,0] && data[SONG_SIZE-4..]==[0x47,0x4e,0x4f,0x53]
+}
 /// Validate implemented event encodings. Unused bytes remain opaque.
 pub fn validate_source(data:&[u8])->Result<(),String>{
-    if data.len()!=SONG_SIZE || !([34,35,36,37,38].contains(&data[0]) && data[1..4]==[0,1,0]) || data[SONG_SIZE-4..]!=[0x47,0x4e,0x4f,0x53]{return Err("Source must be complete 1.34..1.38 SONG image".into());}
+    if !header_valid(data){return Err("Source must be complete 1.34..1.38 SONG image".into());}
     for (i,e) in data[1824..15648].chunks_exact(6).enumerate(){
-        let valid=match e[0] {
-            0|4|5=>true,
-            1=>((16..=29).contains(&e[1]) && e[2]<=127) || (data[0]>=36 && ((e[1]==34 && e[2]<=8)||(e[1]==35 && e[2]<=127))),
-            8=>data[0]>=36 && e[1]<=8 && e[2]<=127,
-            9=>data[0]>=37 && e[1]<=63 && e[2]==0,
-            2=>e[1]<=100,3=>e[1]<=27 && e[2]<=7,
-            6=>e[1]<=16 && e[2]<=13,7=>e[1]<=5 && e[2]<=1,
-            0x90=>e[1]<=127 && e[2]<=127 && (data[0]==34 || e[3]<=103 || e[3]==255),
-            0xb0=>e[1]<=127 && e[2]<=127,0xc0=>e[1]<=127,_=>false
-        };
-        if !valid{return Err(format!("Invalid event: track{} step{} slot{}",i/384+1,(i/6)%64+1,i%6+1));}
+        if !event_valid(data[0],e){return Err(format!("Invalid event: track{} step{} slot{}",i/384+1,(i/6)%64+1,i%6+1));}
     }
     Ok(())
 }

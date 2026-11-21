@@ -7,10 +7,12 @@ pub const PORT:&str="CARBON Port 1";
 
 /// Return (upload, slot, JSON path); retain the original short command forms.
 pub fn arguments(args:&[String])->Result<(bool,usize,String),String>{
-    let usage="Usage: backup song SLOT FILE.json | upload song SLOT FILE.json (also: download SLOT FILE.json | upload FILE.json SLOT)";
+    let usage="Usage: backup song SLOT FILE.json [--strict] | upload song SLOT FILE.json (also: download SLOT FILE.json | upload FILE.json SLOT)";
     let (upload,slot,path)=match args {
         [cmd,song,slot,path] if (cmd=="backup" || cmd=="upload") && song=="song" => (cmd=="upload",slot,path),
         [cmd,slot,path] if cmd=="download" => (false,slot,path),
+        [cmd,song,slot,path,strict] if strict=="--strict" && cmd=="backup" && song=="song" => (false,slot,path),
+        [cmd,slot,path,strict] if strict=="--strict" && cmd=="download" => (false,slot,path),
         [cmd,path,slot] if cmd=="upload" => (true,slot,path),
         _=>return Err(usage.into()),
     };
@@ -45,9 +47,20 @@ fn read_pair<D:Device>(device:&mut D,slot:usize)->Result<Vec<u8>,String>{
     Ok(a)
 }
 pub fn download<D:Device>(device:&mut D,slot:usize,approved:bool)->Result<Value,String>{
+    Ok(download_checked(device,slot,approved,true)?.0)
+}
+/// Download result: JSON document, raw image exactly as read, repairs made.
+/// strict=true keeps the old behaviour: any invalid value aborts.
+pub fn download_checked<D:Device>(device:&mut D,slot:usize,approved:bool,strict:bool)->Result<(Value,Vec<u8>,Vec<String>),String>{
     if !approved{return Err("Cancelled".into());}
     let raw=read_pair(device,slot)?;
-    document::export(&raw,slot)
+    if strict{return Ok((document::export(&raw,slot)?,raw,vec![]));}
+    let (fixed,repairs)=crate::repair::repair(&raw)?;
+    let mut doc=document::export(&fixed,slot)?;
+    if !repairs.is_empty(){
+        doc["metadata"]["extensions"]["repairs"]=serde_json::json!({"original_sha256":crate::hash(&raw),"changes":repairs});
+    }
+    Ok((doc,raw,repairs))
 }
 /// The caller obtained approval for this target and compiled source before
 /// connecting. Base bytes are backed up automatically, then rebound/rechecked by
@@ -58,6 +71,8 @@ pub fn upload<D:Device,F:FnMut(&[u8])->Result<(),String>>(device:&mut D,slot:usi
     restore::validate_hardware_source(&raw,firmware_assertion(&raw)?)?;
     let result=hash(&raw);
     let before=read_pair(device,slot)?;
+    // The target is saved exactly as read; its own invalid values never block replacement.
+    for w in crate::repair::check(&before){eprintln!("WARNING (current song{slot}, backed up unchanged): {w}");}
     let plan=Plan::new(slot,before,raw,Mode::Replace)?;
     restore::execute(device,&plan,&plan.approval_token(),true,true,save_backup)?;
     Ok(result)
@@ -89,6 +104,15 @@ pub fn upload<D:Device,F:FnMut(&[u8])->Result<(),String>>(device:&mut D,slot:usi
         let mut old=fixture();old[0]=34;assert!(upload(&mut d,37,old,true,|_|Ok(())).is_err());assert_eq!(d.reads,0);
         assert!(upload(&mut d,37,fixture(),true,|_|Err("disk full".into())).is_err());assert_eq!(d.writes,0);
         d.stale=true;d.reads=0;assert!(upload(&mut d,37,fixture(),true,|_|panic!("no backup after stale base")).is_err());assert_eq!(d.writes,0);
+    }
+    #[test]fn lenient_download_and_invalid_target(){
+        let mut d=device();let mut bad=fixture();bad[0]=38;bad[15663]=255;let o=1824+144;bad[o..o+6].copy_from_slice(&[0x90,230,100,255,24,0]);d.data=bad.clone();
+        assert!(download_checked(&mut d,37,true,true).is_err());
+        let(doc,raw,rep)=download_checked(&mut d,37,true,false).unwrap();assert_eq!(raw,bad);assert_eq!(rep.len(),2);
+        assert_eq!(doc["metadata"]["extensions"]["repairs"]["changes"].as_array().unwrap().len(),2);
+        let fixed=document::import(&doc).unwrap().1;assert_eq!(fixed[o],0);assert_eq!(fixed[15663],0);assert_eq!(d.writes,0);
+        let mut saved=vec![];let backed=d.backed.clone();
+        upload(&mut d,37,fixture(),true,|b|{saved=b.to_vec();backed.set(true);Ok(())}).unwrap();assert_eq!(saved,bad);assert_eq!(d.data,fixture());
     }
     #[test]fn friendly_command_forms(){
         let parse=|xs:&[&str]|arguments(&xs.iter().map(|s|s.to_string()).collect::<Vec<_>>());
