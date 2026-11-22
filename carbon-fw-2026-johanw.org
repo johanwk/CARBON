@@ -186,6 +186,12 @@ hits as lanes, one row per drum, 16 steps per page:
   the bottom right means the note has its own delay.
 - Steps outside the playing range (Motion Start and Length) are darker. A
   bar below the grid shows the playing step.
+- Steps switched off by a fixed Pattern or by Euclidean density are
+  *black*; their hits stay visible but dim, because they will not play.
+  With the "As recorded" pattern (32) at density 100%, empty steps are not
+  black: any hit placed there plays.
+
+[[file:docs/screenshots/fixtures/24-drum-lanes-masked-lcda.png]]
 - *Pages:* the view opens on the page that is playing (when stopped: the
   page with Motion Start). While running it follows playback, shown as
   =play= on the top line. Turning *Motion Start* stops following and steps
@@ -257,6 +263,74 @@ each pitch is an instrument, so pitch is never changed on the way out.
   Other pitches keep their note name. Many drum machines (for example a
   Bitwig drum kit) place sounds differently; the names then do not match
   the sounds. Own names per song are planned.
+
+** Lane view: edit a DRUM track as a drum grid
+
+On a DRUM track, *hold Step Edit for 800 ms* to cycle the display: compact,
+expanded, *lanes*, then compact again. The lane view shows the same lanes
+as the [[*Drum lanes: one DRUM track as a drum grid][drum lanes overview]], now with a cursor (yellow frame):
+
+[[file:docs/screenshots/fixtures/23-drum-lane-edit-lcda.png]]
+
+- The rows are fixed while you edit: the kick stays on the bottom row,
+  and unused rows show =--= so you can start a new drum there. The cursor
+  opens on the lowest hit of the current step.
+- The status lines show the cursor's drum and hit, for example =SD 38=
+  and =Vel 100 Gate 32=, or =No hit  Value: add= on an empty cell.
+
+| Control              | Lane view                                              |
+|----------------------+--------------------------------------------------------|
+| Motion Start         | Step left/right; the page follows                      |
+| Shift + Motion Start | Row up/down (clockwise moves down)                     |
+| Length/Value         | Empty cell: add a hit (velocity 100); hit: velocity    |
+| Shift + Length/Value | Remove the hit                                         |
+| Gate                 | Length of the hit                                      |
+| Speed                | Own delay of the hit (other notes on the step stay)    |
+| Transpose            | Empty row: choose its drum; row with hits: move lane   |
+| Shift + Pattern      | Lane Fill (see below)                                  |
+| Shift + Transpose    | Lane Rotate (see below)                                |
+| Shift + Record       | Clear the whole step                                   |
+| Tap Step Edit        | Play the step                                          |
+| Keyboard / pads      | Add hits; a new drum fills the first free row          |
+
+- *Moving through steps* plays each step when stopped: a quick way to
+  preview a pattern.
+- A new hit goes into slot 1; other events on the step move one slot
+  right. If the step is already full (6 events), the last slot is dropped.
+- *Moving a lane* (Transpose on a row with hits) changes every hit of that
+  drum on all 64 steps, for example all CHH to PHH. It jumps over drums
+  already used on the track, so two lanes never merge.
+- Ratchet and Region editing are not used in the lane view; switch to the
+  compact or expanded view for those.
+- Undo works as elsewhere in Step Edit: one undo point per step visit.
+
+*Lane Fill and Rotate.* Shift + Pattern and Shift + Transpose shape the
+cursor's lane within the playing range:
+
+[[file:docs/screenshots/fixtures/25-drum-lane-fill-lcda.png]]
+
+- *Fill up* adds a Euclidean rhythm: +3 spreads 3 pulses evenly over the
+  range (E3/16 over 16 steps). Your own hits always stay; the pulses are
+  placed to line up with as many of them as possible. An empty lane gets
+  the plain Euclidean rhythm from step 1.
+- *Fill down* removes your own hits, weakest beat position first (16ths,
+  then 8ths, then beats; step 1 last).
+- *Rotate* moves the whole lane one step per detent, wrapping inside the
+  range, with or without Fill. Velocity, length and delay move with each
+  hit.
+- Filled hits are 10% softer than the average of your own hits in the
+  range (100 on an empty lane), so they blend in.
+- Every turn is computed from the lane as it was before the first turn:
+  turning back to Fill 0 and Rot 0 restores it exactly. Line 2 shows, for
+  example, =Fill +3 E3/16 Rot 1=, line 3 the number of hits.
+- A full step (6 events) is never overwritten: the hit is left out and
+  line 3 shows, for example, =1 blocked=. It returns when Rotate moves it
+  to a free step.
+- Steps switched off by Pattern or Euclidean density count as normal and
+  can be filled; they still show black.
+- After a hand edit, recording or undo, the next turn starts again from
+  the lane as it is then. The track's own Euclidean density and rotation
+  remain on Shift + Pattern and Shift + Transpose outside Step Edit.
 
 ** The expanded view
 

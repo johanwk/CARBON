@@ -209,6 +209,12 @@ are inactive; Clock closes. VOICE tracks are unchanged. Verified on hardware.
 In 1.38-jwk-drm4 the lanes stay open for Record and Run/Stop (not
 Shift+Record); a pending take shows in white, played lanes dim their old hits,
 and the top line shows =REC=. Verified on hardware.
+In 1.38-jwk-dr6b, Step Edit on a DRUM track has a third view: hold Step Edit
+800 ms to cycle compact, expanded and lanes. The lane view edits hits on a
+cursor (Start step, Shift+Start row, Length/Value add/velocity, Shift+Length/
+Value remove, Transpose drum/move lane, Shift+Pattern lane Fill, Shift+
+Transpose lane Rotate, Shift+Record clear step). Masked steps are black only
+where a hit would not play. Verified on hardware.
 
 * Scene overview across tracks (local 1.38-jwk-scn1)
 
