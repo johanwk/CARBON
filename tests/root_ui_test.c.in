@@ -105,8 +105,18 @@ CV_EDIT(seq_ctrl_adjust_cv_output_scaling,21)
 CV_EDIT(seq_ctrl_adjust_cvcal,22)
 CV_EDIT(seq_ctrl_adjust_cvoffset,23)
 static int help_draws, lane_fills;
-static int ui_running;
+static int ui_running, ui_recording;
 int seq_ctrl_get_run_state(void) {return ui_running;}
+int seq_ctrl_get_record_mode(void) {return ui_recording ? SEQ_CTRL_RECORD_RT : SEQ_CTRL_RECORD_IDLE;}
+/* Pending take fixture: what the engine would report while recording. */
+static int take_n, take_track;
+static uint8_t take_p[8], take_s[8], take_v[8];
+int seq_engine_record_preview(int track,uint8_t *pitch,uint8_t *step,uint8_t *velocity,int max) {
+    if(!ui_recording || track!=take_track) return 0;
+    int n=take_n<max?take_n:max;
+    for(int i=0;i<n;i++) {pitch[i]=take_p[i];step[i]=take_s[i];velocity[i]=take_v[i];}
+    return n;
+}
 // DRUM lane fixture: [step][slot]
 static struct track_event lane_ev[64][SEQ_TRACK_POLY];
 int song_get_step_event(int scene,int track,int step,int slot,struct track_event *e) {
@@ -429,6 +439,21 @@ static void test_drum_lanes(void) {
         assert(gstate.lane_page==3);
         gui_overview_page(-1);gstate.active_step[0]=5;gui_draw_clock_help();
         assert(gstate.lane_page==2);                                 /* turn stops following */
+        /* Recording: pending take shows white; played lane dims stored hits;
+           a new pitch gets a lane at once (kick still kept). */
+        ui_running=1;ui_recording=1;take_track=0;gstate.active_step[0]=0;
+        gui_track_overview_open(0);
+        take_n=2;take_p[0]=42;take_s[0]=3;take_v[0]=100;take_p[1]=81;take_s[1]=7;take_v[1]=90;
+        assert(gui_draw_clock_help());
+        assert(strstr(gstate.clock_help_rows[0],"REC"));
+        { int l[10],c;gui_lanes_pick(0,l,&c);int has81=0;for(int i=0;i<c;i++) has81|=l[i]==81;
+          assert(has81 && l[0]==36 && c==10); }
+        assert(gui_lane_cell(0,3,42,1)&0x80);                        /* take hit */
+        assert((gui_lane_cell(0,0,42,1)&7)==1 && !(gui_lane_cell(0,0,42,1)&0x80)); /* dimmed */
+        assert((gui_lane_cell(0,0,36,1)&7)==4);                      /* unplayed lane unchanged */
+        take_track=1;assert(gui_draw_clock_help());                  /* other track: no take */
+        assert(!(gui_lane_cell(0,3,42,1)&0x80) && (gui_lane_cell(0,0,42,1)&7)>1);
+        ui_recording=0;take_n=0;take_track=0;
         ui_running=0;
         /* VOICE keeps the settings overview; paging has no effect */
         track_type_ui=SONG_TRACK_TYPE_VOICE;gui_track_overview_open(0);

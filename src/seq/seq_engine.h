@@ -70,6 +70,11 @@ void seq_engine_reset_track(int track);
 
 // get the current scene
 int seq_engine_get_current_scene(void);
+// Pending realtime take on a DRUM track (display only): fills up to max
+// hits (pitch, step, velocity) that the end-of-pass write would place.
+// Returns 0 unless track is the recorded track and RT recording is active.
+int seq_engine_record_preview(int track, uint8_t *pitch, uint8_t *step,
+    uint8_t *velocity, int max);
 
 // effective runtime parameters (including transient internal CC automation)
 int seq_engine_get_effective_motion_start(int track);

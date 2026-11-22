@@ -153,7 +153,15 @@ int pattern_get_step_enable(int scene,int track,int pattern,int step) {
 int seq_engine_get_effective_motion_start(int t) { return fx_start[fx_scene][t]; }
 int seq_ctrl_get_current_song(void) { return 7; }
 int seq_ctrl_get_first_track(void) { return fx_first; }
-int seq_ctrl_get_record_mode(void) { return SEQ_CTRL_RECORD_IDLE; }
+static int fx_recording;
+int seq_ctrl_get_record_mode(void) { return fx_recording ? SEQ_CTRL_RECORD_RT : SEQ_CTRL_RECORD_IDLE; }
+/* Pending take for the recording image: open hats played on the off-beats. */
+int seq_engine_record_preview(int track,uint8_t *pitch,uint8_t *step,uint8_t *velocity,int max) {
+    static const uint8_t st[4]={2,6,10,14};
+    if(!fx_recording || track!=0) return 0;
+    int n=0; for(int i=0;i<4 && n<max;i++) {pitch[n]=46;step[n]=st[i];velocity[n]=96;n++;}
+    return n;
+}
 int seq_ctrl_get_run_state(void) { return 0; }
 int seq_ctrl_get_scene(void) { return fx_scene; }
 int seq_ctrl_get_song_mode(void) { return 0; }
@@ -408,6 +416,9 @@ int main(int argc,char **argv) {
             boot(screen); gui_track_overview_open(0); bad|=shot(argv[1],"20-drum-lanes-p1",screen);
             gui_overview_page(9); bad|=shot(argv[1],"21-drum-lanes-settings",screen);
             gui_clock_help_set(0);
+            fx_recording=1; boot(screen); gui_track_overview_open(0);
+            bad|=shot(argv[1],"22-drum-lanes-recording",screen);
+            gui_clock_help_set(0); fx_recording=0;
             memcpy(fx_events,saved,sizeof(saved));
             fx_type[0]=t0; fx_start[0][0]=s0; fx_len[0][0]=l0;
         }

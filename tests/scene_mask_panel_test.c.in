@@ -134,7 +134,17 @@ static void test_track_holds(void) {
     help_mode=GUI_OVERVIEW_LANES;
     assert(panel_handle_clock_help_input(PANEL_ENC_MOTION_START,-1) && help_pages==pages);
     assert(panel_handle_clock_help_input(PANEL_ENC_MOTION_LENGTH,3) && help_edits==edits);
-    help_mode=GUI_OVERVIEW_TRACK;
+    /* Lanes stay open for Record and Run/Stop (not with Shift); others close. */
+    help_mode=GUI_OVERVIEW_LANES;
+    assert(!panel_handle_clock_help_input(PANEL_SW_RECORD,1) && help_active);
+    assert(!panel_handle_clock_help_input(PANEL_SW_RUN_STOP,1) && help_active);
+    pstate.shift_state=1;
+    assert(!panel_handle_clock_help_input(PANEL_SW_RECORD,1) && !help_active);
+    pstate.shift_state=0;help_active=1;
+    assert(!panel_handle_clock_help_input(PANEL_SW_EDIT,1) && !help_active);
+    help_active=1;help_mode=GUI_OVERVIEW_TRACK;
+    assert(!panel_handle_clock_help_input(PANEL_SW_RECORD,1) && !help_active); /* track view closes */
+    help_active=1;
     assert(!panel_handle_clock_help_input(PANEL_SW_1,0) && help_active);
     assert(panel_handle_clock_help_input(PANEL_SW_CLOCK,1));
     assert(panel_handle_clock_help_input(PANEL_SW_CLOCK,0) && !help_active);

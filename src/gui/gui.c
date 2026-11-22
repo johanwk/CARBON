@@ -761,16 +761,33 @@ static void gui_scene_overview_row(int scene,int row,char text[30]) {
 #define GUI_LANE_GHOST 40   // velocity below this: small square
 // Pitches shown as lanes, ascending (index 0 = bottom row). At most 10, by
 // hit count; the GM kick (36, else 35) is always kept. Returns hidden count.
+#define GUI_LANE_TAKE_MAX 64
+static struct {
+    int count;
+    uint8_t pitch[GUI_LANE_TAKE_MAX],step[GUI_LANE_TAKE_MAX],vel[GUI_LANE_TAKE_MAX];
+    uint8_t played[128];
+} gui_take;
+static void gui_lanes_take(int track) {
+    gui_take.count=seq_engine_record_preview(track,gui_take.pitch,gui_take.step,
+        gui_take.vel,GUI_LANE_TAKE_MAX);
+    memset(gui_take.played,0,sizeof(gui_take.played));
+    for(int i=0;i<gui_take.count;i++) gui_take.played[gui_take.pitch[i]]=1;
+}
 static int gui_lanes_pick(int track,int *lanes,int *count) {
     uint16_t hits[128]={0};
     struct track_event event;
     int used=0;
+    // Pitches in the pending take get a lane at once (ranked above others).
+    for(int i=0;i<gui_take.count;i++) {
+        if(!hits[gui_take.pitch[i]]) used++;
+        hits[gui_take.pitch[i]]=1000;
+    }
     for(int step=0;step<SEQ_NUM_STEPS;step++)
         for(int slot=0;slot<SEQ_TRACK_POLY;slot++)
             if(song_get_step_event(seq_ctrl_get_scene(),track,step,slot,&event)==0 &&
                     event.type==SONG_EVENT_NOTE && event.data0<128) {
                 if(!hits[event.data0]) used++;
-                hits[event.data0]++;
+                if(hits[event.data0]<1000) hits[event.data0]++;
             }
     int n=0;
     unsigned char take[128]={0};
@@ -786,10 +803,18 @@ static int gui_lanes_pick(int track,int *lanes,int *count) {
     return used-*count;
 }
 // Cell code: bits 0-2 level 1-4 (0 = no hit), 3 ghost, 4 condition on the
-// step, 5 note has its own delay, 6 step inside the playing region.
+// step, 5 note has its own delay, 6 step inside the playing region,
+// 7 pending take (white). Played lanes: stored hits shown at level 1 (the
+// DRUM overdub replaces them at the end of the pass).
 static uint8_t gui_lane_cell(int track,int step,int pitch,int in_region) {
     struct track_event event;
     int vel=-1,delay=0,cond=0;
+    for(int i=0;i<gui_take.count;i++)
+        if(gui_take.pitch[i]==pitch && gui_take.step[i]==step && gui_take.vel[i]>vel) vel=gui_take.vel[i];
+    if(vel>=0) {
+        int level=vel<70 ? 2 : vel<100 ? 3 : 4;
+        return (in_region ? 0x40 : 0)|0x80|level|(vel<GUI_LANE_GHOST ? 0x08 : 0);
+    }
     for(int slot=0;slot<SEQ_TRACK_POLY;slot++) {
         if(song_get_step_event(seq_ctrl_get_scene(),track,step,slot,&event)!=0) continue;
         if(event.type==SONG_EVENT_PROBABILITY || event.type==SONG_EVENT_EUCLIDEAN ||
@@ -803,10 +828,11 @@ static uint8_t gui_lane_cell(int track,int step,int pitch,int in_region) {
     uint8_t code=in_region ? 0x40 : 0;
     if(vel<0) return code;
     int level=vel<70 ? 2 : vel<100 ? 3 : 4;
+    if(pitch>=0 && pitch<128 && gui_take.played[pitch]) level=1;
     return code|level|(vel<GUI_LANE_GHOST ? 0x08 : 0)|(cond ? 0x10 : 0)|(delay ? 0x20 : 0);
 }
-static uint32_t gui_lane_color(int track,int level,int in_region) {
-    uint32_t c=GUI_GRID_TRACK_COLOR_ACTIVE[seq_utils_clamp(track,0,5)];
+static uint32_t gui_lane_color(int track,int level,int in_region,int take) {
+    uint32_t c=take ? 0xffffffff : GUI_GRID_TRACK_COLOR_ACTIVE[seq_utils_clamp(track,0,5)];
     int pct=level*25-(in_region ? 0 : 50);
     if(pct<15) pct=15;
     uint32_t r=((c>>16)&255)*pct/100,g=((c>>8)&255)*pct/100,b=(c&255)*pct/100;
@@ -831,6 +857,7 @@ static int gui_draw_lanes(int full) {
     int running=seq_ctrl_get_run_state();
     int active=gstate.active_step[seq_utils_clamp(track,0,5)];
     if(gstate.lane_follow && running) gstate.lane_page=(active&63)/16;
+    gui_lanes_take(track);
     int page=gstate.lane_page&3,hidden=gui_lanes_pick(track,lanes,&count);
     if(full) {
         memset(gstate.lane_cells,0xff,sizeof(gstate.lane_cells));
@@ -840,7 +867,8 @@ static int gui_draw_lanes(int full) {
     char text[30],other[12]="";
     if(hidden>0) snprintf(other,sizeof(other)," +%d other",hidden);
     snprintf(text,sizeof(text),"T%d %02d-%02d p%d/4%s%s",track+1,page*16+1,page*16+16,
-        page+1,gstate.lane_follow && running ? " play" : "",other);
+        page+1,seq_ctrl_get_record_mode()==SEQ_CTRL_RECORD_RT ? " REC" :
+        gstate.lane_follow && running ? " play" : "",other);
     if(strcmp(text,gstate.clock_help_rows[0])) dirty=1;
     gui_lane_text(0,x0+2,y0+2,text,GUI_FONT_COLOR_NORMAL);
     // Step numbers: one label per beat, cached as a page number in row 1.
@@ -881,7 +909,7 @@ static int gui_draw_lanes(int full) {
             gfx_fill_rect(cx,ly,GUI_LANE_PITCH-1,GUI_LANE_H-1,in_region ? 0xff1c1c1c : 0xff080808);
             int level=code&7;
             if(!level) continue;
-            uint32_t color=gui_lane_color(track,level,in_region);
+            uint32_t color=gui_lane_color(track,level,in_region,code&0x80);
             if(code&0x08) gfx_fill_rect(cx+3,ly+6,5,5,color);           // ghost
             else if(code&0x10) {                                           // conditional: outline
                 gfx_fill_rect(cx+1,ly+4,9,1,color);gfx_fill_rect(cx+1,ly+12,9,1,color);

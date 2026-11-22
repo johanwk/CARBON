@@ -805,6 +805,27 @@ static void test_scene_gates(void) {
         assert(output_count==(pass?3:1)); // Note Off remains independent
     }
 }
+// Take preview (display only): same step rule as the end-of-pass write;
+// DRUM, RT and the recorded track only; never changes engine state.
+static void test_record_preview(void) {
+    uint8_t p[4],st[4],v[4];
+    setup();test_record_mode=SEQ_CTRL_RECORD_RT;sestate.first_track=1;
+    sestate.track_type[1]=SONG_TRACK_TYPE_DRUM;sestate.step_size[1]=6;
+    sestate.motion_len[1]=16;sestate.motion_start[1]=56;sestate.record_pos=100;
+    sestate.record_event_count=3;
+    sestate.record_events[0]=(struct midi_event){.tick_pos=100+6*9+2,.msg={.status=MIDI_NOTE_ON,.data0=42,.data1=90}};
+    sestate.record_events[1]=(struct midi_event){.tick_pos=100+3,.msg={.status=MIDI_CONTROL_CHANGE,.data0=7}};
+    sestate.record_events[2]=(struct midi_event){.tick_pos=100+6*16,.msg={.status=MIDI_NOTE_ON,.data0=36}}; /* past loop */
+    struct seq_engine_state before=sestate;
+    assert(seq_engine_record_preview(1,p,st,v,4)==1);
+    assert(p[0]==42 && v[0]==90 && st[0]==((9+56)&63));
+    assert(!memcmp(&before,&sestate,sizeof(sestate)));
+    assert(!seq_engine_record_preview(0,p,st,v,4));                 /* other track */
+    sestate.track_type[1]=SONG_TRACK_TYPE_VOICE;assert(!seq_engine_record_preview(1,p,st,v,4));
+    sestate.track_type[1]=SONG_TRACK_TYPE_DRUM;test_record_mode=SEQ_CTRL_RECORD_ARM;
+    assert(!seq_engine_record_preview(1,p,st,v,4));
+    test_record_mode=SEQ_CTRL_RECORD_IDLE;sestate.track_type[1]=0;
+}
 static void test_recording_undo_boundary(void) {
     setup();
     seq_engine_record_write_tracks();assert(!undo_captures); // empty take
@@ -830,6 +851,7 @@ static void test_recording_undo_boundary(void) {
     sestate.record_event_count=0;seq_engine_record_event(&msg);assert(undo_captures==2);
 }
 int main(void) {
+    test_record_preview();
     test_recording_undo_boundary();
     test_scene_gates();
     test_straight_timing();

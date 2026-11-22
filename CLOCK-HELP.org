@@ -206,6 +206,9 @@ lanes instead: one row per pitch (kick at the bottom, at most 10, =+N other=),
 16 steps per page. Motion Start pages 1-4, then this settings overview; while
 running the lanes follow playback until Motion Start is turned. Other encoders
 are inactive; Clock closes. VOICE tracks are unchanged. Verified on hardware.
+In 1.38-jwk-drm4 the lanes stay open for Record and Run/Stop (not
+Shift+Record); a pending take shows in white, played lanes dim their old hits,
+and the top line shows =REC=. Verified on hardware.
 
 * Scene overview across tracks (local 1.38-jwk-scn1)
 

@@ -2359,6 +2359,35 @@ void seq_engine_step_sequence_shuttle(int change) {
     seq_engine_highlight_step_record_pos();
 }
 
+// Display-only view of the pending take. Runs in the GUI loop while the 1 ms
+// timer appends: a hit is complete before the count is raised, so reading up
+// to a snapshot of the count is safe; a write/reset mid-read only shows one
+// stale frame, which the next refresh corrects.
+int seq_engine_record_preview(int track, uint8_t *pitch, uint8_t *step,
+        uint8_t *velocity, int max) {
+    int count, found = 0;
+    if(seq_ctrl_get_record_mode() != SEQ_CTRL_RECORD_RT ||
+            track != sestate.first_track ||
+            sestate.track_type[track] != SONG_TRACK_TYPE_DRUM) return 0;
+    count = *(volatile int *)&sestate.record_event_count;
+    __asm__ volatile("" ::: "memory");
+    uint32_t pos = sestate.record_pos;
+    int size = sestate.step_size[track], len = sestate.motion_len[track];
+    int start = sestate.motion_start[track];
+    if(size < 1 || len < 1) return 0;
+    for(int i = 0; i < count && i < SEQ_ENGINE_RECORD_EVENTS_MAX && found < max; i++) {
+        struct midi_event *e = &sestate.record_events[i];
+        if(e->msg.status != MIDI_NOTE_ON || e->tick_pos < pos ||
+                e->tick_pos >= pos + (uint32_t)(len * size)) continue;
+        // same step rule as seq_engine_record_write_tracks
+        step[found] = (((e->tick_pos - pos) / size) + start) & (SEQ_NUM_STEPS - 1);
+        pitch[found] = e->msg.data0 & 0x7f;
+        velocity[found] = e->msg.data1 & 0x7f;
+        found++;
+    }
+    return found;
+}
+
 // write the recorded tracks to the song
 // if there is no data then the song is not overwritten
 void seq_engine_record_write_tracks(void) {

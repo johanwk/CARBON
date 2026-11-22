@@ -195,6 +195,19 @@ hits as lanes, one row per drum, 16 steps per page:
 
 - The view is read-only: other encoders do nothing; Clock closes it.
 
+*While recording.* The lanes stay open when you press Record or Run/Stop,
+so you can watch a take land. While recording on the DRUM track, the top
+line shows =REC= and each hit you play appears at once as a *white*
+square on the step where it will be written:
+
+[[file:docs/screenshots/fixtures/22-drum-lanes-recording-lcda.png]]
+
+- In a lane whose drum you have played in this pass, the old hits turn
+  dim: the DRUM overdub replaces them at the end of the pass. Lanes you
+  have not played stay as they are.
+- A drum played for the first time gets a lane at once (the kick stays).
+- At the end of the pass the take is written and turns into normal hits.
+
 ** Scene overview: one scene across six tracks
 
 Hold *Scene first*, then hold a *number* for 800 ms. The number selects
