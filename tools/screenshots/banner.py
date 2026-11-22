@@ -19,8 +19,8 @@ PANELS = [
   "Notes, chances, harmony and more"),
  ("13-card-hrminv-pitches", annotate.hrminv_pitch_overlay, "shape",
   "One chord, many harmonies", "Steer other tracks from a Bias track"),
- ("06-scene-overview", None, "cond", "Whole scenes at a glance",
-  "Hold Scene + a number"),
+ ("20-drum-lanes-p1", None, "cond", "Drum lanes",
+  "Hold a DRUM track; edit in Step Edit"),
  ("04-clock-overview", None, "out", "Every setting on one page",
   "Hold a menu button"),
 ]

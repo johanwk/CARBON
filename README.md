@@ -1,6 +1,6 @@
 # CARBON community firmware
 
-![Four CARBON screens: up to six events per step, one chord with many harmonies, whole scenes at a glance, every setting on one page](docs/screenshots/banner.svg)
+![Four CARBON screens: up to six events per step, one chord with many harmonies, drum lanes, every setting on one page](docs/screenshots/banner.svg)
 
 **New here?** The illustrated [user guide](carbon-fw-2026-johanw.org) shows
 what the firmware adds, with diagrams of Step Edit, step events and Bias
