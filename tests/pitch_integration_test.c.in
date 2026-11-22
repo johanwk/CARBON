@@ -428,8 +428,33 @@ static void test_pitch_preview(void) {
     test_root=2;seq_engine_preview_step(0,0,&p);assert(p.pitch[0]==66);
     assert(!wires);
 }
+// DRUM: stored transpose/scale, Bias and CCi17 never move the drum pitch.
+static void test_drum_pitch_lock(void) {
+    struct seq_step_preview p;
+    init(); test_root=SONG_ROOT_OFF; test_scale=SCALE_MAJOR; test_transpose=2;
+    test_drum=SONG_TRACK_TYPE_DRUM; sestate.track_type[0]=SONG_TRACK_TYPE_DRUM;
+    outproc_root_changed(); outproc_pitch_changed(0,0);
+    put(0,0,SONG_EVENT_PROBABILITY,0,0);
+    put(0,1,SONG_EVENT_NOTE,42,100); put(0,2,SONG_EVENT_NOTE,37,100);
+    fixture[0][1].delay=0; fixture[0][2].delay=0; sestate.step_size[0]=96;
+    sestate.bias_track_map[0]=1; sestate.bias_track_output[1]=3;
+    sestate.internal_cc[0][MIDI_CTRL_CC_TRACK_TRANSPOSE-16]=5;
+    seq_engine_preview_step(0,0,&p);
+    assert(p.count==2 && p.pitch[0]==42 && p.pitch[1]==37);
+    struct seq_engine_step_visit v={.slots=6};v.events[1]=fixture[0][1];v.events[2]=fixture[0][2];
+    seq_engine_track_play_step(0,0,&v);
+    assert(wires==4 && wire[0].data0==42 && wire[2].data0==37);
+    // Switching back to VOICE restores stored transpose/scale.
+    test_drum=SONG_TRACK_TYPE_VOICE; sestate.track_type[0]=SONG_TRACK_TYPE_VOICE;
+    seq_engine_clear_internal_cc();
+    sestate.bias_track_map[0]=-1; outproc_pitch_changed(0,0);
+    for(int i=0;i<8;i++) seq_engine_track_manage_notes(0);
+    put(0,2,SONG_EVENT_PROBABILITY,0,0); put(0,1,SONG_EVENT_NOTE,60,100);
+    seq_engine_preview_step(0,0,&p); assert(p.count==1 && p.pitch[0]==62);
+}
 static void test_glide_curve_control(void) {
     test_pitch_preview();
+    test_drum_pitch_lock();
     test_arp_glide();
     init(); sestate.bias_track_map[0]=1; sestate.bias_track_map[2]=1;
     assert(sestate.glide_curve[0]==64);

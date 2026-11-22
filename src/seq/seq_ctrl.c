@@ -952,7 +952,9 @@ void seq_ctrl_adjust_transpose(int change) {
         sstate.first_track) + change,
         SEQ_TRANSPOSE_MIN, SEQ_TRANSPOSE_MAX);
     for(track = 0; track < SEQ_NUM_TRACKS; track ++) {
-        if(sstate.track_select[track]) {
+        // DRUM tracks keep their stored transpose (inactive, see outproc).
+        if(sstate.track_select[track] &&
+                song_get_track_type(track) != SONG_TRACK_TYPE_DRUM) {
             song_set_transpose(seq_engine_get_current_scene(), track, transpose);
         }
     }

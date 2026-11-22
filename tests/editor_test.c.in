@@ -60,7 +60,8 @@ int song_add_step_event(int scene, int track, int step, struct track_event *e) {
 }
 void song_clear_step(int scene,int track,int step) {memset(events,0,sizeof(events));}
 void song_clear_step_event(int scene, int track, int step, int slot) {events[slot].type=0;}
-int song_get_track_type(int track) {return SONG_TRACK_TYPE_VOICE;}
+static int test_track_type = SONG_TRACK_TYPE_VOICE;
+int song_get_track_type(int track) {return test_track_type;}
 void gui_clear_status_text_all(void) { memset(rows, ' ', sizeof(rows)); }
 void gui_set_status_text(int row, char *s) {
     assert(strlen(s) <= 28); snprintf(rows[row], sizeof(rows[row]), "%s", s);
@@ -76,7 +77,7 @@ void outproc_deliver_msg(int scene, int track, struct midi_msg *msg, int deliver
 void log_error(char *fmt, ...) { assert(!"unexpected error"); }
 void log_warn(char *fmt, ...) { assert(!"unexpected warning"); }
 static void setup(void) {
-    int i; memset(&sedits, 0, sizeof(sedits));
+    int i; memset(&sedits, 0, sizeof(sedits)); sedits.region_filter=-1;
     step_details_preference=details_visible=0;ratchet=1;
     memset(events, 0, sizeof(events)); count = running = undo_captures = undo_busy = 0;
     for(i = 0; i < SEQ_TRACK_POLY; i ++) sedits.playing_notes[i] = -1;
@@ -259,6 +260,40 @@ static void test_silent_ratchet_edit(void) {
 static struct track_event N(int pitch,int vel,int len) {
     return (struct track_event){.type=SONG_EVENT_NOTE,.data0=pitch,.data1=vel,.delay=SEQ_START_DELAY_INHERIT,.length=len};
 }
+// DRUM tracks show GM short names; VOICE and non-GM pitches keep note names.
+static void test_drum_names(void) {
+    char s[16];
+    panel_utils_drum_name(s,36);assert(!strcmp(s,"BD "));
+    panel_utils_drum_name(s,42);assert(!strcmp(s,"CHH"));
+    panel_utils_drum_name(s,46);assert(!strcmp(s,"OHH"));
+    panel_utils_drum_name(s,81);assert(!strcmp(s,"OTr"));
+    panel_utils_drum_name(s,34);assert(!strcmp(s,"A#1"));
+    assert(!panel_utils_drum_short(82) && !panel_utils_drum_short(34));
+    for(int d=0;d<2;d++) {
+        setup(); sedits.enable=1; sedits.event_pos=-1; step_details_preference=d;
+        events[0]=(struct track_event){.type=SONG_EVENT_NOTE,.data0=36,.data1=100,.length=24,.delay=SEQ_START_DELAY_INHERIT};
+        events[1]=(struct track_event){.type=SONG_EVENT_NOTE,.data0=42,.data1=90,.length=24,.delay=SEQ_START_DELAY_INHERIT};
+        int first=d?5:3;
+        test_track_type=SONG_TRACK_TYPE_DRUM; step_edit_update_display();
+        assert(!strncmp(rows[2]+first,"BD ",3) && !strncmp(rows[2]+first+4,"CHH",3));
+        if(d) assert(!strncmp(rows[1]+first,"36",2) && !strncmp(rows[1]+first+4,"42",2));
+        else assert(rows[1][first]=='N');
+        test_track_type=SONG_TRACK_TYPE_VOICE; step_edit_update_display();
+        assert(!strncmp(rows[2]+first,"C2",2) && !strncmp(rows[2]+first+4,"F#2",3));
+        assert(rows[1][first]=='N');
+    }
+    step_details_preference=0;
+    /* Region summary: names plus numbers. */
+    setup(); region_mode=1; memset(store,0,sizeof(store)); memset(store_delay,0,sizeof(store_delay));
+    region_start=0; region_len=16; store[0][0]=N(36,100,24); store[2][0]=N(46,80,24);
+    sedits.enable=1; sedits.event_pos=STEP_EDIT_EVENT_POS_REGION;
+    test_track_type=SONG_TRACK_TYPE_DRUM; step_edit_update_display();
+    assert(!strcmp(rows[2],"Note BD-OHH 36-46 Vel 80-100"));
+    test_track_type=SONG_TRACK_TYPE_VOICE; step_edit_update_display();
+    assert(strstr(rows[2],"Note C2-A#2"));
+    region_mode=0;
+}
+
 static void test_region_edit(void) {
     setup(); region_mode=1; memset(store,0,sizeof(store)); memset(store_delay,0,sizeof(store_delay));
     memset(overlay,0,sizeof(overlay)); notices=0;
@@ -317,7 +352,68 @@ static void test_region_edit(void) {
     assert(sedits.event_pos==STEP_EDIT_EVENT_POS_ALL && sedits.step_pos==11);
     region_mode=0; region_start=0; region_len=64;
 }
+// Region pitch filter: Shift+Note picks a pitch; edits touch only that pitch.
+static void test_region_filter(void) {
+    setup(); region_mode=1; memset(store,0,sizeof(store)); memset(store_delay,0,sizeof(store_delay));
+    memset(overlay,0,sizeof(overlay));
+    region_start=0; region_len=16; test_track_type=SONG_TRACK_TYPE_DRUM;
+    store[0][0]=N(36,100,24); store[0][1]=N(42,80,24);
+    store[2][0]=N(42,70,24);
+    store[4][0]=N(38,100,24); store[4][1]=N(42,80,24); store[4][2]=N(44,60,24);
+    store[20][0]=N(42,90,24);                              /* outside region */
+    sedits.enable=1; sedits.event_pos=STEP_EDIT_EVENT_POS_ALL; sedits.region_filter=-1;
+    step_edit_adjust_cursor(-1,1); assert(sedits.region_filter==-1);
+    step_edit_adjust_note(-1,1); assert(sedits.region_filter==-1);   /* stops at All */
+    step_edit_adjust_note(1,1); assert(sedits.region_filter==36);
+    step_edit_adjust_note(1,1); step_edit_adjust_note(1,1); assert(sedits.region_filter==42);
+    assert(!strcmp(rows[0],"Region T1 01-16 [CHH]"));
+    assert(strstr(rows[1],"3 CHH on 3 of 16 steps"));
+    step_edit_adjust_note(1,1); step_edit_adjust_note(1,1); assert(sedits.region_filter==44); /* stops */
+    step_edit_adjust_note(-1,1); assert(sedits.region_filter==42);
+    int before=undo_captures;
+    step_edit_adjust_velocity(5,0);
+    assert(store[0][1].data1==90 && store[2][0].data1==80 && store[4][1].data1==90);
+    assert(store[0][0].data1==100 && store[4][2].data1==60 && store[20][0].data1==90);
+    step_edit_adjust_gate_time(1,0);
+    assert(store[0][1].length==27 && store[0][0].length==24);
+    /* Dly: per-note delay of filtered notes; shared step delay untouched. */
+    step_edit_adjust_start_delay(1,0);
+    assert(store[0][1].delay==seq_utils_delay_adjust(SEQ_START_DELAY_INHERIT,1,1));
+    assert(store[0][0].delay==SEQ_START_DELAY_INHERIT && store_delay[0]==0);
+    assert(strstr(rows[3],"NDly"));
+    for(int r=4;r<7;r++) for(int c=0;c<28;c++) assert(rows[r][c]==' ' || !rows[r][c]); /* lines 0-3 only */
+    /* Note: lane jumps over used pitches (44 is PHH): 42 -> 43 -> 45, never merges. */
+    step_edit_adjust_note(1,0);
+    assert(store[0][1].data0==43 && store[2][0].data0==43 && store[4][1].data0==43);
+    step_edit_adjust_note(1,0);
+    assert(store[0][1].data0==45 && store[2][0].data0==45 && store[4][1].data0==45);
+    assert(store[4][2].data0==44 && sedits.region_filter==45);
+    step_edit_adjust_note(-2,0);                    /* 45 -> 43 -> 42 (skips 44) */
+    assert(store[0][1].data0==42 && store[4][1].data0==42 && store[4][2].data0==44);
+    assert(store[20][0].data0==42 && store[0][0].data0==36);
+    assert(undo_captures==before+1);
+    /* Filter is gone: next turn resumes from the neighbour. */
+    sedits.region_filter=43; step_edit_adjust_note(1,1); assert(sedits.region_filter==44);
+    sedits.region_filter=43; step_edit_adjust_note(-1,1); assert(sedits.region_filter==42);
+    /* Undo resume keeps Region: blue overlay, filter kept. */
+    memset(overlay,0,sizeof(overlay));
+    step_edit_suspend_for_undo(); step_edit_resume_after_undo();
+    assert(sedits.event_pos==STEP_EDIT_EVENT_POS_REGION && sedits.region_filter==42);
+    assert(overlay[0]==GUI_OVERLAY_MED && overlay[15]==GUI_OVERLAY_MED);
+    /* Leaving Region resets the filter. */
+    step_edit_adjust_cursor(1,1); assert(sedits.region_filter==-1);
+    step_edit_adjust_cursor(-1,1); step_edit_adjust_note(1,1); assert(sedits.region_filter==36);
+    step_edit_adjust_cursor(1,0); assert(sedits.region_filter==-1);
+    /* VOICE: note names. */
+    test_track_type=SONG_TRACK_TYPE_VOICE;
+    step_edit_adjust_cursor(-1,1); step_edit_adjust_note(1,1);
+    assert(!strcmp(rows[0],"Region T1 01-16 [C2]"));
+    step_edit_adjust_cursor(1,1);
+    region_mode=0; region_start=0; region_len=64;
+}
 int main(void) {
+    test_drum_names();
+    test_region_filter();
     test_region_edit();
     test_silent_ratchet_edit();
     test_expanded_details();

@@ -39,6 +39,10 @@ void panel_utils_channel_str(char *tempstr, int port, int channel);
 void panel_utils_clock_source_str(char *tempstr, int source);
 
 // convert a MIDI note number to a name
+// General MIDI drum short name (3 chars) for 35-81, else NULL.
+const char *panel_utils_drum_short(int note);
+// DRUM display name: GM short name, otherwise padded note name.
+void panel_utils_drum_name(char *tempstr, int note);
 void panel_utils_note_to_name(char *tempstr, int note, 
     int octdisp, int padding);
 

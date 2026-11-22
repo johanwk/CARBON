@@ -62,6 +62,9 @@ void gui_set_lcd_power(int state);
 int gui_clock_help_active(void);
 #define GUI_OVERVIEW_TRACK 255
 #define GUI_OVERVIEW_SCENE 254
+#define GUI_OVERVIEW_LANES 253  // read-only DRUM lanes (long-press a DRUM track)
+// Track overviews: DRUM lane pages 1-4, then Settings. No effect elsewhere.
+void gui_overview_page(int change);
 int gui_overview_mode(void);
 void gui_track_overview_open(int track);
 void gui_scene_overview_open(int scene);

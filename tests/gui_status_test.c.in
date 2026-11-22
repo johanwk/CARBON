@@ -99,6 +99,10 @@ static void test_details_layout(void) {
         assert(!gui_step_details_layout(0));
         assert(gui_step_details_layout(1));
         assert(gstate.grid_overlay[12]==0xffcccc00);
+        /* A forced full redraw (Undo, Snapshot) keeps the editor overlay. */
+        gstate.grid_overlay[3]=0xff0000c0; gui_force_refresh(); gui_full_redraw_reset();
+        assert(gstate.grid_overlay[3]==0xff0000c0 && gstate.grid_overlay[12]==0xffcccc00);
+        assert(!gstate.grid_state[3]);
     }
 }
 void log_info(char *fmt, ...) {}

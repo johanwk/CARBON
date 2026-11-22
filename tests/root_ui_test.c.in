@@ -104,8 +104,22 @@ CV_EDIT(seq_ctrl_adjust_cvgate_pair_mode,20)
 CV_EDIT(seq_ctrl_adjust_cv_output_scaling,21)
 CV_EDIT(seq_ctrl_adjust_cvcal,22)
 CV_EDIT(seq_ctrl_adjust_cvoffset,23)
-static int help_draws;
-void gfx_fill_rect(int x,int y,int w,int h,uint32_t color) {assert(x>=0 && y>=0 && w>0 && h>0);}
+static int help_draws, lane_fills;
+static int ui_running;
+int seq_ctrl_get_run_state(void) {return ui_running;}
+// DRUM lane fixture: [step][slot]
+static struct track_event lane_ev[64][SEQ_TRACK_POLY];
+int song_get_step_event(int scene,int track,int step,int slot,struct track_event *e) {
+    *e=lane_ev[step][slot];return e->type ? 0 : -1;
+}
+void gfx_fill_rect(int x,int y,int w,int h,uint32_t color) {
+    assert(x>=0 && y>=0 && w>0 && h>0);
+    if(gstate.clock_help==GUI_OVERVIEW_LANES) {
+        assert(x>=gstate.GUI_GRID_X && x+w<=gstate.GUI_GRID_X+gstate.GUI_GRID_W);
+        assert(y>=gstate.GUI_GRID_Y && y+h<=gstate.GUI_GRID_Y+gstate.GUI_GRID_H);
+        lane_fills++;
+    }
+}
 void gfx_draw_string(struct gfx_label *label) {
     assert(label->x>=gstate.GUI_GRID_X && label->y>=gstate.GUI_GRID_Y);
     assert(label->x+label->w<=gstate.GUI_GRID_X+gstate.GUI_GRID_W);
@@ -113,6 +127,7 @@ void gfx_draw_string(struct gfx_label *label) {
     assert(strlen(label->text)<=29);
     assert(label->text[0]!='=');
     assert(!strstr(label->text,"Start:row Length:value"));
+    if(gstate.clock_help==GUI_OVERVIEW_LANES) {help_draws++;return;}
     assert(label->fg_color==(gui_overview_read_only()?GUI_FONT_COLOR_GREY:GUI_FONT_COLOR_NORMAL));
     if(!gui_overview_read_only()) {
         assert(label->h==10 && (label->y-gstate.GUI_GRID_Y)%13==0);
@@ -230,6 +245,8 @@ static void test_track_overview(void) {
             scene_values_ui=1;
             track_type_ui=track&1;bias_ui=track;ui_scene=track;
             gui_track_overview_open(track);
+            /* DRUM opens on lanes; Motion Start past page 4 reaches Settings. */
+            if(track&1) {assert(gui_overview_mode()==GUI_OVERVIEW_LANES);gui_overview_page(9);}
             assert(gui_clock_help_active() && gui_overview_mode()==GUI_OVERVIEW_TRACK);
             assert(gstate.overview_track==track);
             int edits=edit_calls;unsigned cursor=gstate.clock_help_selected;
@@ -353,7 +370,77 @@ static void test_sys_edit_dispatch(void) {
         }
     }
 }
+static struct track_event LN(int p,int v) {
+    return (struct track_event){.type=SONG_EVENT_NOTE,.data0=p,.data1=v,.length=12,.delay=SEQ_START_DELAY_INHERIT};
+}
+// DRUM lane overview: kick bottom row and kept, +N other, paging, follow.
+static void test_drum_lanes(void) {
+    memset(lane_ev,0,sizeof(lane_ev));
+    for(int s=0;s<64;s++) {
+        int n=0;
+        if(s%16==0) lane_ev[s][n++]=LN(36,110);  /* kick: 4 hits, fewer than all others */
+        lane_ev[s][n++]=LN(42,s&1?30:90);        /* hats; odd steps ghost */
+        if(s%8==4) lane_ev[s][n++]=LN(38,100);
+    }
+    /* 11 more pitches, each hit more than the kick, so the kick is the one at risk. */
+    for(int p=0;p<11;p++) {
+        int placed=0;
+        for(int s=0;s<64 && placed<8;s++) {
+            int slot=0; while(slot<SEQ_TRACK_POLY-1 && lane_ev[s][slot].type) slot++;
+            if(slot<SEQ_TRACK_POLY-1 && s!=5) {lane_ev[s][slot]=LN(60+p,80);placed++;}
+        }
+        assert(placed==8);
+    }
+    lane_ev[5][5]=(struct track_event){.type=SONG_EVENT_PROBABILITY,.data0=50};
+    lane_ev[2][0].delay=10;                                     /* step 3 slot 0 is 42 */
+    for(int lcd=0;lcd<2;lcd++) {
+        gstate.screen_type=lcd;
+        gstate.GUI_GRID_X=lcd?25:40;gstate.GUI_GRID_Y=lcd?80:90;
+        gstate.GUI_GRID_W=240;gstate.GUI_GRID_H=238;
+        scene_values_ui=0;motion_start_ui=16;motion_length_ui=16;ui_running=0;
+        track_type_ui=SONG_TRACK_TYPE_DRUM;gstate.clock_help_drawn=0;
+        gui_track_overview_open(0);
+        assert(gui_overview_mode()==GUI_OVERVIEW_LANES && gstate.lane_page==1);
+        lane_fills=0;assert(gui_draw_clock_help() && lane_fills>0);
+        int lanes[10],count;int hidden=gui_lanes_pick(0,lanes,&count);
+        assert(count==10 && lanes[0]==36 && hidden>0);              /* kick kept, bottom */
+        assert(!strcmp(gstate.clock_help_rows[2+9],"BD"));           /* bottom row label */
+        assert(strstr(gstate.clock_help_rows[0],"17-32") && strstr(gstate.clock_help_rows[0],"other"));
+        /* cell codes */
+        assert((gui_lane_cell(0,0,36,1)&7)==4 && !(gui_lane_cell(0,0,36,1)&0x08));
+        assert(gui_lane_cell(0,2,42,1)&0x20);                        /* own delay */
+        assert(gui_lane_cell(0,1,42,1)&0x08);                        /* ghost */
+        assert(gui_lane_cell(0,5,42,1)&0x10);                        /* condition */
+        assert(!(gui_lane_cell(0,1,36,1)&7));                        /* no hit */
+        /* unchanged: no redraw */
+        assert(!gui_draw_clock_help());
+        /* paging: lanes 1-4, then Settings; stops at ends */
+        gui_overview_page(-5);assert(gstate.lane_page==0 && !gstate.lane_follow);
+        gui_overview_page(3);assert(gstate.lane_page==3 && gui_overview_mode()==GUI_OVERVIEW_LANES);
+        gui_overview_page(1);assert(gui_overview_mode()==GUI_OVERVIEW_TRACK);
+        assert(gui_draw_clock_help());
+        gui_overview_page(5);assert(gui_overview_mode()==GUI_OVERVIEW_TRACK);
+        gui_overview_page(-1);assert(gui_overview_mode()==GUI_OVERVIEW_LANES && gstate.lane_page==3);
+        assert(gui_draw_clock_help());
+        /* follow: running opens on playhead page and follows */
+        ui_running=1;gstate.active_step[0]=40;gui_track_overview_open(0);
+        assert(gstate.lane_page==2 && gstate.lane_follow);
+        gui_draw_clock_help();gstate.active_step[0]=50;gui_draw_clock_help();
+        assert(gstate.lane_page==3);
+        gui_overview_page(-1);gstate.active_step[0]=5;gui_draw_clock_help();
+        assert(gstate.lane_page==2);                                 /* turn stops following */
+        ui_running=0;
+        /* VOICE keeps the settings overview; paging has no effect */
+        track_type_ui=SONG_TRACK_TYPE_VOICE;gui_track_overview_open(0);
+        assert(gui_overview_mode()==GUI_OVERVIEW_TRACK);
+        gui_overview_page(-1);assert(gui_overview_mode()==GUI_OVERVIEW_TRACK);
+        gui_draw_clock_help();
+        gui_clock_help_set(0);
+    }
+    track_type_ui=0;motion_start_ui=0;motion_length_ui=0;
+}
 int main(void) {
+    test_drum_lanes();
     test_sys_edit_dispatch();
     test_scene_overview();
     test_track_overview();

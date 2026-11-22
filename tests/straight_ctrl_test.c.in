@@ -7,6 +7,7 @@ static int straight, values[6][2], calls, pitch_mode, pitch_calls;
 int seq_engine_pitch_mode(void) {return pitch_mode;}
 void seq_engine_adjust_pitch(int track,int change) {assert(track==0 || track==2);pitch_calls+=change;}
 int song_get_transpose(int scene,int track) {return 0;}
+int song_get_track_type(int track) {return SONG_TRACK_TYPE_VOICE;}
 void song_set_transpose(int scene,int track,int value) {}
 int seq_engine_get_current_scene(void) {return 0;}
 int seq_engine_straight_enabled(void) {return straight;}

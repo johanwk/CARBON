@@ -713,7 +713,11 @@ static void panel_menu_tonality_row(int item, struct clock_menu_row *row) {
                 snprintf(row->value, sizeof(row->value), "%s", "DISABLED");
             }
             else {
-                sprintf(tempstr, "%d", (temp + 1));
+                // DRUM: keep the number visible so VOICE restores predictably.
+                if(song_get_track_type(seq_ctrl_get_first_track()) ==
+                        SONG_TRACK_TYPE_DRUM)
+                    sprintf(tempstr, "%d inactive", (temp + 1));
+                else sprintf(tempstr, "%d", (temp + 1));
                 snprintf(row->value, sizeof(row->value), "%s", tempstr);
             }
             break;

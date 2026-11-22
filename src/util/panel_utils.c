@@ -132,6 +132,26 @@ void panel_utils_clock_source_str(char *tempstr, int source) {
     }
 }
 
+// General MIDI percussion key map, notes 35-81 (3 chars, ASCII).
+static const char panel_utils_gm_drums[47][4] = {
+    "BD2","BD ","Rim","SD ","Clp","SD2","FT2","CHH",
+    "FT ","PHH","LT ","OHH","LMT","HMT","Cr1","HT ",
+    "Rd1","Chn","Bel","Tmb","Spl","Cow","Cr2","Vib",
+    "Rd2","HBo","LBo","MCo","HCo","LCo","HTi","LTi",
+    "HAg","LAg","Cab","Mar","SWh","LWh","SGu","LGu",
+    "Clv","HWb","LWb","MCu","OCu","MTr","OTr"};
+
+const char *panel_utils_drum_short(int note) {
+    if(note < 35 || note > 81) return 0;
+    return panel_utils_gm_drums[note - 35];
+}
+
+void panel_utils_drum_name(char *tempstr, int note) {
+    const char *name = panel_utils_drum_short(note);
+    if(name) strcpy(tempstr, name);
+    else panel_utils_note_to_name(tempstr, note, 1, 1);
+}
+
 // convert a MIDI note number to a name
 void panel_utils_note_to_name(char *tempstr, int note, 
         int octdisp, int padding) {

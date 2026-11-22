@@ -298,6 +298,9 @@ struct gui_state {
     volatile uint8_t clock_help, clock_help_selected;
     uint8_t clock_help_drawn, overview_track, overview_read_only_drawn;
     char clock_help_rows[18][30];
+    // DRUM lane overview: page 0-3 (16 steps), follow playhead until a turn.
+    uint8_t lane_page, lane_follow, lane_cells[10][16];
+    int8_t lane_playhead;
     struct gfx_label clock_help_label;
     // refresh stuff
     uint8_t force_refresh;  // 0 = no refresh, 1 = force refresh
@@ -640,7 +643,29 @@ int gui_overview_mode(void) {return gstate.clock_help;}
 void gui_track_overview_open(int track) {
     if(track<0 || track>=SEQ_NUM_TRACKS) return;
     gstate.overview_track=track;
+    if(song_get_track_type(track)==SONG_TRACK_TYPE_DRUM) {
+        // Open on the playhead page while running, else the motion start page.
+        int step=seq_ctrl_get_run_state() ? gstate.active_step[track] :
+            song_get_motion_start(seq_ctrl_get_scene(),track);
+        gstate.lane_page=seq_utils_clamp(step,0,SEQ_NUM_STEPS-1)/16;
+        gstate.lane_follow=1;
+        gstate.clock_help=GUI_OVERVIEW_LANES;
+        return;
+    }
     gstate.clock_help=GUI_OVERVIEW_TRACK;
+}
+void gui_overview_page(int change) {
+    int track=gstate.overview_track;
+    if(!change || track>=SEQ_NUM_TRACKS ||
+            song_get_track_type(track)!=SONG_TRACK_TYPE_DRUM) return;
+    // pages 0-3 = lanes, 4 = Settings (the stored track overview)
+    int page=gstate.clock_help==GUI_OVERVIEW_TRACK ? 4 :
+        gstate.clock_help==GUI_OVERVIEW_LANES ? gstate.lane_page : -1;
+    if(page<0) return;
+    page=seq_utils_clamp(page+change,0,4);
+    gstate.lane_follow=0;
+    if(page==4) gstate.clock_help=GUI_OVERVIEW_TRACK;
+    else {gstate.lane_page=page;gstate.clock_help=GUI_OVERVIEW_LANES;}
 }
 void gui_scene_overview_open(int scene) {
     if(scene<0 || scene>=SEQ_NUM_SCENES) return;
@@ -648,7 +673,8 @@ void gui_scene_overview_open(int scene) {
     gstate.clock_help=GUI_OVERVIEW_SCENE;
 }
 static int gui_overview_read_only(void) {
-    return gstate.clock_help==GUI_OVERVIEW_TRACK || gstate.clock_help==GUI_OVERVIEW_SCENE;
+    return gstate.clock_help==GUI_OVERVIEW_TRACK || gstate.clock_help==GUI_OVERVIEW_SCENE ||
+        gstate.clock_help==GUI_OVERVIEW_LANES;
 }
 void gui_overview_open(int mode) {
     if(!panel_menu_overview_count(mode)) return;
@@ -726,8 +752,160 @@ static void gui_scene_overview_row(int scene,int row,char text[30]) {
     }
 }
 
+// ---- DRUM lane overview (read-only) ----
+#define GUI_LANES_MAX 10
+#define GUI_LANE_NAME_W 34
+#define GUI_LANE_PITCH 12   // step column pitch (11 px cell + 1 px gap)
+#define GUI_LANE_H 18
+#define GUI_LANE_TOP 28
+#define GUI_LANE_GHOST 40   // velocity below this: small square
+// Pitches shown as lanes, ascending (index 0 = bottom row). At most 10, by
+// hit count; the GM kick (36, else 35) is always kept. Returns hidden count.
+static int gui_lanes_pick(int track,int *lanes,int *count) {
+    uint16_t hits[128]={0};
+    struct track_event event;
+    int used=0;
+    for(int step=0;step<SEQ_NUM_STEPS;step++)
+        for(int slot=0;slot<SEQ_TRACK_POLY;slot++)
+            if(song_get_step_event(seq_ctrl_get_scene(),track,step,slot,&event)==0 &&
+                    event.type==SONG_EVENT_NOTE && event.data0<128) {
+                if(!hits[event.data0]) used++;
+                hits[event.data0]++;
+            }
+    int n=0;
+    unsigned char take[128]={0};
+    int kick=hits[36] ? 36 : hits[35] ? 35 : -1;
+    if(kick>=0) {take[kick]=1;n++;}
+    while(n<GUI_LANES_MAX && n<used) {
+        int best=-1;
+        for(int p=0;p<128;p++) if(hits[p] && !take[p] && (best<0 || hits[p]>hits[best])) best=p;
+        take[best]=1;n++;
+    }
+    *count=0;
+    for(int p=0;p<128;p++) if(take[p]) lanes[(*count)++]=p;
+    return used-*count;
+}
+// Cell code: bits 0-2 level 1-4 (0 = no hit), 3 ghost, 4 condition on the
+// step, 5 note has its own delay, 6 step inside the playing region.
+static uint8_t gui_lane_cell(int track,int step,int pitch,int in_region) {
+    struct track_event event;
+    int vel=-1,delay=0,cond=0;
+    for(int slot=0;slot<SEQ_TRACK_POLY;slot++) {
+        if(song_get_step_event(seq_ctrl_get_scene(),track,step,slot,&event)!=0) continue;
+        if(event.type==SONG_EVENT_PROBABILITY || event.type==SONG_EVENT_EUCLIDEAN ||
+                event.type==SONG_EVENT_PRE || event.type==SONG_EVENT_NON_PRE ||
+                event.type==SONG_EVENT_SCENE) cond=1;
+        if(event.type==SONG_EVENT_NOTE && event.data0==pitch && event.data1>vel) {
+            vel=event.data1;
+            delay=event.delay!=SEQ_START_DELAY_INHERIT;
+        }
+    }
+    uint8_t code=in_region ? 0x40 : 0;
+    if(vel<0) return code;
+    int level=vel<70 ? 2 : vel<100 ? 3 : 4;
+    return code|level|(vel<GUI_LANE_GHOST ? 0x08 : 0)|(cond ? 0x10 : 0)|(delay ? 0x20 : 0);
+}
+static uint32_t gui_lane_color(int track,int level,int in_region) {
+    uint32_t c=GUI_GRID_TRACK_COLOR_ACTIVE[seq_utils_clamp(track,0,5)];
+    int pct=level*25-(in_region ? 0 : 50);
+    if(pct<15) pct=15;
+    uint32_t r=((c>>16)&255)*pct/100,g=((c>>8)&255)*pct/100,b=(c&255)*pct/100;
+    return 0xff000000|(r<<16)|(g<<8)|b;
+}
+static void gui_lane_text(int row,int x,int y,const char *text,uint32_t color) {
+    if(!strcmp(text,gstate.clock_help_rows[row])) return;
+    snprintf(gstate.clock_help_rows[row],sizeof(gstate.clock_help_rows[row]),"%s",text);
+    struct gfx_label *label=&gstate.clock_help_label;
+    memset(label,0,sizeof(*label));
+    label->x=x;label->y=y;label->w=(row==0 ? 232 : GUI_LANE_NAME_W-2);label->h=10;
+    label->font=GFX_FONT_SMALLTEXT_8X10;label->fg_color=color;label->bg_color=GUI_TEXT_BG_COLOR;
+    strcpy(label->text,text);
+    gfx_fill_rect(label->x,label->y,label->w,label->h,label->bg_color);
+    gfx_draw_string(label);
+}
+static int gui_draw_lanes(int full) {
+    int track=gstate.overview_track,lanes[GUI_LANES_MAX],count,dirty=0;
+    int x0=gstate.GUI_GRID_X,y0=gstate.GUI_GRID_Y;
+    int start=seq_utils_clamp(song_get_motion_start(seq_ctrl_get_scene(),track),0,63);
+    int length=seq_utils_clamp(song_get_motion_length(seq_ctrl_get_scene(),track),1,64);
+    int running=seq_ctrl_get_run_state();
+    int active=gstate.active_step[seq_utils_clamp(track,0,5)];
+    if(gstate.lane_follow && running) gstate.lane_page=(active&63)/16;
+    int page=gstate.lane_page&3,hidden=gui_lanes_pick(track,lanes,&count);
+    if(full) {
+        memset(gstate.lane_cells,0xff,sizeof(gstate.lane_cells));
+        gstate.lane_playhead=-2;
+        // step numbers 1, 5, 9, 13 of the page (static per page: in row 1 text)
+    }
+    char text[30],other[12]="";
+    if(hidden>0) snprintf(other,sizeof(other)," +%d other",hidden);
+    snprintf(text,sizeof(text),"T%d %02d-%02d p%d/4%s%s",track+1,page*16+1,page*16+16,
+        page+1,gstate.lane_follow && running ? " play" : "",other);
+    if(strcmp(text,gstate.clock_help_rows[0])) dirty=1;
+    gui_lane_text(0,x0+2,y0+2,text,GUI_FONT_COLOR_NORMAL);
+    // Step numbers: one label per beat, cached as a page number in row 1.
+    snprintf(text,sizeof(text),"%d",page);
+    if(strcmp(text,gstate.clock_help_rows[1])) {
+        strcpy(gstate.clock_help_rows[1],text);
+        gfx_fill_rect(x0,y0+14,gstate.GUI_GRID_W,12,GUI_TEXT_BG_COLOR);
+        for(int beat=0;beat<4;beat++) {
+            struct gfx_label *label=&gstate.clock_help_label;
+            memset(label,0,sizeof(*label));
+            label->x=x0+GUI_LANE_NAME_W+beat*4*GUI_LANE_PITCH;label->y=y0+15;
+            label->w=24;label->h=10;label->font=GFX_FONT_SMALLTEXT_8X10;
+            label->fg_color=GUI_FONT_COLOR_GREY;label->bg_color=GUI_TEXT_BG_COLOR;
+            snprintf(label->text,sizeof(label->text),"%d",page*16+beat*4+1);
+            gfx_draw_string(label);
+        }
+        dirty=1;
+    }
+    for(int row=0;row<GUI_LANES_MAX;row++) {
+        int lane=GUI_LANES_MAX-1-row; // bottom row = lowest pitch
+        int ly=y0+GUI_LANE_TOP+row*GUI_LANE_H;
+        int pitch=lane<count ? lanes[lane] : -1;
+        char name[8]="";
+        if(pitch>=0) {
+            panel_utils_drum_name(name,pitch);
+            int n=strlen(name);
+            while(n>0 && name[n-1]==' ') name[--n]=0;
+        }
+        if(strcmp(name,gstate.clock_help_rows[2+row])) dirty=1;
+        gui_lane_text(2+row,x0+2,ly+4,name,GUI_FONT_COLOR_NORMAL);
+        for(int col=0;col<16;col++) {
+            int step=page*16+col;
+            int in_region=((step-start+SEQ_NUM_STEPS)%SEQ_NUM_STEPS)<length;
+            uint8_t code=pitch>=0 ? gui_lane_cell(track,step,pitch,in_region) : (in_region ? 0x40 : 0);
+            if(code==gstate.lane_cells[row][col]) continue;
+            gstate.lane_cells[row][col]=code;dirty=1;
+            int cx=x0+GUI_LANE_NAME_W+col*GUI_LANE_PITCH;
+            gfx_fill_rect(cx,ly,GUI_LANE_PITCH-1,GUI_LANE_H-1,in_region ? 0xff1c1c1c : 0xff080808);
+            int level=code&7;
+            if(!level) continue;
+            uint32_t color=gui_lane_color(track,level,in_region);
+            if(code&0x08) gfx_fill_rect(cx+3,ly+6,5,5,color);           // ghost
+            else if(code&0x10) {                                           // conditional: outline
+                gfx_fill_rect(cx+1,ly+4,9,1,color);gfx_fill_rect(cx+1,ly+12,9,1,color);
+                gfx_fill_rect(cx+1,ly+4,1,9,color);gfx_fill_rect(cx+9,ly+4,1,9,color);
+            }
+            else gfx_fill_rect(cx+1,ly+4,9,9,color);
+            if(code&0x20) gfx_fill_rect(cx+9,ly+14,2,2,GUI_FONT_COLOR_NORMAL); // own delay
+        }
+    }
+    // Playhead bar under the grid (only when its step is on this page).
+    int head=(active&63)/16==page ? (active&15) : -1;
+    if(head!=gstate.lane_playhead) {
+        int by=y0+GUI_LANE_TOP+GUI_LANES_MAX*GUI_LANE_H+1;
+        gfx_fill_rect(x0+GUI_LANE_NAME_W,by,16*GUI_LANE_PITCH,3,GUI_TEXT_BG_COLOR);
+        if(head>=0) gfx_fill_rect(x0+GUI_LANE_NAME_W+head*GUI_LANE_PITCH,by,GUI_LANE_PITCH-1,3,
+            GUI_GRID_TRACK_COLOR_ACTIVE[seq_utils_clamp(track,0,5)]);
+        gstate.lane_playhead=head;dirty=1;
+    }
+    return dirty;
+}
+
 static int gui_draw_clock_help(void) {
     int mode=gstate.clock_help, track_view=gui_overview_read_only();
+    if(mode==GUI_OVERVIEW_LANES) track_view=2;
     int count=track_view ? 1 : panel_menu_overview_count(mode);
     int selected = seq_utils_clamp(gstate.clock_help_selected,0,count-1), dirty = 0;
     if(!gstate.clock_help_drawn || gstate.overview_read_only_drawn!=track_view) {
@@ -737,7 +915,9 @@ static int gui_draw_clock_help(void) {
         memset(gstate.clock_help_rows, 0, sizeof(gstate.clock_help_rows));
         gstate.clock_help_drawn = 1;
         dirty = 1;
+        if(track_view==2) return gui_draw_lanes(1)|dirty;
     }
+    if(track_view==2) return gui_draw_lanes(0);
     int top = selected < 12 ? 0 : selected - 11;
     for(int row = 0; row < (track_view ? 14 : 18); row++) {
         char text[30] = {0};
@@ -817,6 +997,12 @@ static int gui_clock_help_restore(void) {
 }
 
 // Change only the lower display rectangle; preserve the step grid overlay.
+// Full redraw: forget the drawn grid cache. grid_overlay holds the editors'
+// requested colours and must survive a redraw (e.g. Undo in Region).
+static void gui_full_redraw_reset(void) {
+    for(int step = 0; step < SEQ_NUM_STEPS; step ++) gstate.grid_state[step] = 0;
+}
+
 static int gui_step_details_layout(int force) {
     int expanded=gstate.step_details;
     if(!force && expanded==gstate.step_details_drawn) return 0;
@@ -873,10 +1059,7 @@ void gui_refresh_task(void) {
             gstate.glabels[i].dirty = 1;
         }
         // dirty all the grid state
-        for(step = 0; step < SEQ_NUM_STEPS; step ++) {
-            gstate.grid_state[step] = 0;
-            gstate.grid_overlay[step] = 0;
-        }
+        gui_full_redraw_reset();
         for(track = 0; track < SEQ_NUM_TRACKS; track ++) {
             gstate.track_select_state[track] = 0;
             gstate.arp_enable_state[track] = 0;

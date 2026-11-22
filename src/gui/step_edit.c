@@ -66,6 +66,7 @@ struct step_edit_state {
     int cci_hint_value;
     int cci_hint_show_value;
     int last_adjust_type;  // the last type of adjustment
+    int region_filter;  // Region pitch filter: -1 = All, else MIDI pitch (not stored)
     // preview events
     int8_t playing_notes[SEQ_TRACK_POLY];  // playing notes
     uint16_t playing_note_timeouts[SEQ_TRACK_POLY];  // timeouts for playing notes
@@ -73,6 +74,7 @@ struct step_edit_state {
     int8_t recording_notes[SEQ_TRACK_POLY];  // keep track of input notes
 };
 struct step_edit_state sedits;
+static void step_edit_region_filter_step(int change);
 static int step_details_preference;
 void step_edit_update_display(void);
 
@@ -124,6 +126,7 @@ void step_edit_init(void) {
     sedits.track = 0;
     sedits.step_pos = 0;
     sedits.event_pos = STEP_EDIT_EVENT_POS_ALL;
+    sedits.region_filter = -1;
     sedits.last_adjust_type = STEP_EDIT_ADJUST_NOTE;
     // register events
     state_change_register(step_edit_handle_state_change, SCEC_CTRL);
@@ -266,6 +269,7 @@ void step_edit_set_enable(int enable) {
             sedits.track = seq_ctrl_get_first_track();
             if(sedits.event_pos == STEP_EDIT_EVENT_POS_REGION)
                 sedits.event_pos = STEP_EDIT_EVENT_POS_ALL;  // a new visit starts on a step
+            sedits.region_filter = -1;
             panel_menu_set_mode(PANEL_MENU_NONE);  // disable any menu mode
             gui_grid_clear_overlay();
             gui_grid_set_overlay_enable(1);
@@ -305,7 +309,9 @@ void step_edit_resume_after_undo(void) {
     step_edit_clear_recording_notes();
     gui_grid_clear_overlay();
     gui_grid_set_overlay_enable(1);
-    gui_grid_set_overlay_color(sedits.step_pos, GUI_OVERLAY_HIGH);
+    // Region visits stay in Region: restore the blue region overlay.
+    if(sedits.event_pos == STEP_EDIT_EVENT_POS_REGION) step_edit_region_overlay(1);
+    else gui_grid_set_overlay_color(sedits.step_pos, GUI_OVERLAY_HIGH);
     gui_set_status_override(1);
     step_edit_update_display();
 }
@@ -341,6 +347,7 @@ void step_edit_adjust_cursor(int change, int shift) {
             STEP_EDIT_EVENT_POS_REGION, SEQ_TRACK_POLY - 1);
         int is_region = sedits.event_pos == STEP_EDIT_EVENT_POS_REGION;
         if(was_region != is_region) {
+            sedits.region_filter = -1;  // a filter never outlives its Region visit
             step_edit_stop_notes();
             sedits.undo_captured = 0;  // region edits get their own undo point
             step_edit_region_overlay(is_region);
@@ -353,6 +360,7 @@ void step_edit_adjust_cursor(int change, int shift) {
         // Moving to a step leaves region editing.
         if(sedits.event_pos == STEP_EDIT_EVENT_POS_REGION) {
             step_edit_region_overlay(0);
+            sedits.region_filter = -1;
             sedits.event_pos = STEP_EDIT_EVENT_POS_ALL;
             sedits.undo_captured = 0;
         }
@@ -386,8 +394,13 @@ void step_edit_adjust_note(int change, int shift) {
     struct track_event event = {.delay = SEQ_START_DELAY_INHERIT};
     sedits.edit_timeout = panel_menu_get_timeout();
 
+    // Region: Shift + Transpose steps the pitch filter (All, then pitches).
+    if(shift && sedits.event_pos == STEP_EDIT_EVENT_POS_REGION) {
+        step_edit_region_filter_step(change);
+        return;
+    }
     // shift + transpose cycles the selected event type
-    if(shift && sedits.event_pos != STEP_EDIT_EVENT_POS_ALL &&
+    if(shift && sedits.event_pos >= 0 &&
             song_get_step_event(sedits.scene, sedits.track, sedits.step_pos,
             sedits.event_pos, &event) != -1) {
         if(step_edit_prepare_undo() < 0) return;
@@ -446,7 +459,8 @@ void step_edit_adjust_note(int change, int shift) {
     }
 
     if(sedits.event_pos == STEP_EDIT_EVENT_POS_REGION) {
-        if(!shift) step_edit_region_adjust(change, STEP_EDIT_ADJUST_NOTE);
+        if(shift) step_edit_region_filter_step(change);
+        else step_edit_region_adjust(change, STEP_EDIT_ADJUST_NOTE);
     }
     else if(sedits.event_pos == STEP_EDIT_EVENT_POS_ALL) {
         step_edit_adjust_step(change, STEP_EDIT_ADJUST_NOTE, 0, shift);
@@ -977,12 +991,36 @@ static void step_edit_region_overlay(int on) {
 // against a limit levels it to one value, which can then be moved as a set.
 // Vel/Gate use the single-step rules per note. Dly changes the shared step
 // delay on steps that contain at least one Note.
+// With a pitch filter only notes at that pitch change: Dly then edits their
+// per-note delay, and a Note move jumps over pitches used in the region;
+// the filter follows the moved notes.
+static int step_edit_region_pitches(int *list);
+// Filtered lane move: one free pitch per detent, jumping over pitches used
+// in the region, so a lane moves as one piece and never merges with another.
+static int step_edit_region_free_pitch(int from, int change) {
+    int list[128], count = step_edit_region_pitches(list), dir = change > 0 ? 1 : -1;
+    unsigned char used[128] = {0};
+    for(int i = 0; i < count; i++) used[list[i]] = 1;
+    int n = change > 0 ? change : -change, at = from;
+    while(n-- > 0) {
+        int p = at + dir;
+        while(p >= STEP_EDIT_LOWEST_NOTE && p <= STEP_EDIT_HIGHEST_NOTE && used[p]) p += dir;
+        if(p < STEP_EDIT_LOWEST_NOTE || p > STEP_EDIT_HIGHEST_NOTE) break;
+        at = p;
+    }
+    return at;
+}
 static int step_edit_region_adjust(int change, int mode) {
-    int start, length, i, slot, changed = 0;
+    int start, length, i, slot, changed = 0, filter = sedits.region_filter;
+    int target = -1, moved = 0;
     struct track_event event;
     sedits.edit_timeout = panel_menu_get_timeout();
     if(!change) {step_edit_update_display(); return 0;}
     step_edit_region(&start, &length);
+    if(filter >= 0 && mode == STEP_EDIT_ADJUST_NOTE) {
+        target = step_edit_region_free_pitch(filter, change);
+        if(target == filter) {step_edit_update_display(); return 0;}
+    }
     if(step_edit_prepare_undo() < 0) return 0;
     step_edit_stop_notes();
     for(i = 0; i < length; i++) {
@@ -990,48 +1028,105 @@ static int step_edit_region_adjust(int change, int mode) {
         for(slot = 0; slot < SEQ_TRACK_POLY; slot++) {
             if(song_get_step_event(sedits.scene, sedits.track, step, slot, &event) != 0 ||
                     event.type != SONG_EVENT_NOTE) continue;
+            if(filter >= 0 && event.data0 != filter) continue;
             notes++;
-            if(mode == STEP_EDIT_ADJUST_NOTE)
-                event.data0 = seq_utils_clamp(event.data0 + change,
+            if(mode == STEP_EDIT_ADJUST_NOTE) {
+                if(target >= 0) {event.data0 = target; moved = 1;}
+                else event.data0 = seq_utils_clamp(event.data0 + change,
                     STEP_EDIT_LOWEST_NOTE, STEP_EDIT_HIGHEST_NOTE);
+            }
             else if(mode == STEP_EDIT_ADJUST_VELO)
                 event.data1 = seq_utils_clamp(event.data1 + change * 2, 0, 127);
             else if(mode == STEP_EDIT_ADJUST_GATE_TIME)
                 event.length = seq_utils_clamp(event.length +
                     seq_utils_warp_change(event.length, change, 10),
                     STEP_EDIT_SHORTEST_NOTE, STEP_EDIT_LONGEST_NOTE);
+            else if(mode == STEP_EDIT_ADJUST_START_DELAY && filter >= 0)
+                event.delay = seq_utils_delay_adjust(event.delay, change, 1);
             else continue;
             song_set_step_event(sedits.scene, sedits.track, step, slot, &event);
             changed = 1;
         }
-        if(mode == STEP_EDIT_ADJUST_START_DELAY && notes) {
+        if(mode == STEP_EDIT_ADJUST_START_DELAY && filter < 0 && notes) {
             int old = song_get_start_delay(sedits.scene, sedits.track, step);
             song_set_start_delay(sedits.scene, sedits.track, step, seq_utils_delay_adjust(old, change, 0));
             changed = 1;
         }
     }
+    if(moved) sedits.region_filter = target;
     sedits.last_adjust_type = mode;
     step_edit_update_display();
     return changed;
+}
+// Pitches with notes in the region, ascending; returns the count.
+static int step_edit_region_pitches(int *list) {
+    int start, length, count = 0;
+    unsigned char used[128] = {0};
+    struct track_event event;
+    step_edit_region(&start, &length);
+    for(int i = 0; i < length; i++)
+        for(int slot = 0; slot < SEQ_TRACK_POLY; slot++)
+            if(song_get_step_event(sedits.scene, sedits.track, (start + i) % SEQ_NUM_STEPS,
+                    slot, &event) == 0 && event.type == SONG_EVENT_NOTE &&
+                    event.data0 >= 0 && event.data0 < 128) used[event.data0] = 1;
+    for(int p = 0; p < 128; p++) if(used[p]) list[count++] = p;
+    return count;
+}
+// Shift + Transpose in Region: All, then each pitch low to high; stops at ends.
+static void step_edit_region_filter_step(int change) {
+    int list[128], count = step_edit_region_pitches(list), pos = -1;
+    sedits.edit_timeout = panel_menu_get_timeout();
+    if(change > 0) change = 1; else if(change < 0) change = -1;
+    if(sedits.region_filter >= 0) {
+        // position of the filter, or just below the next higher pitch if gone
+        int h = 0;
+        while(h < count && list[h] < sedits.region_filter) h++;
+        if(h < count && list[h] == sedits.region_filter) pos = h;
+        else pos = change > 0 ? h - 1 : h;
+    }
+    pos = seq_utils_clamp(pos + change, -1, count - 1);
+    sedits.region_filter = pos < 0 ? -1 : list[pos];
+    step_edit_update_display();
 }
 static void step_edit_delay_str(char *s, int len, int delay) {
     if(seq_utils_delay_relative_label(delay)) snprintf(s, len, "%s", seq_utils_delay_relative_label(delay));
     else if(!delay) snprintf(s, len, "OFF");
     else panel_utils_gate_time_to_str(s, delay);
 }
+// DRUM name without padding (region summary line).
+static void step_edit_drum_trim(char *s, int note) {
+    int n;
+    panel_utils_drum_name(s, note);
+    n = strlen(s);
+    while(n > 0 && s[n - 1] == ' ') s[--n] = 0;
+}
+// Filter label: DRUM name on DRUM tracks, note name otherwise.
+static void step_edit_pitch_trim(char *s, int note) {
+    int n;
+    if(song_get_track_type(sedits.track) == SONG_TRACK_TYPE_DRUM) panel_utils_drum_name(s, note);
+    else panel_utils_note_to_name(s, note, 1, 0);
+    n = strlen(s);
+    while(n > 0 && s[n - 1] == ' ') s[--n] = 0;
+}
 // Ranges over the region; no audition (playback is the preview).
 static void step_edit_region_display(void) {
-    int start, length, i, slot, notes = 0, steps = 0;
+    int start, length, i, slot, notes = 0, steps = 0, filter = sedits.region_filter;
     int lo[4] = {999, 999, 99999, 999}, hi[4] = {-1, -1, -1, -1};
-    char a[16], b[16], line[GFX_LABEL_LEN];
+    char a[16], b[16], line[GFX_LABEL_LEN], what[8];
     struct track_event event;
     step_edit_region(&start, &length);
+    // Filtered: per-note delay (Step = inherits the shared step delay).
+    int dlo = 999, dhi = -1;
     for(i = 0; i < length; i++) {
         int step = (start + i) % SEQ_NUM_STEPS, has = 0;
         for(slot = 0; slot < SEQ_TRACK_POLY; slot++) {
             if(song_get_step_event(sedits.scene, sedits.track, step, slot, &event) != 0 ||
                     event.type != SONG_EVENT_NOTE) continue;
+            if(filter >= 0 && event.data0 != filter) continue;
             int v[3] = {event.data0, event.data1, event.length};
+            int nd = event.delay == SEQ_START_DELAY_INHERIT ? -1 : event.delay;
+            if(nd < dlo) dlo = nd;
+            if(nd > dhi) dhi = nd;
             for(int k = 0; k < 3; k++) {if(v[k] < lo[k]) lo[k] = v[k]; if(v[k] > hi[k]) hi[k] = v[k];}
             notes++; has = 1;
         }
@@ -1042,18 +1137,41 @@ static void step_edit_region_display(void) {
             steps++;
         }
     }
-    snprintf(line, sizeof(line), "%d notes on %d of %d steps", notes, steps, length);
+    if(filter >= 0) step_edit_pitch_trim(what, filter);
+    else strcpy(what, "notes");
+    snprintf(line, sizeof(line), "%d %s on %d of %d steps", notes, what, steps, length);
     gui_set_status_text(1, line);
-    if(!notes) {gui_set_status_text(2, "No notes to edit"); return;}
-    panel_utils_note_to_name(a, lo[0], 1, 0); panel_utils_note_to_name(b, hi[0], 1, 0);
-    snprintf(line, sizeof(line), "Note %s-%s Vel %d-%d", a, b, lo[1], hi[1]);
+    if(!notes) {gui_set_status_text(2, filter >= 0 ? "(none) Shift+Note: filter" : "No notes to edit"); return;}
+    if(song_get_track_type(sedits.track) == SONG_TRACK_TYPE_DRUM) {
+        // DRUM: GM names plus numbers; drop numbers if the line is too long.
+        step_edit_drum_trim(a, lo[0]); step_edit_drum_trim(b, hi[0]);
+        snprintf(line, sizeof(line), "Note %s-%s %d-%d Vel %d-%d",
+            a, b, lo[0], hi[0], lo[1], hi[1]);
+        if(strlen(line) > 28)
+            snprintf(line, sizeof(line), "Note %s-%s Vel %d-%d", a, b, lo[1], hi[1]);
+    }
+    else {
+        panel_utils_note_to_name(a, lo[0], 1, 0); panel_utils_note_to_name(b, hi[0], 1, 0);
+        snprintf(line, sizeof(line), "Note %s-%s Vel %d-%d", a, b, lo[1], hi[1]);
+    }
     gui_set_status_text(2, line);
-    panel_utils_gate_time_to_str(a, lo[2]); panel_utils_gate_time_to_str(b, hi[2]);
-    snprintf(line, sizeof(line), "Gate %.6s-%.6s", a, b);
+    // Compact layout shows lines 0-3 only: Gate and Dly share line 3.
+    char g1[16], g2[16], label[8];
+    panel_utils_gate_time_to_str(g1, lo[2]); panel_utils_gate_time_to_str(g2, hi[2]);
+    if(filter >= 0) {
+        strcpy(label, "NDly");
+        if(dlo < 0) strcpy(a, "Step"); else step_edit_delay_str(a, sizeof(a), dlo);
+        if(dhi < 0) strcpy(b, "Step"); else step_edit_delay_str(b, sizeof(b), dhi);
+    }
+    else {
+        strcpy(label, "Dly");
+        step_edit_delay_str(a, sizeof(a), lo[3]); step_edit_delay_str(b, sizeof(b), hi[3]);
+    }
+    snprintf(line, sizeof(line), "Gate %.6s-%.6s %s %.6s-%.6s", g1, g2, label, a, b);
+    if(strlen(line) > 28)
+        snprintf(line, sizeof(line), "G %.6s-%.6s %s %.6s-%.6s", g1, g2, label, a, b);
+    if(strlen(line) > 28) line[28] = 0;
     gui_set_status_text(3, line);
-    step_edit_delay_str(a, sizeof(a), lo[3]); step_edit_delay_str(b, sizeof(b), hi[3]);
-    snprintf(line, sizeof(line), "Step Dly %.6s-%.6s", a, b);
-    gui_set_status_text(4, line);
 }
 
 static void step_edit_update_title(void) {
@@ -1071,7 +1189,13 @@ static void step_edit_update_title(void) {
         int start, length;
         step_edit_region(&start, &length);
         int end = (start + length - 1) % SEQ_NUM_STEPS;
-        snprintf(title, sizeof(title), "Region - Track: %d %02d%c%02d", sedits.track + 1,
+        if(sedits.region_filter >= 0) {
+            char name[8];
+            step_edit_pitch_trim(name, sedits.region_filter);
+            snprintf(title, sizeof(title), "Region T%d %02d%c%02d [%s]", sedits.track + 1,
+                start + 1, start + length > SEQ_NUM_STEPS ? '~' : '-', end + 1, name);
+        }
+        else snprintf(title, sizeof(title), "Region - Track: %d %02d%c%02d", sedits.track + 1,
             start + 1, start + length > SEQ_NUM_STEPS ? '~' : '-', end + 1);
         gui_set_status_text(0, title);
         return;
@@ -1184,8 +1308,17 @@ void step_edit_update_display(void) {
         // display the step
         switch(event.type) {
             case SONG_EVENT_NOTE:
-                gui_set_status_text_part(1, xpos, 4, "N");
-                panel_utils_note_to_name(tempstr, event.data0, 1, 1);
+                if(song_get_track_type(sedits.track) == SONG_TRACK_TYPE_DRUM) {
+                    // DRUM: GM short name; expanded view adds the number above.
+                    if(expanded) snprintf(tempstr, sizeof(tempstr), "%d", event.data0);
+                    else strcpy(tempstr, "N");
+                    gui_set_status_text_part(1, xpos, 4, tempstr);
+                    panel_utils_drum_name(tempstr, event.data0);
+                }
+                else {
+                    gui_set_status_text_part(1, xpos, 4, "N");
+                    panel_utils_note_to_name(tempstr, event.data0, 1, 1);
+                }
                 gui_set_status_text_part(2, xpos, 4, tempstr);
                 switch(sedits.last_adjust_type) {
                     case STEP_EDIT_ADJUST_NOTE:

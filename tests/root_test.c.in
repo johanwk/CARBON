@@ -104,10 +104,10 @@ int main(void) {
     { struct midi_msg cc; midi_utils_enc_control_change(&cc, 0, 0, 64, 0);
       outproc_deliver_msg(scene, 0, &cc, 2, 1); }
     assert(count == 8 && sent[6].data1 == 0);
-    // Root changes do not alter drum transformation or stop its notes.
+    // Root changes do not stop drum notes; DRUM ignores stored scale.
     drum = 1; transpose = 0; tonality = SCALE_MAJOR; outproc_pitch_changed(scene, 0);
     count = 0; send(MIDI_NOTE_ON, 61); root = 11; outproc_root_changed();
-    assert(count == 2); send(MIDI_NOTE_OFF, 61); assert(count == 4 && sent[2].data0 == 60);
+    assert(count == 2); send(MIDI_NOTE_OFF, 61); assert(count == 4 && sent[0].data0 == 61 && sent[2].data0 == 61);
     // Releases still reach saved outputs after routing is disabled.
     count = 0; send(MIDI_NOTE_ON, 64); routing = 1; send(MIDI_NOTE_OFF, 64);
     assert(count == 4 && sent[2].port == sent[0].port); routing = 0;

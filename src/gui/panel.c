@@ -474,7 +474,14 @@ static int panel_handle_clock_help_input(int ctrl, int val) {
     }
     if(ctrl >= PANEL_ENC_SPEED) {
         if(gui_overview_mode()==GUI_OVERVIEW_TRACK ||
-                gui_overview_mode()==GUI_OVERVIEW_SCENE) return 1; // read-only
+                gui_overview_mode()==GUI_OVERVIEW_SCENE ||
+                gui_overview_mode()==GUI_OVERVIEW_LANES) {
+            // read-only; Motion Start pages DRUM lanes / Settings
+            if(ctrl == PANEL_ENC_MOTION_START && val &&
+                    gui_overview_mode()!=GUI_OVERVIEW_SCENE)
+                gui_overview_page(seq_utils_enc_val_to_change(val));
+            return 1;
+        }
         if(ctrl == PANEL_ENC_MOTION_START && val) gui_clock_help_scroll(seq_utils_enc_val_to_change(val));
         if(ctrl == PANEL_ENC_MOTION_LENGTH && val) gui_overview_edit(seq_utils_enc_val_to_change(val));
         return 1; // only selection and Value edit are active

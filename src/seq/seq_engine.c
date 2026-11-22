@@ -989,6 +989,10 @@ void seq_engine_handle_state_change(int event_type, int *data, int data_len) {
         case SCE_SONG_TRANSPOSE:
             outproc_transpose_changed(data[0], data[1]);
             break;
+        case SCE_SONG_TRACK_TYPE:
+            // DRUM ignores stored transpose/scale; VOICE restores them.
+            outproc_pitch_changed(sestate.scene_current, data[0]);
+            break;
         case SCE_SONG_MUTE:
             seq_engine_mute_select_changed(data[0], data[1], data[2]);
             break;
@@ -1471,8 +1475,9 @@ static int seq_engine_step_pitch_input(int track, int pitch) {
         ? sestate.bias_track_output[source] : 0;
     int base = song_get_transpose(sestate.scene_current, track);
     int delta = seq_engine_get_internal_cc(track, MIDI_CTRL_CC_TRACK_TRANSPOSE, base) - base;
+    // DRUM: Bias and CCi transpose are inactive; pitch selects the drum.
     if(sestate.track_type[track] == SONG_TRACK_TYPE_DRUM)
-        return seq_utils_clamp(pitch + bias + delta, 0, 127);
+        return seq_utils_clamp(pitch, 0, 127);
     pitch += sestate.kbtrans + bias;
     if(seq_engine_get_effective_root(sestate.scene_current) < 0) {
         pitch += delta;

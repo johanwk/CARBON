@@ -373,8 +373,47 @@ int main(int argc,char **argv) {
 #endif
             step_edit_set_enable(0); fx_start[0][0]=s0; fx_len[0][0]=l0;
         }
+        /* DRUM names: track 1 as DRUM with a GM pop beat (fixture only). */
+        {
+            static struct track_event saved[64][SEQ_TRACK_POLY];
+            int s0=fx_start[0][0], l0=fx_len[0][0], t0=fx_type[0];
+            memcpy(saved,fx_events,sizeof(saved)); memset(fx_events,0,sizeof(fx_events));
+            for(int i=0;i<64;i++) {
+                int n=0;
+                #define HIT(p,v) fx_events[i][n++]=(struct track_event){SONG_EVENT_NOTE,p,v,SEQ_START_DELAY_INHERIT,12}
+                if(i%8==0 || i%16==10) HIT(36,110);
+                if(i%8==4) HIT(38,100);
+                if(i%16==14) HIT(46,90); else if(i%2==0) HIT(42,i%4?60:85);
+                if(i==0) HIT(49,100);
+                #undef HIT
+            }
+            fx_type[0]=1; fx_start[0][0]=0; fx_len[0][0]=16;
+            boot(screen); step_edit_set_enable(1); step_edit_adjust_cursor(0,0);
+            bad|=shot(argv[1],"16-drum-step-compact",screen);
+            step_edit_toggle_details(); bad|=shot(argv[1],"17-drum-step-expanded",screen);
+            step_edit_toggle_details();
+            step_edit_adjust_cursor(-1,1);
+            bad|=shot(argv[1],"18-drum-region",screen);
+            for(int k=0;k<3;k++) step_edit_adjust_note(1,1); /* All, BD, SD, CHH */
+            bad|=shot(argv[1],"19-drum-region-filter",screen);
+#ifdef RENDER_DUMP_TEXT
+            for(int l=0;l<GUI_NUM_STATUS_LINES;l++) printf("%d|%s|\n",l,gstate.status_lines[l]);
+#endif
+            step_edit_set_enable(0);
+            /* Lane overview: ghost hats, a Prb step and a delayed snare. */
+            fx_events[5][3]=(struct track_event){SONG_EVENT_PROBABILITY,50,0,0,0};
+            fx_events[6][0].data1=30;
+            fx_events[12][0].delay=20;
+            fx_start[0][0]=0; fx_len[0][0]=12;
+            boot(screen); gui_track_overview_open(0); bad|=shot(argv[1],"20-drum-lanes-p1",screen);
+            gui_overview_page(9); bad|=shot(argv[1],"21-drum-lanes-settings",screen);
+            gui_clock_help_set(0);
+            memcpy(fx_events,saved,sizeof(saved));
+            fx_type[0]=t0; fx_start[0][0]=s0; fx_len[0][0]=l0;
+        }
         boot(screen); gui_overview_open(PANEL_MENU_CLOCK); bad|=shot(argv[1],"04-clock-overview",screen);
-        boot(screen); gui_track_overview_open(5); bad|=shot(argv[1],"05-track-overview",screen);
+        boot(screen); gui_track_overview_open(5); gui_overview_page(9); /* DRUM: Settings page */
+        bad|=shot(argv[1],"05-track-overview",screen);
         boot(screen); gui_scene_overview_open(1); bad|=shot(argv[1],"06-scene-overview",screen);
         boot(screen); gui_overview_open(PANEL_MENU_SYS); bad|=shot(argv[1],"07-sys-overview",screen);
     }

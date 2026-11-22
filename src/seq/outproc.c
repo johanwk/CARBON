@@ -139,6 +139,12 @@ void outproc_pitch_changed(int scene, int track) {
     tonality = song_get_track_type(track) == SONG_TRACK_TYPE_DRUM
         ? song_get_tonality(scene, track) : seq_engine_get_effective_tonality(scene, track);
     root = seq_engine_get_effective_root(scene);
+    // DRUM pitches select instruments: stored transpose/scale stay in the
+    // song (restored on VOICE) but never move the output.
+    if(song_get_track_type(track) == SONG_TRACK_TYPE_DRUM) {
+        transpose = 0;
+        tonality = SCALE_CHROMATIC;
+    }
     // Legacy transpose editing revoices held notes, as before, but uses
     // saved output destinations/pitches rather than recomputing note-offs.
     if(root < 0 && opstate.current_root[track] < 0 &&

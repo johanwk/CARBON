@@ -23,6 +23,8 @@ static int help_active, help_scroll;
 int gui_clock_help_active(void) {return help_active;}
 void gui_clock_help_set(int enable) {help_active=enable;}
 void gui_clock_help_scroll(int change) {help_scroll+=change;}
+static int help_pages;
+void gui_overview_page(int change) {help_pages+=change;}
 static int help_edits;
 void gui_overview_edit(int change) {help_edits+=change;}
 static int help_mode=PANEL_MENU_CLOCK;
@@ -124,9 +126,15 @@ static void test_track_holds(void) {
         assert(!pstate.track_keys.candidate && !pstate.track_keys.down);
     }
     help_active=1;help_mode=GUI_OVERVIEW_TRACK;int edits=help_edits,scroll=help_scroll;
+    int pages=help_pages;
     for(int enc=PANEL_ENC_SPEED;enc<=PANEL_ENC_TRANSPOSE;enc++)
         assert(panel_handle_clock_help_input(enc,1));
     assert(edits==help_edits && scroll==help_scroll);
+    assert(help_pages==pages+1);            /* only Motion Start pages (lanes/Settings) */
+    help_mode=GUI_OVERVIEW_LANES;
+    assert(panel_handle_clock_help_input(PANEL_ENC_MOTION_START,-1) && help_pages==pages);
+    assert(panel_handle_clock_help_input(PANEL_ENC_MOTION_LENGTH,3) && help_edits==edits);
+    help_mode=GUI_OVERVIEW_TRACK;
     assert(!panel_handle_clock_help_input(PANEL_SW_1,0) && help_active);
     assert(panel_handle_clock_help_input(PANEL_SW_CLOCK,1));
     assert(panel_handle_clock_help_input(PANEL_SW_CLOCK,0) && !help_active);
@@ -176,9 +184,11 @@ static void test_scene_holds(void) {
     }
     memset(&pstate,0,sizeof(pstate));help_active=1;help_mode=GUI_OVERVIEW_SCENE;
     int edits=help_edits,scroll=help_scroll;
+    int pages=help_pages;
     for(int enc=PANEL_ENC_SPEED;enc<=PANEL_ENC_TRANSPOSE;enc++)
         assert(panel_handle_clock_help_input(enc,1));
     assert(edits==help_edits && scroll==help_scroll);
+    assert(help_pages==pages);              /* scene overview never pages */
     assert(!panel_handle_clock_help_input(PANEL_SW_SCENE,0) && help_active);
     assert(!panel_handle_clock_help_input(PANEL_SW_6,0) && help_active);
     assert(panel_handle_clock_help_input(PANEL_SW_CLOCK,1));
