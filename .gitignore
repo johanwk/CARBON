@@ -34,3 +34,7 @@ carbon-recovery/
 
 # Song backups written by carbon-backup (local device data)
 *.backup
+
+# Local song sketches (kept out of the published tree)
+/tools/carbon-backup/templates/pop-sketch-*.json
+/tools/carbon-backup/templates/make-pop-sketch.py

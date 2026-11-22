@@ -1,11 +1,42 @@
-#+title: CARBON community-1.38-rc1 prerelease
+#+title: CARBON community-1.38-rc2 prerelease
 #+options: ^:nil -:nil
 
 Unofficial CARBON firmware, not a Kilpatrick Audio release. System identity:
-=1.38-jwk-rc1=; numeric song version: 1.38. Use the accompanying build record
-for exact source, checksum and toolchain.
+=1.38-jwk-rc2=; numeric song version: 1.38 (unchanged since rc1). Use the
+accompanying build record for exact source, checksum and toolchain.
 
-* New since community 1.37 RC1
+* New since community 1.38 RC1
+
+** Drum tracks
+Tracks set to DRUM become a real drum editor:
+- Pitch is locked: Transpose, scale, Bias and CCi transpose no longer move
+  drum notes (stored values return when the track is set back to VOICE).
+- General MIDI drum names (BD, SD, CHH, ...) in Step Edit and Region; a
+  weak default that will often not match your drum machine.
+- Drum lanes: hold a DRUM track button for a drum grid (kick at the bottom,
+  velocity as brightness); it stays open while recording and shows the
+  take live. In Step Edit a third view (hold Step Edit) edits the lanes:
+  add/remove hits, velocity, gate, own delay, move a whole lane to another
+  drum, and lane Fill/Rotate (Euclidean pulses aligned to your own hits).
+- Steps switched off by Pattern or Euclidean density show black.
+- Drums to CV/gate: with ABCD pairing, BD/SD/CHH/OHH go to pairs A-D, gate
+  for the hit's length, CV = velocity.
+
+** Editing
+- Region editing in Step Edit: Shift + Motion Start left past "all slots"
+  edits every playing step at once (pitch, velocity, gate, step delay). A
+  pitch filter (Shift + Transpose) limits it to one note, for example "all
+  hats quieter"; filtered delays move only those notes.
+
+** Fixes
+- Track and scene overviews could stop opening after loading a song from
+  the panel.
+- Undo in Step Edit Region now keeps the blue region display.
+- Songs with invalid values are repaired on load (in RAM, with a notice);
+  carbon-backup repairs on download and accepts a damaged upload target.
+
+* Earlier in community 1.38 RC1
+
 :PROPERTIES:
 :CUSTOM_ID: new-since-community-1.37-rc1
 :END:
@@ -53,7 +84,9 @@ All earlier community features remain included.
 :PROPERTIES:
 :CUSTOM_ID: compatibility
 :END:
-Songs keep their 20480-byte size and the 1.37 layout. Songs saved with 1.38
+Songs keep their 20480-byte size and the 1.37 layout. rc2 does not change
+the song format: rc1 and rc2 songs are interchangeable, and the host tools
+need no update. Songs saved with 1.38
 are marked 1.38. A song using Arp Speed Chord cannot be played as intended on
 1.37 or earlier firmware; keep pre-upgrade originals for older firmware.
 Faithful downgrade is not supported.
@@ -69,20 +102,20 @@ Use the README's dfu-util procedure at *0x08020000* to preserve the factory
 bootloader. Never use stock dfu.sh, 0x08000000 or mass erase for this image.
 
 * Evidence and limitations
-:PROPERTIES:
-:CUSTOM_ID: evidence-and-limitations
-:END:
-The maintainer runs the development candidate containing all these features.
-Practical hardware feedback is positive for the menu, track and scene
-overviews, expanded Step Edit and Arp Chord. Humanize and undo are included in
-that firmware but have less specific hardware feedback; reports are welcome.
-Testing is not exhaustive. Host tests cover gestures, display layouts for both
-LCD types, editor behaviour, playback and JSON/transfer paths.
 
-Not yet recorded on hardware: a 1.38 host-tool upload; busy-load CPU and
-stack high-water; every synth, route and option combination. The rc1 build
-differs from the tested candidate only in its identity string. See
-RELEASE-CHECKLIST.org.
+The maintainer ran each development candidate leading to rc2 on hardware
+and confirmed: DRUM pitch lock, drum names, Region filter (including
+per-note delay and lane moves), Undo staying in Region, the lane overview
+(also while recording), the lane view with add/remove/velocity/gate/delay,
+lane move, Fill/Rotate, masked steps, and the drum CV map (CV on one port
+while MIDI continues on the other). Testing is not exhaustive; Fill's
+musical rules may be refined after wider use. The rc2 build differs from
+the last tested candidate (=jwk-drm7=) only in its identity string.
+
+Host tests cover gestures, display layouts for both LCD types, editor
+behaviour, playback, CV output and JSON/transfer paths. Not yet recorded on
+hardware: busy-load CPU and stack high-water; every synth, route and option
+combination. See RELEASE-CHECKLIST.org.
 
 * Contributing and previous releases
 :PROPERTIES:
@@ -92,7 +125,7 @@ Report issues at https://github.com/johanwk/CARBON/issues with identity,
 reproduction steps, clock source, routes and synth setup. Share only files you
 have permission to publish. Successful setup reports are welcome too.
 
-The 1.36 and 1.37 releases/tags and upstream PR #10/#11/#12 branches are
-unchanged. 1.38 is a separate cumulative prerelease. Corresponding source and
+The 1.36 and 1.37 releases/tags, community-1.38-rc1 and upstream PR
+#10/#11/#12 branches are unchanged. rc2 is a separate cumulative prerelease. Corresponding source and
 build instructions accompany it. Existing license and attribution notices are
 preserved.

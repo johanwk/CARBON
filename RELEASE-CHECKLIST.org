@@ -1,4 +1,4 @@
-#+title: Community 1.38-rc1 verification checklist
+#+title: Community 1.38-rc2 verification checklist
 #+options: ^:nil -:nil
 
 Community release-candidate test targets. The maintainer has approved limited
@@ -27,7 +27,19 @@ for an assistant to flash hardware or write songs.
 - [ ] Busy-pattern responsiveness checked; no measured interrupt/stack claim
   until instrumentation provides actual values.
 
-* Representative hardware checks - pending for rc1
+* rc2 additions
+
+- [X] DRUM pitch lock, GM names, Region filter, Undo in Region (hardware).
+- [X] Lane overview incl. live take while recording (hardware).
+- [X] Lane view: add/remove, velocity, gate, delay, lane move, Fill/Rotate,
+  masked steps incl. "As recorded" (hardware).
+- [X] Drum CV map on ABCD with MIDI on the other port (hardware).
+- [X] Song format unchanged; host tools unchanged; Rust tests pass.
+- [ ] Boot shows =1.38-jwk-rc2= under SYS; a lane edit and the drum CV map
+  still work on the rc2 binary.
+- [ ] Pop-sketch template is not in the published tree.
+
+* Representative hardware checks - pending for rc1 (carried over)
 :PROPERTIES:
 :CUSTOM_ID: representative-hardware-checks---pending-for-rc1
 :END:
