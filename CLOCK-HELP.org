@@ -215,6 +215,9 @@ cursor (Start step, Shift+Start row, Length/Value add/velocity, Shift+Length/
 Value remove, Transpose drum/move lane, Shift+Pattern lane Fill, Shift+
 Transpose lane Rotate, Shift+Record clear step). Masked steps are black only
 where a hit would not play. Verified on hardware.
+In 1.38-jwk-drm7 a DRUM track routed to CV with ABCD pairing uses a fixed
+General MIDI map (36 BD=A, 38 SD=B, 42 CHH=C, 46 OHH=D): gate for the hit's
+length, CV = velocity regardless of pair mode; other pitches skip CV.
 
 * Scene overview across tracks (local 1.38-jwk-scn1)
 

@@ -33,6 +33,17 @@ int main(void) {
     }
     for(int i=1;i<=8;i++) assert(glide_ticks(i)==(3<<(i-1)));
     midi_stream_init(); memset(&cvstate,0,sizeof(cvstate)); cvproc_init();
+    { /* DRUM hit (ABCD): velocity CV + gate on the pair, whatever its mode;
+         only the matching release closes the gate. */
+      struct midi_msg h={.port=MIDI_PORT_CV_OUT,.status=MIDI_NOTE_ON|2,.len=DRUM_CV_LEN,.data0=42,.data1=100};
+      assert(!midi_stream_send_msg(&h)); cvproc_timer_task();
+      assert(gates[2]==CVPROC_GATE_ON && dac[2]==(100<<5));
+      struct midi_msg o={.port=MIDI_PORT_CV_OUT,.status=MIDI_NOTE_OFF|2,.len=3,.data0=50};
+      midi_stream_send_msg(&o); cvproc_timer_task();
+      o.data0=42; midi_stream_send_msg(&o); cvproc_timer_task();
+      assert(gates[2]==CVPROC_GATE_OFF && cvstate.drum_note[2]==-1);
+      h.data1=127; assert(!midi_stream_send_msg(&h)); cvproc_timer_task();
+      assert(dac[2]==(126<<5)); midi_stream_send_msg(&o); cvproc_timer_task(); }
     attack(0,48,6,64); assert(!cvstate.ramp[0].duration); // first attack snaps
     struct midi_msg initial_off={.port=MIDI_PORT_CV_OUT,.len=3,.status=MIDI_NOTE_OFF,.data0=48};
     midi_stream_send_msg(&initial_off); cvproc_timer_task();

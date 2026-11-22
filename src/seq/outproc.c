@@ -51,6 +51,20 @@ struct outproc_state {
 };
 struct outproc_state opstate;
 
+// DRUM track on the CV port with ABCD pairing: fixed General MIDI map,
+// pitch chooses the pair (36 BD=A, 38 SD=B, 42 CHH=C, 46 OHH=D), -1 = none.
+static int outproc_drum_cv_pair(int track, int pitch) {
+    if(song_get_track_type(track) != SONG_TRACK_TYPE_DRUM ||
+            song_get_cvgate_pairs() != SONG_CVGATE_PAIR_ABCD) return -2;  // not a drum map
+    switch(pitch) {
+        case 36: return 0;
+        case 38: return 1;
+        case 42: return 2;
+        case 46: return 3;
+        default: return -1;
+    }
+}
+
 int outproc_preview_pitch(int track, int note) {
     int scene = seq_engine_get_current_scene();
     int root = seq_engine_get_effective_root(scene);
@@ -304,6 +318,12 @@ void outproc_deliver_msg(int scene, int track, struct midi_msg *msg,
         // handle event types    
         switch(msg->status & 0xf0) {
             case MIDI_NOTE_OFF:
+                // Unprocessed DRUM release on CV: same fixed map as the attack.
+                if(port == MIDI_PORT_CV_OUT) {
+                    int pair = outproc_drum_cv_pair(track, msg->data0);
+                    if(pair == -1) break;
+                    if(pair >= 0) channel = pair;
+                }
                 midi_utils_enc_note_off(&send_msg, port, channel, msg->data0, msg->data1);
                 // Processed releases are handled before routing lookup above.
                 midi_stream_send_msg(&send_msg);
@@ -328,6 +348,21 @@ void outproc_deliver_msg(int scene, int track, struct midi_msg *msg,
                     continue;
                 }
                 midi_utils_enc_note_on(&send_msg, port, channel, msg->data0, msg->data1);
+                if(port == MIDI_PORT_CV_OUT) {
+                    int pair = outproc_drum_cv_pair(track, msg->data0);
+                    if(pair == -1) continue;  // unmapped drum: not sent to CV
+                    if(pair >= 0) {
+                        // Release follows the saved output (same pair).
+                        send_msg.status = MIDI_NOTE_ON | pair;
+                        if(process == OUTPROC_OUTPUT_PROCESSED) {
+                            input = *msg;
+                            if(outproc_enqueue(track, out, &input, &send_msg) < 0) continue;
+                        }
+                        send_msg.len = DRUM_CV_LEN;
+                        midi_stream_send_msg(&send_msg);
+                        continue;
+                    }
+                }
                 // do note processing / queue
                 if(process == OUTPROC_OUTPUT_PROCESSED) {
                     input = *msg;

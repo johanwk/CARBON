@@ -260,9 +260,30 @@ each pitch is an instrument, so pitch is never changed on the way out.
 | 67 HAg | 68 LAg | 69 Cab | 70 Mar | 71 SWh | 72 LWh | 73 SGu | 74 LGu |
 | 75 Clv | 76 HWb | 77 LWb | 78 MCu | 79 OCu | 80 MTr | 81 OTr |        |
 
-  Other pitches keep their note name. Many drum machines (for example a
-  Bitwig drum kit) place sounds differently; the names then do not match
-  the sounds. Own names per song are planned.
+  Other pitches keep their note name.
+- *General MIDI is only a weak default.* The names (and the CV map below)
+  follow the General MIDI drum map. Most drum machines, drum racks (for
+  example in Bitwig) and modular setups place their sounds differently, so
+  expect the names *not* to match what you hear. The note number shown
+  with each name is what is actually sent. Own names are not yet possible.
+- *Drums to CV/gate.* Route a DRUM track to the CV port and set CV/Gate
+  pairing to *ABCD* (System menu). Each drum then gets its own output pair:
+
+  | Note | Name | Pair |
+  |------+------+------|
+  |   36 | BD   | A    |
+  |   38 | SD   | B    |
+  |   42 | CHH  | C    |
+  |   46 | OHH  | D    |
+
+  The gate stays open for the hit's Gate length (not just a trigger), and
+  the CV carries the hit's velocity, whatever the pair's mode in the System
+  menu: use it for accent or VCA level. The track's CV channel setting is
+  ignored. Other drums are not sent to CV, but still go to the track's
+  other output, for example MIDI to a drum machine. A gate longer than the
+  gap to the next hit of the same drum stays open (no retrigger); this can
+  be used on purpose. Other pairing modes (AABC, AABB, AAAA) and VOICE
+  tracks are unchanged.
 
 ** Lane view: edit a DRUM track as a drum grid
 

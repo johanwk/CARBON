@@ -57,6 +57,7 @@ struct cvproc_state {
     // common state
     uint8_t damper[CVPROC_NUM_OUTPUTS];  // damper state for each pair
     uint8_t out_offset[CVPROC_NUM_PAIRS];  // the start offset mono / poly group
+    int8_t drum_note[CVPROC_NUM_PAIRS];  // DRUM hit holding the gate, -1 none
     // mono state
     int8_t mono_voice_prio[CVPROC_NUM_PAIRS][CVPROC_MONO_DEPTH];  // list of notes in order
     uint8_t mono_voice_pos[CVPROC_NUM_PAIRS];  // list position of last added note
@@ -153,6 +154,24 @@ void cvproc_timer_task(void) {
                 cvstate.attack_curve = msg.len & 127;
                 msg.data0 &= 127;
                 msg.len = 3;
+            }
+            // DRUM hit (ABCD only): velocity CV + gate on the mapped pair,
+            // whatever its SYS mode. Release: any Note Off on that pair.
+            if(cvstate.pairs == CVPROC_PAIRS_ABCD &&
+                    (msg.status & 0xf0) == MIDI_NOTE_ON && msg.len == DRUM_CV_LEN) {
+                cvstate.drum_note[pair] = msg.data0 & 127;
+                cvproc_set_velo(cvstate.out_offset[pair], msg.data1 > 126 ? 126 : msg.data1,
+                    CVPROC_GATE_ON);
+                continue;
+            }
+            // Only the matching release ends a drum gate; other Note Offs on
+            // the pair (e.g. a VOICE track sharing it) take the normal path.
+            if(cvstate.pairs == CVPROC_PAIRS_ABCD && cvstate.drum_note[pair] >= 0 &&
+                    (msg.status & 0xf0) == MIDI_NOTE_OFF &&
+                    (msg.data0 & 127) == cvstate.drum_note[pair]) {
+                cvstate.drum_note[pair] = -1;
+                analog_out_set_gate(cvstate.out_offset[pair], CVPROC_GATE_OFF);
+                continue;
             }
             // Initial glide scope is monophonic pitch outputs only.
             if(cvstate.poly_num_voices[pair] != 1 || cvstate.pair_mode[pair] != CVPROC_MODE_NOTE)
@@ -604,6 +623,7 @@ void cvproc_cc_handler(int pair, struct midi_msg *msg) {
 void cvproc_reset_state(void) {
     int i, j;
     cvstate.attack_ms = 0;
+    for(i = 0; i < CVPROC_NUM_PAIRS; i++) cvstate.drum_note[i] = -1;
     for(i = 0; i < CVPROC_NUM_OUTPUTS; i++) {
         cvstate.ramp[i].duration = 0;
         cvstate.ramp[i].valid = 0;

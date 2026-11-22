@@ -25,6 +25,8 @@ int seq_engine_get_effective_root(int s) { return root; }
 int seq_engine_get_effective_tonality(int s, int t) { return tonality; }
 int song_get_effective_root(int s) { return root; }
 int song_get_track_type(int t) { return drum; }
+static int cv_pairs = SONG_CVGATE_PAIR_ABCD;
+int song_get_cvgate_pairs(void) { return cv_pairs; }
 int song_get_transpose(int s, int t) { return transpose; }
 int song_get_tonality(int s, int t) { return tonality; }
 int song_get_midi_port_map(int t, int out) { return routing ? -1 : out + 1; }
@@ -106,8 +108,27 @@ int main(void) {
     assert(count == 8 && sent[6].data1 == 0);
     // Root changes do not stop drum notes; DRUM ignores stored scale.
     drum = 1; transpose = 0; tonality = SCALE_MAJOR; outproc_pitch_changed(scene, 0);
+    // (Port 2 is the CV port: DRUM pitch 61 is unmapped, so ABCD sends it
+    // only to MIDI; with AABC it goes to both, as before.)
+    cv_pairs = SONG_CVGATE_PAIR_AABC;
     count = 0; send(MIDI_NOTE_ON, 61); root = 11; outproc_root_changed();
     assert(count == 2); send(MIDI_NOTE_OFF, 61); assert(count == 4 && sent[0].data0 == 61 && sent[2].data0 == 61);
+    cv_pairs = SONG_CVGATE_PAIR_ABCD;
+    // Drum CV map: 38 SD -> pair B (channel 1) with the drum flag; release
+    // to the same pair; unmapped 61 reaches MIDI only.
+    count = 0; send(MIDI_NOTE_ON, 38);
+    assert(count == 2 && sent[1].port == MIDI_PORT_CV_OUT && (sent[1].status & 0x0f) == 1 &&
+        sent[1].len == DRUM_CV_LEN && sent[1].data0 == 38);
+    assert(sent[0].port != MIDI_PORT_CV_OUT && (sent[0].status & 0x0f) == 0);
+    send(MIDI_NOTE_OFF, 38);
+    assert(count == 4 && sent[3].port == MIDI_PORT_CV_OUT && (sent[3].status & 0xf0) == MIDI_NOTE_OFF &&
+        (sent[3].status & 0x0f) == 1);
+    count = 0; send(MIDI_NOTE_ON, 61); send(MIDI_NOTE_OFF, 61);
+    assert(count == 2 && sent[0].port != MIDI_PORT_CV_OUT && sent[1].port != MIDI_PORT_CV_OUT);
+    { int map[4] = {36, 38, 42, 46};
+      for(int p = 0; p < 4; p++) assert(outproc_drum_cv_pair(0, map[p]) == p); }
+    drum = 0; assert(outproc_drum_cv_pair(0, 36) == -2); drum = 1;
+    cv_pairs = SONG_CVGATE_PAIR_AABC;  // remaining checks: routing, not the drum map
     // Releases still reach saved outputs after routing is disabled.
     count = 0; send(MIDI_NOTE_ON, 64); routing = 1; send(MIDI_NOTE_OFF, 64);
     assert(count == 4 && sent[2].port == sent[0].port); routing = 0;

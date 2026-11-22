@@ -8,6 +8,9 @@
 #define GLIDE_LINEAR 64
 // Private CV-only Note On encoding: len=flag|curve, data0=choice<<7|note.
 #define GLIDE_CV_FLAG 0x80
+// Private CV-only drum hit (DRUM track, ABCD): len=DRUM_CV_LEN; the pair
+// shows velocity on CV and the gate, whatever the pair's SYS mode.
+#define DRUM_CV_LEN 0x40
 static inline int glide_ticks(int choice) {
     return choice > 0 && choice <= GLIDE_MAX ? 3 << (choice - 1) : 0;
 }
