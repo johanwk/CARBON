@@ -9,12 +9,12 @@ harmony. Screens are rendered from example data by CARBON's display code.
 Unofficial firmware for the Kilpatrick Audio CARBON hardware sequencer.
 Not an official Kilpatrick Audio release. Installation is at your own risk.
 
-**Community release candidate:** `community-1.38-rc1`, System identity
-`1.38-jwk-rc1`. See the [fork releases page](https://github.com/johanwk/CARBON/releases)
+**Community release candidate:** `community-1.38-rc2`, System identity
+`1.38-jwk-rc2`. See the [fork releases page](https://github.com/johanwk/CARBON/releases)
 for the binary, checksum and build record. This prerelease invites wider
 real-world testing; it is not a claim of exhaustive production validation.
 Official updater binaries do not contain these community additions.
-What changed since 1.37: [release notes](RELEASE-NOTES.org).
+What changed since 1.38 RC1 (drum tracks, region editing): [release notes](RELEASE-NOTES.org).
 
 ## What it adds
 
@@ -24,8 +24,10 @@ roots and Hrm harmony; Inv/Compact voicing; individual note delays; curved
 CV glide and synth-dependent MIDI portamento; current-state pitch/delay grid;
 manual performance timing/pitch protection with next-bar target readouts;
 whole-song RAM snapshots and one-level undo; Arp Speed Chord; Humanize;
-full-page menu, track and scene overviews; expanded Step Edit; backup, JSON
-and MIDI import tools.
+full-page menu, track and scene overviews; expanded Step Edit; region
+editing with a pitch filter; drum tracks with drum lanes, a lane editor
+(Euclidean Fill/Rotate) and drum CV/gate output; backup, JSON and MIDI
+import tools.
 
 Use the [official CARBON product/manual page](https://www.kilpatrickaudio.com/?p=carbon)
 for ordinary operation, connections and original features. The
@@ -115,6 +117,10 @@ songs; faithful downgrade of 1.38 songs is not supported.
 - Step Edit: select a slot with Shift+Motion Start; Shift+Transpose selects its
   event type. Hold Step Edit for the expanded view. See the guide for Hrm,
   Inv, Gli, CCi and note-delay examples.
+- Drums: set a track to DRUM (Tonality menu). Hold its track button for the
+  drum lanes; in Step Edit, hold Step Edit until the lane view appears to
+  add hits, move lanes and use Fill/Rotate. For drum CV, route the track to
+  CV with ABCD pairing: BD, SD, CHH and OHH go to pairs A-D.
 
 ## Compatibility and limitations
 
@@ -127,6 +133,10 @@ songs; faithful downgrade of 1.38 songs is not supported.
   depends on the receiving synth; CV glide requires mono pitch groups.
 - Grid strokes preview current state, not future probability or automation.
 - Songs using Arp Speed Chord need 1.38. Host tools support 1.38 (schema5).
+  RC2 does not change the song format.
+- Drum names and the drum CV map follow General MIDI, a weak default that
+  often will not match your drum machine or modules. Own names are not yet
+  possible.
 - Snapshot is one volatile RAM copy, not a backup or undo history; no external
   synth state, global patterns or PRNG rewind. Load/clear/power-off invalidates it.
 - Finite queues and MIDI bandwidth remain limits; arbitrary overload is not
