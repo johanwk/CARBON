@@ -31,3 +31,6 @@ __pycache__/
 
 # Device recovery backups written by carbon-backup (local device data)
 carbon-recovery/
+
+# Song backups written by carbon-backup (local device data)
+*.backup

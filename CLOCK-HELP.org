@@ -201,6 +201,12 @@ Compact Step Edit and ordinary menus retain their existing widths. Both-LCD
 geometry, slot-six text/highlights and the existing host suites pass. The trk1
 read-only track overview is retained unchanged; hardware checks remain pending.
 
+On a DRUM track (local 1.38-jwk-drm3) the same hold opens the read-only drum
+lanes instead: one row per pitch (kick at the bottom, at most 10, =+N other=),
+16 steps per page. Motion Start pages 1-4, then this settings overview; while
+running the lanes follow playback until Motion Start is turned. Other encoders
+are inactive; Clock closes. VOICE tracks are unchanged. Verified on hardware.
+
 * Scene overview across tracks (local 1.38-jwk-scn1)
 
 Hold Scene FIRST, then press and hold a numbered button for800ms while keeping

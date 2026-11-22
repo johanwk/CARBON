@@ -166,6 +166,35 @@ as always; the hold adds a read-only view of that track in all six scenes.
 The hold is not armed during Shift (mute), Scene (select/copy), multi-track
 selection or Scn editing, so those gestures are unchanged.
 
+On a *DRUM* track the hold opens the drum lanes instead (next section);
+turn Motion Start past page 4 to reach this settings page.
+
+** Drum lanes: one DRUM track as a drum grid
+
+Hold the button of a *DRUM* track for 800 ms. The view shows the track's
+hits as lanes, one row per drum, 16 steps per page:
+
+[[file:docs/screenshots/fixtures/20-drum-lanes-p1-lcda.png]]
+
+- *Lanes* are the pitches used on the track, low at the bottom, so the
+  kick is always on the bottom row. At most 10 lanes are shown, chosen by
+  number of hits; the kick (36, or 35) is always kept. Further pitches
+  still play and are counted on the top line as =+N other=.
+- *Squares* are hits. Brighter means louder. A *small square* is a ghost
+  note (velocity below 40). An *outline* means the step has a condition
+  (Prb, Euc, Pre, !Pr or Scn), so the hit may not play. A *white dot* at
+  the bottom right means the note has its own delay.
+- Steps outside the playing range (Motion Start and Length) are darker. A
+  bar below the grid shows the playing step.
+- *Pages:* the view opens on the page that is playing (when stopped: the
+  page with Motion Start). While running it follows playback, shown as
+  =play= on the top line. Turning *Motion Start* stops following and steps
+  through pages 1-4, then the track's settings page:
+
+[[file:docs/screenshots/fixtures/21-drum-lanes-settings-lcda.png]]
+
+- The view is read-only: other encoders do nothing; Clock closes it.
+
 ** Scene overview: one scene across six tracks
 
 Hold *Scene first*, then hold a *number* for 800 ms. The number selects
@@ -185,6 +214,36 @@ changes). The hold then shows the scene's settings for all six tracks:
 
 Step Edit works as in the original firmware, with more event types and an
 expanded display.
+
+** Drum tracks
+
+A track set to DRUM (Tonality menu, Track Type) is treated as a drum kit:
+each pitch is an instrument, so pitch is never changed on the way out.
+
+- *Pitch is locked.* Track Transpose, scale, Bias Track and CCi transpose
+  do not change a DRUM track's notes. The Transpose dial skips DRUM tracks
+  (other selected VOICE tracks still change). The Tonality menu shows
+  Transpose as =-- (DRUM)= and Bias as, for example, =2 inactive=. The
+  stored values are kept: set the track back to VOICE and they apply again.
+- *Drum names.* Step Edit and Region show General MIDI drum names instead
+  of note names, for example =BD= (36), =SD= (38), =CHH= (42), =OHH= (46):
+
+[[file:docs/screenshots/fixtures/16-drum-step-compact-lcda.png]]
+
+  In the expanded view the note number is shown above each name:
+
+[[file:docs/screenshots/fixtures/17-drum-step-expanded-lcda.png]]
+
+| 35 BD2 | 36 BD  | 37 Rim | 38 SD  | 39 Clp | 40 SD2 | 41 FT2 | 42 CHH |
+| 43 FT  | 44 PHH | 45 LT  | 46 OHH | 47 LMT | 48 HMT | 49 Cr1 | 50 HT  |
+| 51 Rd1 | 52 Chn | 53 Bel | 54 Tmb | 55 Spl | 56 Cow | 57 Cr2 | 58 Vib |
+| 59 Rd2 | 60 HBo | 61 LBo | 62 MCo | 63 HCo | 64 LCo | 65 HTi | 66 LTi |
+| 67 HAg | 68 LAg | 69 Cab | 70 Mar | 71 SWh | 72 LWh | 73 SGu | 74 LGu |
+| 75 Clv | 76 HWb | 77 LWb | 78 MCu | 79 OCu | 80 MTr | 81 OTr |        |
+
+  Other pitches keep their note name. Many drum machines (for example a
+  Bitwig drum kit) place sounds differently; the names then do not match
+  the sounds. Own names per song are planned.
 
 ** The expanded view
 
@@ -277,7 +336,11 @@ fifth.
 
 Here, track 1 plays steps 9 to 32, so those 24 steps are blue. A wrapped
 range shows as, for example, =57~08=. The lines below show how many notes
-the region holds, and the range of their values.
+the region holds, and the range of their values (on DRUM tracks with
+names and numbers, for example =Note BD-Cr1 36-49=; line 3 shows Gate and
+the step delay, =Dly=).
+
+[[file:docs/screenshots/fixtures/18-drum-region-lcda.png]]
 
 *Leave:* Shift + Motion Start right (back to all slots), or turn Motion
 Start without Shift to go to a step.
@@ -288,6 +351,23 @@ Start without Shift to go to a step.
 | Length/Value | Velocity of every note                               |
 | Gate         | Length of every note                                 |
 | Speed        | Shared step delay, on steps that contain notes       |
+| Shift + Transpose | Pitch filter: All, then each pitch in the region |
+
+*Pitch filter.* Shift + Transpose steps through =All= and then each pitch
+used in the region, low to high. The title shows the filter, for example
+=Region T1 01-16 [CHH]=, and the lines count only those notes:
+
+[[file:docs/screenshots/fixtures/19-drum-region-filter-lcda.png]]
+
+- Velocity and Gate change only notes at that pitch: "all hats quieter".
+- Speed changes the *own delay* of those notes (line 3 shows =NDly=;
+  =Step= means the note follows the step delay). Other notes on the same
+  steps do not move: hats can lag while kick and snare stay on the beat.
+- Transpose moves the lane as one piece to the next *unused* pitch,
+  jumping over pitches already in the region, and the filter follows. A
+  lane never merges with another drum.
+- The filter also works on VOICE tracks (note names), and resets to =All=
+  when you leave Region.
 
 - The region is the track's *playing steps*: Motion Start and Length of
   the edited scene. Steps switched off by Pattern or Euclidean density
@@ -302,7 +382,8 @@ Start without Shift to go to a step.
 - Steps are shared by all scenes. A region edit changes those steps in
   *every scene* that plays them.
 - One undo point covers the whole region visit: Clock + Run/Stop restores
-  the region as it was before you entered it.
+  the region as it was before you entered it. Step Edit stays in Region
+  (blue), with the same filter.
 - *Edit while it plays.* Playback continues while you edit the region, and
   each change is heard the next time playback reaches those steps. Notes
   already sounding keep their pitch and length. When stopped, region edits
