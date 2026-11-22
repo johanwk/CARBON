@@ -142,12 +142,14 @@ void outproc_deliver_msg(int scene,int track,struct midi_msg *m,int d,int mode) 
 void state_change_register(void (*h)(int,int*,int),int c) {}
 /* Euclidean card: track 1 runs the PRODUCTION pattern.c mask with a real
  * density/rotation; other tracks keep their fixture patterns. */
-static int fx_euc, fx_density=100, fx_rotation;
+static int fx_euc, fx_density=100, fx_rotation, fx_drum_open;
+int seq_engine_get_effective_pattern_type(int t) { return 0; }
 #define pattern_get_step_enable production_pattern_get_step_enable
 #include "../../src/seq/pattern.c"
 #undef pattern_get_step_enable
 int pattern_get_step_enable(int scene,int track,int pattern,int step) {
     if(fx_euc && track==0) return production_pattern_get_step_enable(scene,track,pattern,step);
+    if(fx_drum_open && track==0) return 1;  /* drum fixture: all steps play */
     return fx_hit(track,step);
 }
 int seq_engine_get_effective_motion_start(int t) { return fx_start[fx_scene][t]; }
@@ -243,12 +245,14 @@ int song_get_track_type(int t) { return fx_type[t]; }
 int song_get_transpose(int s,int t) { return 0; }
 /* edits are never performed while rendering */
 int song_add_step_event(int s,int t,int step,struct track_event *e) { return -1; }
-void song_clear_step_event(int s,int t,int step,int slot) {} void song_clear_step(int s,int t,int step) {}
+static int fx_writable;  /* lane Fill image only: song edits land in the fixture */
+void song_clear_step_event(int s,int t,int step,int slot) { if(fx_writable && !t) fx_events[step][slot].type=0; } void song_clear_step(int s,int t,int step) {}
 void song_set_ratchet_mode(int s,int t,int step,int r) {} void song_set_root(int r) {}
 void song_set_scene_root(int s,int r) {} void song_set_start_delay(int s,int t,int step,int d) {}
-int song_set_step_event(int s,int t,int step,int slot,struct track_event *e) { return -1; }
+int song_set_step_event(int s,int t,int step,int slot,struct track_event *e) { if(!fx_writable || t) return -1; fx_events[step][slot]=*e; return 0; }
 #define NOEDIT1(n) void n(int c) {}
 #define NOEDIT2(n) void n(int a,int c) {}
+NOEDIT1(seq_ctrl_adjust_euclidean_density) NOEDIT1(seq_ctrl_adjust_euclidean_rotation)
 NOEDIT1(seq_ctrl_adjust_arp_gate_time) NOEDIT1(seq_ctrl_adjust_arp_speed) NOEDIT1(seq_ctrl_adjust_arp_type)
 NOEDIT1(seq_ctrl_adjust_bias_track) NOEDIT2(seq_ctrl_adjust_clock_out_rate) NOEDIT1(seq_ctrl_adjust_clock_source)
 NOEDIT1(seq_ctrl_adjust_cv_bend_range) NOEDIT2(seq_ctrl_adjust_cv_output_scaling) NOEDIT2(seq_ctrl_adjust_cvcal)
@@ -395,11 +399,11 @@ int main(int argc,char **argv) {
                 if(i==0) HIT(49,100);
                 #undef HIT
             }
-            fx_type[0]=1; fx_start[0][0]=0; fx_len[0][0]=16;
+            fx_type[0]=1; fx_start[0][0]=0; fx_len[0][0]=16; fx_drum_open=1;
             boot(screen); step_edit_set_enable(1); step_edit_adjust_cursor(0,0);
             bad|=shot(argv[1],"16-drum-step-compact",screen);
             step_edit_toggle_details(); bad|=shot(argv[1],"17-drum-step-expanded",screen);
-            step_edit_toggle_details();
+            step_edit_toggle_details(); step_edit_toggle_details(); /* lanes, back to compact */
             step_edit_adjust_cursor(-1,1);
             bad|=shot(argv[1],"18-drum-region",screen);
             for(int k=0;k<3;k++) step_edit_adjust_note(1,1); /* All, BD, SD, CHH */
@@ -419,6 +423,27 @@ int main(int argc,char **argv) {
             fx_recording=1; boot(screen); gui_track_overview_open(0);
             bad|=shot(argv[1],"22-drum-lanes-recording",screen);
             gui_clock_help_set(0); fx_recording=0;
+            /* Step Edit lane view: cursor on step 5's lowest hit (kick). */
+            boot(screen); step_edit_set_enable(1); step_edit_adjust_cursor(4,0);
+            step_edit_toggle_details(); step_edit_toggle_details();
+            bad|=shot(argv[1],"23-drum-lane-edit",screen);
+            step_edit_toggle_details(); step_edit_set_enable(0);
+            /* Euclidean 11 of 16: masked steps black, their hits dim. */
+            fx_start[0][0]=0; fx_len[0][0]=16; fx_euc=1; fx_density=69; fx_rotation=0;
+            boot(screen); gui_track_overview_open(0); bad|=shot(argv[1],"24-drum-lanes-masked",screen);
+            gui_clock_help_set(0); fx_euc=0; fx_density=100;
+            /* Lane Fill (changes the fixture; last drum image): kick +3, rotated once. */
+            boot(screen); step_edit_set_enable(1); step_edit_adjust_cursor(4,0);
+            step_edit_toggle_details(); step_edit_toggle_details();
+            fx_writable=1;
+            step_edit_adjust_ratchet_mode(3,1); step_edit_adjust_note(1,1);
+            bad|=shot(argv[1],"25-drum-lane-fill",screen);
+            fx_writable=0;
+#ifdef RENDER_DUMP_TEXT
+            for(int l=0;l<GUI_NUM_STATUS_LINES;l++) printf("%d|%s|\n",l,gstate.status_lines[l]);
+#endif
+            step_edit_toggle_details(); step_edit_set_enable(0);
+            fx_drum_open=0;
             memcpy(fx_events,saved,sizeof(saved));
             fx_type[0]=t0; fx_start[0][0]=s0; fx_len[0][0]=l0;
         }

@@ -154,5 +154,5 @@ trap 'rm -rf "$TMP"' EXIT HUP INT TERM
 
 # Screenshot renderer smoke test: production gfx/GUI into host framebuffer.
 sh tools/screenshots/render.sh "$TMP/screens" both >/dev/null
-test "$(ls "$TMP/screens" | wc -l)" -eq 44
+test "$(ls "$TMP/screens" | wc -l)" -eq 50
 echo "screenshot renderer passed"

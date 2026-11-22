@@ -27,6 +27,11 @@ int seq_engine_get_effective_motion_length(int track) { return target_lengths[tr
 static char rows[7][64];
 static int details_visible;
 void gui_step_details_set(int enable) {details_visible=enable;}
+static int lane_gui_on, lane_gui_cursor, lane_gui_step, lane_gui_lanes[10];
+void gui_lane_edit_set(int on,int track,const int *lanes,int cursor,int step) {
+    lane_gui_on=on;lane_gui_cursor=cursor;lane_gui_step=step;
+    if(lanes) memcpy(lane_gui_lanes,lanes,sizeof(lane_gui_lanes));
+}
 int seq_ctrl_get_run_state(void) { return running; }
 int seq_ctrl_get_scene(void) { return 0; }
 int seq_ctrl_get_first_track(void) { return 0; }
@@ -59,7 +64,12 @@ int song_add_step_event(int scene, int track, int step, struct track_event *e) {
     return -1;
 }
 void song_clear_step(int scene,int track,int step) {memset(events,0,sizeof(events));}
-void song_clear_step_event(int scene, int track, int step, int slot) {events[slot].type=0;}
+void song_clear_step_event(int scene, int track, int step, int slot) {if(region_mode) store[step][slot].type=0; else events[slot].type=0;}
+static int euc_density=100, euc_rotation, euc_calls;
+int song_get_euclidean_density(int scene,int track) {return euc_density;}
+int song_get_euclidean_rotation(int scene,int track) {return euc_rotation;}
+void seq_ctrl_adjust_euclidean_density(int change) {euc_density+=change;euc_calls++;}
+void seq_ctrl_adjust_euclidean_rotation(int change) {euc_rotation+=change;euc_calls++;}
 static int test_track_type = SONG_TRACK_TYPE_VOICE;
 int song_get_track_type(int track) {return test_track_type;}
 void gui_clear_status_text_all(void) { memset(rows, ' ', sizeof(rows)); }
@@ -411,7 +421,149 @@ static void test_region_filter(void) {
     step_edit_adjust_cursor(1,1);
     region_mode=0; region_start=0; region_len=64;
 }
+// Lane view: third Step Edit view on DRUM; add/velocity/remove, steal, rows.
+static void test_lane_edit(void) {
+    setup(); test_track_type=SONG_TRACK_TYPE_DRUM; sedits.enable=1; sedits.event_pos=-1;
+    memset(&slanes,0,sizeof(slanes));
+    events[0]=N(42,90,24); events[1]=N(36,110,24);
+    events[2]=(struct track_event){.type=SONG_EVENT_PROBABILITY,.data0=50};
+    step_edit_toggle_details(); assert(step_details_preference && !slanes.on);  /* expanded */
+    step_edit_toggle_details(); assert(slanes.on && lane_gui_on);                /* lanes */
+    assert(slanes.lanes[0]==36 && slanes.lanes[1]==42 && slanes.lanes[2]==-1);
+    assert(slanes.cursor==0);                     /* lowest hit of the step: kick */
+    assert(strstr(rows[1],"BD 36") && strstr(rows[2],"Vel 110"));
+    int before=undo_captures;
+    /* velocity of the hit under the cursor */
+    step_edit_adjust_velocity(-5,0); assert(events[1].data1==100);
+    /* remove (Shift + Value), then add back at slot 1 with velocity 100 */
+    step_edit_adjust_velocity(1,1); assert(events[1].type==0 || events[1].data0!=36);
+    for(int i=0;i<6;i++) assert(!(events[i].type==SONG_EVENT_NOTE && events[i].data0==36));
+    step_edit_adjust_velocity(1,0);
+    assert(events[0].type==SONG_EVENT_NOTE && events[0].data0==36 && events[0].data1==100);
+    assert(events[1].data0==42 && events[2].type==SONG_EVENT_PROBABILITY);  /* shifted right */
+    assert(undo_captures==before+1);
+    /* gate and own delay of the hit */
+    { int g=events[0].length; step_edit_adjust_gate_time(1,0); assert(events[0].length>g && events[1].length==24); }
+    step_edit_adjust_start_delay(1,0);
+    assert(events[0].delay==seq_utils_delay_adjust(SEQ_START_DELAY_INHERIT,1,1));
+    assert(events[1].delay==SEQ_START_DELAY_INHERIT);
+    /* rows: Shift + Motion Start; empty row takes a drum with Transpose */
+    step_edit_adjust_cursor(-2,1); assert(slanes.cursor==2 && strstr(rows[1],"empty")); /* ccw = up */
+    step_edit_adjust_cursor(1,1); assert(slanes.cursor==1);                            /* cw = down */
+    step_edit_adjust_cursor(-1,1);
+    step_edit_adjust_note(1,0); assert(slanes.lanes[2]==35);   /* first GM drum, skips used */
+    step_edit_adjust_note(1,0); assert(slanes.lanes[2]==37);   /* jumps over 36 */
+    step_edit_adjust_cursor(2,1); assert(slanes.cursor==0);
+    /* steal: full step, new hit at slot 1, slot 6 dropped silently */
+    for(int i=0;i<6;i++) events[i]=N(60+i,80,24);
+    events[5]=(struct track_event){.type=SONG_EVENT_CC,.data0=7,.data1=1};
+    step_edit_adjust_cursor(-2,1);                             /* row 2 = 37 */
+    step_edit_adjust_velocity(1,0);
+    assert(events[0].data0==37 && events[1].data0==60 && events[5].data0==64);
+    assert(events[5].type==SONG_EVENT_NOTE && !notices);
+    /* Shift + Record clears the whole step in lane view */
+    sedits.event_pos=3; step_edit_clear_step();
+    for(int i=0;i<6;i++) assert(!events[i].type);
+    sedits.event_pos=-1;
+    /* rows are fixed while visiting: removing every 42 keeps its row */
+    step_edit_adjust_cursor(1,1); assert(slanes.cursor==1 && slanes.lanes[1]==42);
+    /* cycle back to compact; VOICE never shows lanes */
+    step_edit_toggle_details(); assert(!slanes.on && !step_details_preference && !lane_gui_on);
+    test_track_type=SONG_TRACK_TYPE_VOICE;
+    step_edit_toggle_details(); step_edit_toggle_details();
+    assert(!slanes.on && !step_details_preference);
+    step_details_preference=0;
+}
+// Transpose on a row with hits moves the whole lane (all steps), skipping
+// pitches in use; one undo point; other pitches unchanged.
+static void test_lane_move(void) {
+    setup(); test_track_type=SONG_TRACK_TYPE_DRUM; region_mode=1;
+    memset(store,0,sizeof(store)); memset(&slanes,0,sizeof(slanes));
+    store[0][0]=N(36,110,24); store[0][1]=N(42,90,24);
+    store[2][0]=N(42,80,24); store[40][0]=N(42,70,24); store[40][1]=N(44,60,24);
+    sedits.enable=1; sedits.event_pos=-1; sedits.step_pos=0;
+    step_edit_toggle_details(); step_edit_toggle_details();
+    assert(slanes.on && slanes.lanes[0]==36 && slanes.lanes[1]==42 && slanes.lanes[2]==44);
+    step_edit_adjust_cursor(-1,1); assert(slanes.cursor==1);
+    int before=undo_captures;
+    step_edit_adjust_note(1,0);                    /* 42 -> 43 */
+    assert(store[0][1].data0==43 && store[2][0].data0==43 && store[40][0].data0==43);
+    assert(slanes.lanes[1]==43 && strstr(rows[1],"lane moved"));
+    step_edit_adjust_note(1,0);                    /* 43 -> 45 (44 in use) */
+    assert(store[0][1].data0==45 && store[40][0].data0==45 && store[40][1].data0==44);
+    assert(store[0][0].data0==36 && undo_captures==before+1);
+    step_edit_adjust_note(-3,0);                   /* 45 -> 43 -> 42 -> 41 */
+    assert(store[2][0].data0==41 && slanes.lanes[1]==41);
+    /* Track Euclid is not used in the lane view any more. */
+    euc_calls=0; int r=ratchet; step_edit_adjust_ratchet_mode(1,0); assert(ratchet==r && !euc_calls);
+    step_edit_toggle_details(); region_mode=0; test_track_type=SONG_TRACK_TYPE_VOICE;
+}
+static int lane_hits(int pitch,int *mask16) {
+    int n=0; *mask16=0;
+    for(int st=0;st<16;st++) for(int sl=0;sl<SEQ_TRACK_POLY;sl++)
+        if(store[st][sl].type==SONG_EVENT_NOTE && store[st][sl].data0==pitch) {n++; *mask16|=1<<st;}
+    return n;
+}
+// Lane Fill (Shift+Pattern) / Rot (Shift+Transpose) on one lane, from a snapshot.
+static void test_lane_fill(void) {
+    int m;
+    setup(); test_track_type=SONG_TRACK_TYPE_DRUM; region_mode=1;
+    region_start=0; region_len=16; euc_calls=0;
+    memset(store,0,sizeof(store)); memset(&slanes,0,sizeof(slanes)); memset(&slfill,0,sizeof(slfill));
+    store[0][0]=N(36,110,24); store[8][0]=N(36,90,24);        /* kick on 1 and 9 */
+    store[4][0]=N(38,100,24);                                 /* snare: other lane */
+    store[20][0]=N(36,100,24);                                /* outside range */
+    sedits.enable=1; sedits.event_pos=-1; sedits.step_pos=0;
+    step_edit_toggle_details(); step_edit_toggle_details();
+    assert(slanes.on && slanes.lanes[0]==36);
+    int before=undo_captures;
+    /* +4: four on the floor, aligned to existing hits (1, 5, 9, 13). */
+    for(int k=0;k<4;k++) step_edit_adjust_ratchet_mode(1,1);
+    assert(lane_hits(36,&m)==4 && m==0x1111);
+    /* own hits keep velocity; filled = 10% below mean (100) = 90 */
+    assert(store[0][0].data1==110 && store[8][0].data1==90);
+    { int found=0; for(int sl=0;sl<SEQ_TRACK_POLY;sl++) if(store[4][sl].data0==36 && store[4][sl].type) {assert(store[4][sl].data1==90);found=1;}
+      assert(found); }
+    assert(store[4][1].data0==38 || store[4][0].data0==38);   /* snare kept */
+    assert(!strncmp(rows[2],"Fill +4 E4/16 Rot 0",19));
+    /* rotate one step right (all four move), then back */
+    step_edit_adjust_note(1,1); assert(lane_hits(36,&m)==4 && m==0x2222);
+    assert(!strncmp(rows[2],"Fill +4 E4/16 Rot 1",19));
+    step_edit_adjust_note(-1,1); assert(lane_hits(36,&m)==4 && m==0x1111);
+    /* back to 0: exactly the original lane (velocities, slots) */
+    for(int k=0;k<4;k++) step_edit_adjust_ratchet_mode(-1,1);
+    assert(lane_hits(36,&m)==2 && m==0x0101 && store[0][0].data1==110 && store[8][0].data1==90);
+    assert(store[0][0].data0==36 && store[8][0].data0==36);
+    /* thinning: -1 removes the weaker (step 9), -2 empties; can't go further */
+    step_edit_adjust_ratchet_mode(-1,1); assert(lane_hits(36,&m)==1 && m==0x0001);
+    step_edit_adjust_ratchet_mode(-5,1); assert(lane_hits(36,&m)==0);
+    step_edit_adjust_ratchet_mode(2,1); assert(lane_hits(36,&m)==2 && m==0x0101);
+    assert(store[20][0].data0==36);                           /* outside range untouched */
+    assert(undo_captures==before+1);
+    /* rotation without fill */
+    step_edit_adjust_note(2,1); assert(lane_hits(36,&m)==2 && m==0x0404 && store[2][0].data1==110);
+    step_edit_adjust_note(-2,1);
+    /* full step: never steal, count blocked; comes back when turned away */
+    for(int sl=0;sl<SEQ_TRACK_POLY;sl++) store[12][sl]=N(60+sl,80,24);
+    slfill.valid=0;                                           /* hand edit: new session */
+    for(int k=0;k<4;k++) step_edit_adjust_ratchet_mode(1,1);
+    assert(slfill.blocked==1 && lane_hits(36,&m)==3 && store[12][5].data0==65);
+    assert(strstr(rows[3],"1 blocked"));
+    step_edit_adjust_note(1,1); assert(slfill.blocked==0 && lane_hits(36,&m)==4);
+    /* empty lane gets E(k,n) from step 1 at velocity 100 */
+    memset(store,0,sizeof(store)); slfill.valid=0;
+    step_edit_adjust_ratchet_mode(3,1); assert(lane_hits(36,&m)==3 && (m&1));
+    for(int st=0;st<16;st++) if(store[st][0].type) assert(store[st][0].data1==100);
+    /* a hand edit (different content) restarts the session from what is there */
+    store[1][1]=N(36,50,24); step_edit_adjust_ratchet_mode(0,1);
+    step_edit_adjust_note(1,1); assert(slfill.fill==0 && slfill.rot==1);
+    step_edit_toggle_details(); region_mode=0; region_start=0; region_len=64;
+    test_track_type=SONG_TRACK_TYPE_VOICE;
+}
 int main(void) {
+    test_lane_fill();
+    test_lane_move();
+    test_lane_edit();
     test_drum_names();
     test_region_filter();
     test_region_edit();

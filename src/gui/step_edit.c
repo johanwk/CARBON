@@ -78,9 +78,36 @@ static void step_edit_region_filter_step(int change);
 static int step_details_preference;
 void step_edit_update_display(void);
 
+// Lane view (third Step Edit view, DRUM tracks): fixed rows while visiting.
+#define STEP_EDIT_LANES 10
+static struct {
+    int on;                       // lane view active
+    int lanes[STEP_EDIT_LANES];   // pitch per row, bottom first; -1 = empty row
+    int cursor;                   // row index (0 = bottom)
+    int moved;                    // last Transpose moved a lane (status note)
+} slanes;
+static int step_edit_lanes_active(void) {
+    return slanes.on && sedits.enable && sedits.event_pos != STEP_EDIT_EVENT_POS_REGION &&
+        song_get_track_type(sedits.track) == SONG_TRACK_TYPE_DRUM;
+}
+static void step_edit_lanes_build(void);
+static void step_edit_lanes_publish(void);
+static void step_edit_lanes_cursor_to_step(void);
+
+// Long-press Edit: compact -> expanded -> lanes (DRUM only) -> compact.
 void step_edit_toggle_details(void) {
     if(!sedits.enable) return;
-    step_details_preference=!step_details_preference;
+    int drum = song_get_track_type(sedits.track) == SONG_TRACK_TYPE_DRUM &&
+        sedits.event_pos != STEP_EDIT_EVENT_POS_REGION;
+    if(slanes.on && !drum) slanes.on = 0;  // lanes kept from a DRUM track
+    if(slanes.on) {slanes.on = 0; step_details_preference = 0;}
+    else if(step_details_preference && drum) {
+        slanes.on = 1; step_details_preference = 0;
+        sedits.event_pos = STEP_EDIT_EVENT_POS_ALL;
+        step_edit_lanes_build();
+        step_edit_lanes_cursor_to_step();
+    }
+    else step_details_preference = !step_details_preference;
     sedits.edit_timeout=panel_menu_get_timeout();
     step_edit_update_display();
 }
@@ -118,6 +145,7 @@ int step_edit_does_step_contain_event(int type, int data0);
 // init the step edit mode
 void step_edit_init(void) {
     step_details_preference=0;
+    slanes.on=0;
     sedits.enable = 0;
     sedits.undo_captured = 0;
     sedits.edit_timeout = 0;
@@ -223,6 +251,14 @@ void step_edit_handle_input(struct midi_msg *msg) {
                 song_get_step_length(sedits.scene, sedits.track));
             song_add_step_event(sedits.scene, sedits.track,
                 sedits.step_pos, &event);
+            if(step_edit_lanes_active()) {
+                int row, empty = -1, known = 0;
+                for(row = 0; row < STEP_EDIT_LANES; row++) {
+                    if(slanes.lanes[row] == msg->data0) known = 1;
+                    if(slanes.lanes[row] < 0 && empty < 0) empty = row;
+                }
+                if(!known && empty >= 0) slanes.lanes[empty] = msg->data0;
+            }
             step_edit_update_display();
             step_edit_add_recording_note(msg->data0);
             break;
@@ -270,6 +306,7 @@ void step_edit_set_enable(int enable) {
             if(sedits.event_pos == STEP_EDIT_EVENT_POS_REGION)
                 sedits.event_pos = STEP_EDIT_EVENT_POS_ALL;  // a new visit starts on a step
             sedits.region_filter = -1;
+            if(slanes.on) {step_edit_lanes_build(); step_edit_lanes_cursor_to_step();}
             panel_menu_set_mode(PANEL_MENU_NONE);  // disable any menu mode
             gui_grid_clear_overlay();
             gui_grid_set_overlay_enable(1);
@@ -282,6 +319,7 @@ void step_edit_set_enable(int enable) {
     // stop edit - only if we're actually enabled
     else if(sedits.enable) {
         sedits.enable = 0;
+        gui_lane_edit_set(0, 0, 0, 0, 0);
         gui_step_details_set(0);
         sedits.undo_captured = 0;
         sedits.edit_timeout = 0;
@@ -335,8 +373,386 @@ void step_edit_toggle_scene(int scene) {
 }
 
 // adjust the cursor position
+//
+// Lane view editing (DRUM). Rows are fixed for the visit; a new hit goes to
+// slot 1, before any condition, shifting events right up to the first free
+// slot. A full step drops slot 6 silently.
+//
+static void step_edit_lanes_build(void) {
+    uint16_t hits[128] = {0};
+    unsigned char take[128] = {0};
+    struct track_event event;
+    int used = 0, n = 0;
+    for(int step = 0; step < SEQ_NUM_STEPS; step++)
+        for(int slot = 0; slot < SEQ_TRACK_POLY; slot++)
+            if(song_get_step_event(sedits.scene, sedits.track, step, slot, &event) == 0 &&
+                    event.type == SONG_EVENT_NOTE && event.data0 < 128) {
+                if(!hits[event.data0]) used++;
+                hits[event.data0]++;
+            }
+    int kick = hits[36] ? 36 : hits[35] ? 35 : -1;   // same choice as the overview
+    if(kick >= 0) {take[kick] = 1; n++;}
+    while(n < STEP_EDIT_LANES && n < used) {
+        int best = -1;
+        for(int p = 0; p < 128; p++) if(hits[p] && !take[p] && (best < 0 || hits[p] > hits[best])) best = p;
+        take[best] = 1; n++;
+    }
+    n = 0;
+    for(int p = 0; p < 128; p++) if(take[p]) slanes.lanes[n++] = p;
+    while(n < STEP_EDIT_LANES) slanes.lanes[n++] = -1;
+    slanes.cursor = 0;
+}
+// Open on the lowest hit of the current step (else keep the row).
+static void step_edit_lanes_cursor_to_step(void) {
+    struct track_event event;
+    for(int row = 0; row < STEP_EDIT_LANES; row++) {
+        if(slanes.lanes[row] < 0) continue;
+        for(int slot = 0; slot < SEQ_TRACK_POLY; slot++)
+            if(song_get_step_event(sedits.scene, sedits.track, sedits.step_pos, slot, &event) == 0 &&
+                    event.type == SONG_EVENT_NOTE && event.data0 == slanes.lanes[row]) {
+                slanes.cursor = row;
+                return;
+            }
+    }
+}
+static void step_edit_lanes_publish(void) {
+    gui_lane_edit_set(step_edit_lanes_active(), sedits.track, slanes.lanes,
+        slanes.cursor, sedits.step_pos);
+}
+static int step_edit_lanes_pitch(void) {
+    return slanes.lanes[seq_utils_clamp(slanes.cursor, 0, STEP_EDIT_LANES - 1)];
+}
+// First slot holding a Note at pitch on the cursor step, or -1.
+static int step_edit_lanes_find(int pitch, struct track_event *event) {
+    for(int slot = 0; slot < SEQ_TRACK_POLY; slot++)
+        if(song_get_step_event(sedits.scene, sedits.track, sedits.step_pos, slot, event) == 0 &&
+                event->type == SONG_EVENT_NOTE && event->data0 == pitch) return slot;
+    return -1;
+}
+static void step_edit_lanes_insert(struct track_event *hit) {
+    struct track_event ev[SEQ_TRACK_POLY], tmp;
+    int stop = SEQ_TRACK_POLY - 1;
+    for(int slot = 0; slot < SEQ_TRACK_POLY; slot++) {
+        if(song_get_step_event(sedits.scene, sedits.track, sedits.step_pos, slot, &tmp) != 0)
+            tmp.type = SONG_EVENT_NULL;
+        ev[slot] = tmp;
+    }
+    for(int slot = 0; slot < SEQ_TRACK_POLY; slot++)
+        if(ev[slot].type == SONG_EVENT_NULL) {stop = slot; break;}
+    for(int slot = stop; slot > 0; slot--) ev[slot] = ev[slot - 1];  // slot 6 drops if full
+    ev[0] = *hit;
+    for(int slot = 0; slot <= stop; slot++) {
+        if(ev[slot].type == SONG_EVENT_NULL)
+            song_clear_step_event(sedits.scene, sedits.track, sedits.step_pos, slot);
+        else song_set_step_event(sedits.scene, sedits.track, sedits.step_pos, slot, &ev[slot]);
+    }
+}
+//
+// Lane Fill/Rot session (Shift + Pattern / Shift + Transpose in the lane
+// view). Every turn is computed from a snapshot of the playing range taken
+// at the first turn, so turning back restores the lane exactly:
+//   lane = rotate(fill(own hits, Fill), Rot)
+// Fill > 0 lays E(Fill, n) over the own hits, aligned to match most of them
+// (own hits always stay); Fill < 0 thins own hits, weakest beat first.
+// Filled hits: 10% below the own hits' mean velocity (100 if none). Full
+// steps are never stolen: a hit that finds no free slot is "blocked". The
+// session restarts when the range content no longer matches (hand edit,
+// recording, undo, other row).
+//
+static struct {
+    int valid, pitch, start, len, fill, rot, hits, blocked;
+    uint32_t sum;
+    struct track_event steps[SEQ_NUM_STEPS][SEQ_TRACK_POLY];
+    int8_t own_slot[SEQ_NUM_STEPS];  // slot of the own hit per range index, -1 none
+} slfill;
+static void step_edit_region(int *start, int *length);
+static uint32_t step_edit_lane_fill_sum(int pitch, int start, int len) {
+    struct track_event e;
+    uint32_t h = 2166136261u ^ (uint32_t)(pitch | start << 8 | len << 16);
+    for(int i = 0; i < len; i++)
+        for(int slot = 0; slot < SEQ_TRACK_POLY; slot++) {
+            if(song_get_step_event(sedits.scene, sedits.track, (start + i) % SEQ_NUM_STEPS, slot, &e) != 0)
+                e = (struct track_event){0};
+            uint32_t v[3] = {e.type | e.data0 << 8 | e.data1 << 16 | (uint32_t)e.delay << 24, e.length, (uint32_t)slot};
+            for(int k = 0; k < 3; k++) h = (h ^ v[k]) * 16777619u;
+        }
+    return h;
+}
+static int step_edit_lane_fill_current(int pitch) {
+    int start, len;
+    if(!slfill.valid || slfill.pitch != pitch) return 0;
+    step_edit_region(&start, &len);
+    return start == slfill.start && len == slfill.len &&
+        step_edit_lane_fill_sum(pitch, start, len) == slfill.sum;
+}
+static void step_edit_lane_fill_begin(int pitch) {
+    struct track_event e;
+    step_edit_region(&slfill.start, &slfill.len);
+    slfill.pitch = pitch; slfill.fill = slfill.rot = 0; slfill.blocked = 0; slfill.hits = 0;
+    for(int i = 0; i < slfill.len; i++) {
+        int step = (slfill.start + i) % SEQ_NUM_STEPS;
+        slfill.own_slot[i] = -1;
+        for(int slot = 0; slot < SEQ_TRACK_POLY; slot++) {
+            if(song_get_step_event(sedits.scene, sedits.track, step, slot, &e) != 0)
+                e = (struct track_event){0};
+            slfill.steps[i][slot] = e;
+            if(slfill.own_slot[i] < 0 && e.type == SONG_EVENT_NOTE && e.data0 == pitch) {
+                slfill.own_slot[i] = slot; slfill.hits++;
+            }
+        }
+    }
+    slfill.valid = 1;
+}
+// Beat strength of a range index (16th grid): thinning removes weakest first.
+static int step_edit_lane_strength(int i) {
+    return i == 0 ? 5 : !(i % 8) ? 4 : !(i % 4) ? 3 : !(i % 2) ? 2 : 1;
+}
+// Compute and write the lane for the current Fill/Rot.
+static void step_edit_lane_fill_apply(void) {
+    int n = slfill.len, own = 0, vsum = 0, gate = 0;
+    int8_t src[SEQ_NUM_STEPS];          // per index: own source index, -2 filled, -1 none
+    for(int i = 0; i < n; i++) {
+        src[i] = slfill.own_slot[i] >= 0 ? i : -1;
+        if(src[i] >= 0) {
+            struct track_event *e = &slfill.steps[i][(int)slfill.own_slot[i]];
+            own++; vsum += e->data1; if(!gate) gate = e->length;
+        }
+    }
+    if(slfill.fill < 0) {
+        for(int k = 0; k < -slfill.fill; k++) {
+            int worst = -1;
+            for(int i = n - 1; i >= 0; i--)
+                if(src[i] >= 0 && (worst < 0 || step_edit_lane_strength(i) < step_edit_lane_strength(worst)))
+                    worst = i;
+            if(worst < 0) break;
+            src[worst] = -1;
+        }
+    }
+    else if(slfill.fill > 0) {
+        int k = slfill.fill < n ? slfill.fill : n, best = 0, best_match = -1;
+        for(int r = 0; r < n; r++) {
+            int match = 0;
+            for(int i = 0; i < n; i++)
+                if(((((i - r + n) % n) * k) % n) < k && src[i] >= 0) match++;
+            if(match > best_match) {best_match = match; best = r;}
+        }
+        for(int i = 0; i < n; i++)
+            if(((((i - best + n) % n) * k) % n) < k && src[i] < 0) src[i] = -2;
+    }
+    int vel = own ? (vsum * 9 + own * 5) / (own * 10) : STEP_EDIT_NEW_NOTE_VELOCITY;
+    if(vel < 1) vel = 1;
+    if(!gate) gate = seq_utils_step_len_to_ticks(
+        song_get_step_length(seq_ctrl_get_scene(), sedits.track)) >> 1;
+    int rot = ((slfill.rot % n) + n) % n;
+    slfill.hits = slfill.blocked = 0;
+    for(int i = 0; i < n; i++) {
+        struct track_event want[SEQ_TRACK_POLY], cur;
+        int step = (slfill.start + i) % SEQ_NUM_STEPS, from = (i - rot + n) % n;
+        memcpy(want, slfill.steps[i], sizeof(want));
+        if(slfill.own_slot[i] >= 0) want[(int)slfill.own_slot[i]].type = SONG_EVENT_NULL;
+        if(src[from] != -1) {
+            struct track_event hit;
+            if(src[from] >= 0) hit = slfill.steps[from][(int)slfill.own_slot[from]];
+            else hit = (struct track_event){.type = SONG_EVENT_NOTE, .data0 = slfill.pitch,
+                .data1 = vel, .delay = SEQ_START_DELAY_INHERIT, .length = gate};
+            // Unmoved own hit returns to its own slot; others go to slot 1,
+            // shifting up to the first free slot. Never steal.
+            if(src[from] >= 0 && from == i && want[(int)slfill.own_slot[i]].type == SONG_EVENT_NULL) {
+                want[(int)slfill.own_slot[i]] = hit; slfill.hits++;
+            }
+            else {
+                int hole = -1;
+                for(int slot = 0; slot < SEQ_TRACK_POLY; slot++)
+                    if(want[slot].type == SONG_EVENT_NULL) {hole = slot; break;}
+                if(hole < 0) slfill.blocked++;
+                else {
+                    for(int slot = hole; slot > 0; slot--) want[slot] = want[slot - 1];
+                    want[0] = hit; slfill.hits++;
+                }
+            }
+        }
+        for(int slot = 0; slot < SEQ_TRACK_POLY; slot++) {
+            int has = song_get_step_event(sedits.scene, sedits.track, step, slot, &cur) == 0;
+            if(want[slot].type == SONG_EVENT_NULL) {
+                if(has) song_clear_step_event(sedits.scene, sedits.track, step, slot);
+            }
+            else if(!has || memcmp(&cur, &want[slot], sizeof(cur)))
+                song_set_step_event(sedits.scene, sedits.track, step, slot, &want[slot]);
+        }
+    }
+    slfill.sum = step_edit_lane_fill_sum(slfill.pitch, slfill.start, slfill.len);
+}
+static void step_edit_lane_fill_turn(int dfill, int drot) {
+    int pitch = slanes.lanes[seq_utils_clamp(slanes.cursor, 0, STEP_EDIT_LANES - 1)];
+    sedits.edit_timeout = panel_menu_get_timeout();
+    slanes.moved = 0;
+    if(pitch < 0) {step_edit_update_display(); return;}
+    if(!step_edit_lane_fill_current(pitch)) step_edit_lane_fill_begin(pitch);
+    int own = 0;
+    for(int i = 0; i < slfill.len; i++) own += slfill.own_slot[i] >= 0;
+    int fill = seq_utils_clamp(slfill.fill + dfill, -own, slfill.len);
+    if(fill == slfill.fill && !drot) {step_edit_update_display(); return;}
+    if(step_edit_prepare_undo() < 0) return;
+    step_edit_stop_notes();
+    slfill.fill = fill;
+    slfill.rot = (slfill.rot + drot) % slfill.len;
+    step_edit_lane_fill_apply();
+    step_edit_update_display();
+}
+// mode: STEP_EDIT_ADJUST_VELO (add/velocity, shift = remove), GATE_TIME,
+// START_DELAY (own delay), NOTE (choose the drum of an empty row).
+static void step_edit_lanes_adjust(int change, int mode, int shift) {
+    struct track_event event;
+    int pitch = step_edit_lanes_pitch(), slot;
+    sedits.edit_timeout = panel_menu_get_timeout();
+    if(!change) {step_edit_update_display(); return;}
+    if(mode == STEP_EDIT_ADJUST_NOTE) {
+        // Shift + Transpose: rotate this lane (lane Fill/Rot session).
+        if(shift) {
+            step_edit_lane_fill_turn(0, change);
+            return;
+        }
+        // Next pitch in that direction not used by another row or by any
+        // note on the track (lanes never merge); empty rows start at GM 35/81.
+        unsigned char used[128] = {0};
+        for(int step = 0; step < SEQ_NUM_STEPS; step++)
+            for(int s2 = 0; s2 < SEQ_TRACK_POLY; s2++)
+                if(song_get_step_event(sedits.scene, sedits.track, step, s2, &event) == 0 &&
+                        event.type == SONG_EVENT_NOTE && event.data0 < 128) used[event.data0] = 1;
+        for(int r = 0; r < STEP_EDIT_LANES; r++)
+            if(r != slanes.cursor && slanes.lanes[r] >= 0) used[slanes.lanes[r]] = 1;
+        int dir = change > 0 ? 1 : -1, p = pitch < 0 ? (dir > 0 ? 34 : 82) : pitch;
+        for(int n = change > 0 ? change : -change; n > 0; n--) {
+            int q = p + dir;
+            while(q >= 0 && q <= 127 && used[q] && q != pitch) q += dir;
+            if(q < 0 || q > 127) break;
+            p = q;
+        }
+        if(p < 0 || p > 127 || p == pitch) {step_edit_update_display(); return;}
+        if(pitch >= 0) {
+            // Move every hit of this lane, all 64 steps (one undo point).
+            int moved = 0;
+            for(int step = 0; step < SEQ_NUM_STEPS && !moved; step++)
+                for(int s2 = 0; s2 < SEQ_TRACK_POLY; s2++)
+                    if(song_get_step_event(sedits.scene, sedits.track, step, s2, &event) == 0 &&
+                            event.type == SONG_EVENT_NOTE && event.data0 == pitch) {moved = 1; break;}
+            if(moved) {
+                if(step_edit_prepare_undo() < 0) return;
+                step_edit_stop_notes();
+                for(int step = 0; step < SEQ_NUM_STEPS; step++)
+                    for(int s2 = 0; s2 < SEQ_TRACK_POLY; s2++)
+                        if(song_get_step_event(sedits.scene, sedits.track, step, s2, &event) == 0 &&
+                                event.type == SONG_EVENT_NOTE && event.data0 == pitch) {
+                            event.data0 = p;
+                            song_set_step_event(sedits.scene, sedits.track, step, s2, &event);
+                        }
+                slanes.moved = 1;
+            }
+        }
+        slanes.lanes[slanes.cursor] = p;
+        sedits.last_adjust_type = STEP_EDIT_ADJUST_NOTE;
+        step_edit_update_display();
+        return;
+    }
+    slanes.moved = 0;
+    if(pitch < 0) {step_edit_update_display(); return;}
+    slot = step_edit_lanes_find(pitch, &event);
+    if(mode == STEP_EDIT_ADJUST_VELO && shift) {
+        if(slot < 0) return;
+        if(step_edit_prepare_undo() < 0) return;
+        step_edit_stop_notes();
+        while((slot = step_edit_lanes_find(pitch, &event)) >= 0)
+            song_clear_step_event(sedits.scene, sedits.track, sedits.step_pos, slot);
+    }
+    else if(mode == STEP_EDIT_ADJUST_VELO && slot < 0) {
+        if(step_edit_prepare_undo() < 0) return;
+        step_edit_stop_notes();
+        struct track_event hit = {.type = SONG_EVENT_NOTE, .data0 = pitch,
+            .data1 = STEP_EDIT_NEW_NOTE_VELOCITY, .delay = SEQ_START_DELAY_INHERIT,
+            .length = seq_utils_step_len_to_ticks(
+                song_get_step_length(seq_ctrl_get_scene(), sedits.track)) >> 1};
+        step_edit_lanes_insert(&hit);
+        step_edit_play_step();
+    }
+    else if(slot >= 0) {
+        if(step_edit_prepare_undo() < 0) return;
+        step_edit_stop_notes();
+        for(slot = 0; slot < SEQ_TRACK_POLY; slot++) {
+            if(song_get_step_event(sedits.scene, sedits.track, sedits.step_pos, slot, &event) != 0 ||
+                    event.type != SONG_EVENT_NOTE || event.data0 != pitch) continue;
+            if(mode == STEP_EDIT_ADJUST_VELO)
+                event.data1 = seq_utils_clamp(event.data1 + change * 2, 1, 127);
+            else if(mode == STEP_EDIT_ADJUST_GATE_TIME)
+                event.length = seq_utils_clamp(event.length +
+                    seq_utils_warp_change(event.length, change, 10),
+                    STEP_EDIT_SHORTEST_NOTE, STEP_EDIT_LONGEST_NOTE);
+            else if(mode == STEP_EDIT_ADJUST_START_DELAY)
+                event.delay = seq_utils_delay_adjust(event.delay, change, 1);
+            song_set_step_event(sedits.scene, sedits.track, sedits.step_pos, slot, &event);
+        }
+        if(mode == STEP_EDIT_ADJUST_VELO) step_edit_play_step();
+    }
+    sedits.last_adjust_type = mode;
+    step_edit_update_display();
+}
+static void step_edit_lanes_display(void) {
+    char line[GFX_LABEL_LEN], name[8], a[16], b[16];
+    struct track_event event;
+    int pitch = step_edit_lanes_pitch();
+    gui_step_details_set(0);
+    snprintf(line, sizeof(line), "Lanes T%d Step %02d", sedits.track + 1, sedits.step_pos + 1);
+    gui_set_status_text(0, line);
+    if(pitch < 0) {
+        gui_set_status_text(1, "-- empty row");
+        gui_set_status_text(2, "Transpose: choose drum");
+    }
+    else {
+        panel_utils_drum_name(name, pitch);
+        int n = strlen(name);
+        while(n > 0 && name[n - 1] == ' ') name[--n] = 0;
+        snprintf(line, sizeof(line), "%s %d%s", name, pitch, slanes.moved ? " (lane moved)" : "");
+        gui_set_status_text(1, line);
+        if(step_edit_lanes_find(pitch, &event) < 0) {
+            gui_set_status_text(2, "No hit  Value: add");
+        }
+        else {
+            panel_utils_gate_time_to_str(a, event.length);
+            snprintf(line, sizeof(line), "Vel %d Gate %.6s", event.data1, a);
+            gui_set_status_text(2, line);
+            if(event.delay == SEQ_START_DELAY_INHERIT) strcpy(b, "Step");
+            else if(seq_utils_delay_relative_label(event.delay))
+                snprintf(b, sizeof(b), "%s", seq_utils_delay_relative_label(event.delay));
+            else if(!event.delay) strcpy(b, "OFF");
+            else panel_utils_gate_time_to_str(b, event.delay);
+            snprintf(line, sizeof(line), "Dly %.6s Shift+Val: del", b);
+            gui_set_status_text(3, line);
+        }
+    }
+    if(pitch >= 0 && step_edit_lane_fill_current(pitch)) {
+        // Lines 2-3 show the lane session instead of the cursor hit.
+        int n = slfill.len, rot = ((slfill.rot % n) + n) % n;
+        if(slfill.fill > 0)
+            snprintf(line, sizeof(line), "Fill +%d E%d/%d Rot %d", slfill.fill, slfill.fill, n, rot);
+        else snprintf(line, sizeof(line), "Fill %d Rot %d", slfill.fill, rot);
+        gui_set_status_text(2, line);
+        if(slfill.blocked) snprintf(line, sizeof(line), "%d hits  %d blocked", slfill.hits, slfill.blocked);
+        else snprintf(line, sizeof(line), "%d hits", slfill.hits);
+        gui_set_status_text(3, line);
+    }
+    step_edit_lanes_publish();
+}
+
 void step_edit_adjust_cursor(int change, int shift) {
     int val;
+    // Lane view: Shift + Motion Start moves the lane cursor up/down.
+    if(shift && step_edit_lanes_active()) {
+        sedits.edit_timeout = panel_menu_get_timeout();
+        // clockwise moves down (row 0 is the bottom row)
+        slanes.cursor = seq_utils_clamp(slanes.cursor - change, 0, STEP_EDIT_LANES - 1);
+        slanes.moved = 0;
+        step_edit_update_display();
+        return;
+    }
     sedits.edit_timeout = panel_menu_get_timeout();
     sedits.cci_hint_timeout = 0;
 
@@ -393,6 +809,7 @@ void step_edit_adjust_cursor(int change, int shift) {
 void step_edit_adjust_note(int change, int shift) {
     struct track_event event = {.delay = SEQ_START_DELAY_INHERIT};
     sedits.edit_timeout = panel_menu_get_timeout();
+    if(step_edit_lanes_active()) {step_edit_lanes_adjust(change, STEP_EDIT_ADJUST_NOTE, shift); return;}
 
     // Region: Shift + Transpose steps the pitch filter (All, then pitches).
     if(shift && sedits.event_pos == STEP_EDIT_EVENT_POS_REGION) {
@@ -472,6 +889,7 @@ void step_edit_adjust_note(int change, int shift) {
 
 // adjust the step velocity
 void step_edit_adjust_velocity(int change, int shift) {
+    if(step_edit_lanes_active()) {step_edit_lanes_adjust(change, STEP_EDIT_ADJUST_VELO, shift); return;}
     sedits.edit_timeout = panel_menu_get_timeout();
     if(sedits.event_pos == STEP_EDIT_EVENT_POS_REGION) {
         if(!shift) step_edit_region_adjust(change, STEP_EDIT_ADJUST_VELO);
@@ -486,6 +904,10 @@ void step_edit_adjust_velocity(int change, int shift) {
 
 // adjust the step gate time
 void step_edit_adjust_gate_time(int change, int shift) {
+    if(step_edit_lanes_active()) {
+        if(!shift) step_edit_lanes_adjust(change, STEP_EDIT_ADJUST_GATE_TIME, 0);
+        return;
+    }
     sedits.edit_timeout = panel_menu_get_timeout();
     if(sedits.event_pos == STEP_EDIT_EVENT_POS_REGION) {
         if(!shift) step_edit_region_adjust(change, STEP_EDIT_ADJUST_GATE_TIME);
@@ -500,6 +922,10 @@ void step_edit_adjust_gate_time(int change, int shift) {
 
 // adjust the start delay
 void step_edit_adjust_start_delay(int change, int shift) {
+    if(step_edit_lanes_active()) {
+        if(!shift) step_edit_lanes_adjust(change, STEP_EDIT_ADJUST_START_DELAY, 0);
+        return;
+    }
     if(sedits.event_pos == STEP_EDIT_EVENT_POS_REGION) {
         sedits.edit_timeout = panel_menu_get_timeout();
         if(!shift) step_edit_region_adjust(change, STEP_EDIT_ADJUST_START_DELAY);
@@ -527,6 +953,12 @@ void step_edit_adjust_start_delay(int change, int shift) {
 
 // adjust the ratchet mode
 void step_edit_adjust_ratchet_mode(int change, int shift) {
+    if(step_edit_lanes_active()) {
+        // Lane view: Shift + Pattern = lane Fill (Euclidean over this lane);
+        // ratchet stays in the compact/expanded views.
+        if(shift && change) step_edit_lane_fill_turn(change, 0);
+        return;
+    }
     if(sedits.event_pos == STEP_EDIT_EVENT_POS_REGION) return;  // not a region parameter
     if(change && step_edit_prepare_undo() < 0) return;
     sedits.edit_timeout = panel_menu_get_timeout();
@@ -546,8 +978,8 @@ void step_edit_clear_step(void) {
     sedits.cci_hint_timeout = 0;
     sedits.edit_timeout = panel_menu_get_timeout();
     step_edit_stop_notes();
-    // clear specific event
-    if(sedits.event_pos != STEP_EDIT_EVENT_POS_ALL) {
+    // clear specific event (lane view always clears the whole step)
+    if(sedits.event_pos != STEP_EDIT_EVENT_POS_ALL && !step_edit_lanes_active()) {
         song_clear_step_event(sedits.scene, sedits.track,
             sedits.step_pos, sedits.event_pos);
     }
@@ -1247,6 +1679,8 @@ void step_edit_update_display(void) {
     struct track_event event = {.delay = SEQ_START_DELAY_INHERIT};
     gui_step_details_set(sedits.enable && step_details_preference);
     gui_clear_status_text_all();
+    if(step_edit_lanes_active()) {step_edit_lanes_display(); return;}
+    gui_lane_edit_set(0, 0, 0, 0, 0);
     step_edit_update_title();
     if(sedits.event_pos == STEP_EDIT_EVENT_POS_REGION) {
         step_edit_region_display();

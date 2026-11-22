@@ -105,7 +105,12 @@ CV_EDIT(seq_ctrl_adjust_cv_output_scaling,21)
 CV_EDIT(seq_ctrl_adjust_cvcal,22)
 CV_EDIT(seq_ctrl_adjust_cvoffset,23)
 static int help_draws, lane_fills;
-static int ui_running, ui_recording;
+static int ui_running, ui_recording, ui_mask_step=-1;
+static int ui_pattern, ui_density=100;
+int seq_engine_get_effective_pattern_type(int track) {return ui_pattern;}
+int seq_engine_get_effective_euclidean_density(int track) {return ui_density;}
+int song_get_euclidean_density(int scene,int track) {return ui_density;}
+int pattern_get_step_enable(int scene,int track,int pattern,int step) {return step!=ui_mask_step;}
 int seq_ctrl_get_run_state(void) {return ui_running;}
 int seq_ctrl_get_record_mode(void) {return ui_recording ? SEQ_CTRL_RECORD_RT : SEQ_CTRL_RECORD_IDLE;}
 /* Pending take fixture: what the engine would report while recording. */
@@ -124,7 +129,7 @@ int song_get_step_event(int scene,int track,int step,int slot,struct track_event
 }
 void gfx_fill_rect(int x,int y,int w,int h,uint32_t color) {
     assert(x>=0 && y>=0 && w>0 && h>0);
-    if(gstate.clock_help==GUI_OVERVIEW_LANES) {
+    if(gstate.clock_help==GUI_OVERVIEW_LANES || (gstate.lane_edit && !gstate.clock_help)) {
         assert(x>=gstate.GUI_GRID_X && x+w<=gstate.GUI_GRID_X+gstate.GUI_GRID_W);
         assert(y>=gstate.GUI_GRID_Y && y+h<=gstate.GUI_GRID_Y+gstate.GUI_GRID_H);
         lane_fills++;
@@ -137,7 +142,7 @@ void gfx_draw_string(struct gfx_label *label) {
     assert(strlen(label->text)<=29);
     assert(label->text[0]!='=');
     assert(!strstr(label->text,"Start:row Length:value"));
-    if(gstate.clock_help==GUI_OVERVIEW_LANES) {help_draws++;return;}
+    if(gstate.clock_help==GUI_OVERVIEW_LANES || (gstate.lane_edit && !gstate.clock_help)) {help_draws++;return;}
     assert(label->fg_color==(gui_overview_read_only()?GUI_FONT_COLOR_GREY:GUI_FONT_COLOR_NORMAL));
     if(!gui_overview_read_only()) {
         assert(label->h==10 && (label->y-gstate.GUI_GRID_Y)%13==0);
@@ -380,6 +385,22 @@ static void test_sys_edit_dispatch(void) {
         }
     }
 }
+static void gui_refresh_task_lane_test(void) {
+    int rows[10]={36,42,-1,-1,-1,-1,-1,-1,-1,-1};
+    ui_running=0;gstate.lane_edit_drawn=0;
+    gui_lane_edit_set(1,0,rows,1,20);
+    assert(gstate.lane_edit && gstate.lane_edit_step==20 && gstate.lane_edit_cursor==1);
+    lane_fills=0;gstate.clock_help=0;
+    /* draw as the refresh task would (lanes over the grid) */
+    assert(gui_draw_lane_edit());
+    assert(!strcmp(gstate.clock_help_rows[2+9],"BD") && !strcmp(gstate.clock_help_rows[2+8],"CHH"));
+    assert(!strcmp(gstate.clock_help_rows[2+7],"--") && strstr(gstate.clock_help_rows[0],"EDIT"));
+    assert(gstate.lane_cursor_drawn_row==8 && gstate.lane_cursor_drawn_col==4);
+    assert(!gui_draw_lane_edit());                                  /* nothing changed */
+    gui_lane_edit_set(1,0,rows,0,21);assert(gui_draw_lane_edit()); /* cursor moved */
+    assert(gstate.lane_cursor_drawn_row==9 && gstate.lane_cursor_drawn_col==5);
+    gui_lane_edit_set(0,0,0,0,0);assert(gui_lane_edit_restore() && !gstate.lane_edit_drawn);
+}
 static struct track_event LN(int p,int v) {
     return (struct track_event){.type=SONG_EVENT_NOTE,.data0=p,.data1=v,.length=12,.delay=SEQ_START_DELAY_INHERIT};
 }
@@ -424,6 +445,21 @@ static void test_drum_lanes(void) {
         assert(!(gui_lane_cell(0,1,36,1)&7));                        /* no hit */
         /* unchanged: no redraw */
         assert(!gui_draw_clock_help());
+        /* Pattern/Euclid mask: black column, hits kept at the lowest level. */
+        ui_mask_step=16;assert(gui_draw_clock_help());
+        { uint16_t c=gstate.lane_cells[9][0];  /* step 17 is masked; bottom row */
+          assert(c&0x100); assert(!(c&7) || (c&7)==1); }
+        assert(!(gstate.lane_cells[9][1]&0x100));
+        assert(!gui_draw_clock_help());
+        /* As recorded at 100%: an empty step is not masked (a hit would play);
+           with a Euclidean mask (density < 100) it is. */
+        ui_pattern=PATTERN_AS_RECORDED;assert(gui_draw_clock_help());
+        assert(!(gstate.lane_cells[9][0]&0x100));
+        ui_density=75;assert(gui_draw_clock_help());
+        assert(gstate.lane_cells[9][0]&0x100);
+        ui_density=100;ui_pattern=0;
+        ui_mask_step=-1;assert(gui_draw_clock_help());
+        assert(!(gstate.lane_cells[9][0]&0x100));
         /* paging: lanes 1-4, then Settings; stops at ends */
         gui_overview_page(-5);assert(gstate.lane_page==0 && !gstate.lane_follow);
         gui_overview_page(3);assert(gstate.lane_page==3 && gui_overview_mode()==GUI_OVERVIEW_LANES);
@@ -454,6 +490,8 @@ static void test_drum_lanes(void) {
         take_track=1;assert(gui_draw_clock_help());                  /* other track: no take */
         assert(!(gui_lane_cell(0,3,42,1)&0x80) && (gui_lane_cell(0,0,42,1)&7)>1);
         ui_recording=0;take_n=0;take_track=0;
+        /* Step Edit lane view: fixed rows incl. empty ones, cursor frame. */
+        gui_clock_help_set(0);gui_refresh_task_lane_test();
         ui_running=0;
         /* VOICE keeps the settings overview; paging has no effect */
         track_type_ui=SONG_TRACK_TYPE_VOICE;gui_track_overview_open(0);
