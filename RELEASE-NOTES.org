@@ -125,7 +125,7 @@ Report issues at https://github.com/johanwk/CARBON/issues with identity,
 reproduction steps, clock source, routes and synth setup. Share only files you
 have permission to publish. Successful setup reports are welcome too.
 
-The 1.36 and 1.37 releases/tags, community-1.38-rc1 and upstream PR
-#10/#11/#12 branches are unchanged. rc2 is a separate cumulative prerelease. Corresponding source and
-build instructions accompany it. Existing license and attribution notices are
+The 1.36, 1.37 and community-1.38-rc1 releases/tags are unchanged. rc2 is a
+separate cumulative prerelease. Corresponding source and build instructions
+accompany it. Existing license and attribution notices are
 preserved.
