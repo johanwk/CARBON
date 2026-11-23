@@ -63,7 +63,10 @@ int gui_clock_help_active(void);
 #define GUI_OVERVIEW_TRACK 255
 #define GUI_OVERVIEW_SCENE 254
 #define GUI_OVERVIEW_LANES 253  // read-only DRUM lanes (long-press a DRUM track)
-// Track overviews: DRUM lane pages 1-4, then Settings. No effect elsewhere.
+#define GUI_OVERVIEW_TRACKER 252  // read-only tracker, one track x 6 slots
+#define GUI_OVERVIEW_SONG 251  // read-only tracker, 6 tracks of one scene
+// Track overviews: lanes (DRUM) or tracker pages 1-4, then Settings.
+// Scene overviews: song tracker pages 1-4, then the scene settings.
 void gui_overview_page(int change);
 // Step Edit lane view (DRUM): draw lanes over the step grid with a cursor.
 // lanes[10]: pitch per row from the bottom, -1 = empty row. on=0 restores.

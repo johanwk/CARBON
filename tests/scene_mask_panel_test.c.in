@@ -198,7 +198,7 @@ static void test_scene_holds(void) {
     for(int enc=PANEL_ENC_SPEED;enc<=PANEL_ENC_TRANSPOSE;enc++)
         assert(panel_handle_clock_help_input(enc,1));
     assert(edits==help_edits && scroll==help_scroll);
-    assert(help_pages==pages);              /* scene overview never pages */
+    assert(help_pages==pages+1);            /* Motion Start pages song tracker/settings */
     assert(!panel_handle_clock_help_input(PANEL_SW_SCENE,0) && help_active);
     assert(!panel_handle_clock_help_input(PANEL_SW_6,0) && help_active);
     assert(panel_handle_clock_help_input(PANEL_SW_CLOCK,1));

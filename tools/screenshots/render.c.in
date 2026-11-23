@@ -232,6 +232,7 @@ int song_get_ratchet_mode(int s,int t,int step) { return fx_ratchet[step]; }
 int song_get_root(void) { return 0; }
 int song_get_scene_midi_program(int s,int t,int m) { return -1; }
 int song_get_scene_root(int s) { return fx_scene_root[s]; }
+int song_get_effective_root(int s) { return fx_scene_root[s]==-2 ? 0 : fx_scene_root[s]; }
 int song_get_scene_sync(void) { return SONG_SCENE_SYNC_BEAT; }
 int song_get_start_delay(int s,int t,int step) { return fx_delay[step]; }
 int song_get_step_event(int s,int t,int step,int slot,struct track_event *e) {
@@ -450,7 +451,12 @@ int main(int argc,char **argv) {
         boot(screen); gui_overview_open(PANEL_MENU_CLOCK); bad|=shot(argv[1],"04-clock-overview",screen);
         boot(screen); gui_track_overview_open(5); gui_overview_page(9); /* DRUM: Settings page */
         bad|=shot(argv[1],"05-track-overview",screen);
-        boot(screen); gui_scene_overview_open(1); bad|=shot(argv[1],"06-scene-overview",screen);
+        boot(screen); gui_scene_overview_open(1); gui_overview_page(9); /* Settings page */
+        bad|=shot(argv[1],"06-scene-overview",screen);
+        boot(screen); gui_scene_overview_open(0); gui_overview_page(-9);
+        bad|=shot(argv[1],"26-song-tracker",screen);
+        boot(screen); gui_track_overview_open(0); gui_overview_page(-9);
+        bad|=shot(argv[1],"27-track-tracker",screen);
         boot(screen); gui_overview_open(PANEL_MENU_SYS); bad|=shot(argv[1],"07-sys-overview",screen);
     }
     return bad;

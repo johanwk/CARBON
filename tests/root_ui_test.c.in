@@ -127,9 +127,11 @@ static struct track_event lane_ev[64][SEQ_TRACK_POLY];
 int song_get_step_event(int scene,int track,int step,int slot,struct track_event *e) {
     *e=lane_ev[step][slot];return e->type ? 0 : -1;
 }
+int song_get_ratchet_mode(int scene,int track,int step) {return 1;}
 void gfx_fill_rect(int x,int y,int w,int h,uint32_t color) {
     assert(x>=0 && y>=0 && w>0 && h>0);
-    if(gstate.clock_help==GUI_OVERVIEW_LANES || (gstate.lane_edit && !gstate.clock_help)) {
+    if(gstate.clock_help==GUI_OVERVIEW_LANES || gstate.clock_help==GUI_OVERVIEW_TRACKER ||
+            gstate.clock_help==GUI_OVERVIEW_SONG || (gstate.lane_edit && !gstate.clock_help)) {
         assert(x>=gstate.GUI_GRID_X && x+w<=gstate.GUI_GRID_X+gstate.GUI_GRID_W);
         assert(y>=gstate.GUI_GRID_Y && y+h<=gstate.GUI_GRID_Y+gstate.GUI_GRID_H);
         lane_fills++;
@@ -142,7 +144,8 @@ void gfx_draw_string(struct gfx_label *label) {
     assert(strlen(label->text)<=29);
     assert(label->text[0]!='=');
     assert(!strstr(label->text,"Start:row Length:value"));
-    if(gstate.clock_help==GUI_OVERVIEW_LANES || (gstate.lane_edit && !gstate.clock_help)) {help_draws++;return;}
+    if(gstate.clock_help==GUI_OVERVIEW_LANES || gstate.clock_help==GUI_OVERVIEW_TRACKER ||
+            gstate.clock_help==GUI_OVERVIEW_SONG || (gstate.lane_edit && !gstate.clock_help)) {help_draws++;return;}
     assert(label->fg_color==(gui_overview_read_only()?GUI_FONT_COLOR_GREY:GUI_FONT_COLOR_NORMAL));
     if(!gui_overview_read_only()) {
         assert(label->h==10 && (label->y-gstate.GUI_GRID_Y)%13==0);
@@ -260,8 +263,9 @@ static void test_track_overview(void) {
             scene_values_ui=1;
             track_type_ui=track&1;bias_ui=track;ui_scene=track;
             gui_track_overview_open(track);
-            /* DRUM opens on lanes; Motion Start past page 4 reaches Settings. */
-            if(track&1) {assert(gui_overview_mode()==GUI_OVERVIEW_LANES);gui_overview_page(9);}
+            /* DRUM opens on lanes, VOICE on the tracker; past page 4 is Settings. */
+            assert(gui_overview_mode()==(track&1?GUI_OVERVIEW_LANES:GUI_OVERVIEW_TRACKER));
+            gui_overview_page(9);
             assert(gui_clock_help_active() && gui_overview_mode()==GUI_OVERVIEW_TRACK);
             assert(gstate.overview_track==track);
             int edits=edit_calls;unsigned cursor=gstate.clock_help_selected;
@@ -324,6 +328,8 @@ static void test_scene_overview(void) {
         for(int scene=0;scene<6;scene++) {
             ui_scene=(scene+1)%6; // engine/panel still elsewhere: target must remain pinned
             gui_scene_overview_open(scene);
+            assert(gui_overview_mode()==GUI_OVERVIEW_SONG && gstate.overview_track==scene);
+            gui_overview_page(9);
             assert(gui_overview_mode()==GUI_OVERVIEW_SCENE && gstate.overview_track==scene);
             int edits=edit_calls;unsigned cursor=gstate.clock_help_selected;
             gui_overview_edit(100);gui_clock_help_scroll(-100);
@@ -493,10 +499,32 @@ static void test_drum_lanes(void) {
         /* Step Edit lane view: fixed rows incl. empty ones, cursor frame. */
         gui_clock_help_set(0);gui_refresh_task_lane_test();
         ui_running=0;
-        /* VOICE keeps the settings overview; paging has no effect */
+        /* VOICE opens the tracker (slots); last page is Settings */
         track_type_ui=SONG_TRACK_TYPE_VOICE;gui_track_overview_open(0);
-        assert(gui_overview_mode()==GUI_OVERVIEW_TRACK);
-        gui_overview_page(-1);assert(gui_overview_mode()==GUI_OVERVIEW_TRACK);
+        assert(gui_overview_mode()==GUI_OVERVIEW_TRACKER && gstate.lane_page==1);
+        assert(gui_draw_clock_help());
+        assert(!strncmp(gstate.trk_rows[0],"T1 17-32 p2/4",13));
+        assert(!strncmp(gstate.trk_rows[1]," #  s1  s2",10));
+        assert(!gui_draw_clock_help());                             /* cached */
+        gui_overview_page(-1);assert(gstate.lane_page==0);
+        assert(gui_draw_clock_help());
+        /* step 1 slot 0: BD at 120 is note 36 -> C2 on a VOICE track */
+        assert(!strncmp(gstate.trk_rows[2],"01 C2  ",7) && (gstate.trk_attr[2][0]&7)==4);
+        assert(strstr(gstate.trk_rows[2+5],"%50"));               /* Prb slot */
+        assert(strstr(gstate.trk_rows[2+2],"F#2'"));              /* own delay */
+        /* enabled steps: region 17-32 only; step 17 masked by the pattern */
+        assert(!(gstate.trk_attr[2][0]&0x80));
+        gui_overview_page(1);ui_mask_step=16;assert(gui_draw_clock_help());
+        assert(!(gstate.trk_attr[2][0]&0x80) && (gstate.trk_attr[3][0]&0x80));
+        ui_mask_step=-1;gui_overview_page(-1);gui_draw_clock_help();
+        gui_overview_page(9);assert(gui_overview_mode()==GUI_OVERVIEW_TRACK);
+        gui_overview_page(-1);assert(gui_overview_mode()==GUI_OVERVIEW_TRACKER && gstate.lane_page==3);
+        /* Scene: song tracker, first notes per track; drum names on DRUM tracks */
+        gui_scene_overview_open(0);assert(gui_overview_mode()==GUI_OVERVIEW_SONG);
+        gui_overview_page(-9);assert(gui_draw_clock_help());
+        assert(!strncmp(gstate.trk_rows[1]," #  T1  T2",10));
+        assert(strstr(gstate.trk_rows[0],"SCENE 1 01-16"));
+        assert(!strncmp(gstate.trk_rows[2],"01 C2 +C2 +",11));   /* several notes */
         gui_draw_clock_help();
         gui_clock_help_set(0);
     }

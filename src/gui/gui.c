@@ -302,6 +302,9 @@ struct gui_state {
     uint8_t lane_page, lane_follow;
     uint16_t lane_cells[10][16];
     int8_t lane_playhead;
+    // Tracker overview cache: row text and per-cell attributes.
+    char trk_rows[21][30];
+    uint8_t trk_attr[21][7];
     // Step Edit lane view (editable; owned by step_edit.c)
     uint8_t lane_edit, lane_edit_drawn, lane_edit_track, lane_edit_step;
     int8_t lane_edit_lanes[10], lane_edit_cursor, lane_cursor_drawn_row, lane_cursor_drawn_col;
@@ -644,6 +647,19 @@ void gui_startup(void) {
 }
 
 int gui_clock_help_active(void) { return gstate.clock_help; }
+// Tracker: open on the playhead page while that scene runs, else the
+// motion start page of the reference track; follow until a page turn.
+static void gui_tracker_open(int mode,int index) {
+    gstate.overview_track=index;
+    int song=mode==GUI_OVERVIEW_SONG;
+    int scene=song ? index : seq_ctrl_get_scene();
+    int track=song ? seq_utils_clamp(seq_ctrl_get_first_track(),0,SEQ_NUM_TRACKS-1) : index;
+    int step=seq_ctrl_get_run_state() && scene==seq_engine_get_current_scene() ?
+        gstate.active_step[track] : song_get_motion_start(scene,track);
+    gstate.lane_page=seq_utils_clamp(step,0,SEQ_NUM_STEPS-1)/16;
+    gstate.lane_follow=1;
+    gstate.clock_help=mode;
+}
 int gui_overview_mode(void) {return gstate.clock_help;}
 void gui_track_overview_open(int track) {
     if(track<0 || track>=SEQ_NUM_TRACKS) return;
@@ -657,29 +673,35 @@ void gui_track_overview_open(int track) {
         gstate.clock_help=GUI_OVERVIEW_LANES;
         return;
     }
-    gstate.clock_help=GUI_OVERVIEW_TRACK;
+    gui_tracker_open(GUI_OVERVIEW_TRACKER,track);
 }
 void gui_overview_page(int change) {
-    int track=gstate.overview_track;
-    if(!change || track>=SEQ_NUM_TRACKS ||
-            song_get_track_type(track)!=SONG_TRACK_TYPE_DRUM) return;
-    // pages 0-3 = lanes, 4 = Settings (the stored track overview)
-    int page=gstate.clock_help==GUI_OVERVIEW_TRACK ? 4 :
-        gstate.clock_help==GUI_OVERVIEW_LANES ? gstate.lane_page : -1;
-    if(page<0) return;
+    int mode=gstate.clock_help,index=gstate.overview_track,grid,last;
+    if(!change || index>=SEQ_NUM_TRACKS) return;
+    // pages 0-3 = lanes/tracker, 4 = Settings (the stored overview)
+    if(mode==GUI_OVERVIEW_SCENE || mode==GUI_OVERVIEW_SONG) {
+        grid=GUI_OVERVIEW_SONG;last=GUI_OVERVIEW_SCENE;
+    } else if(mode==GUI_OVERVIEW_TRACK || mode==GUI_OVERVIEW_LANES ||
+            mode==GUI_OVERVIEW_TRACKER) {
+        grid=song_get_track_type(index)==SONG_TRACK_TYPE_DRUM ?
+            GUI_OVERVIEW_LANES : GUI_OVERVIEW_TRACKER;
+        last=GUI_OVERVIEW_TRACK;
+    } else return;
+    int page=mode==last ? 4 : gstate.lane_page;
     page=seq_utils_clamp(page+change,0,4);
     gstate.lane_follow=0;
-    if(page==4) gstate.clock_help=GUI_OVERVIEW_TRACK;
-    else {gstate.lane_page=page;gstate.clock_help=GUI_OVERVIEW_LANES;}
+    if(page==4) gstate.clock_help=last;
+    else {gstate.lane_page=page;gstate.clock_help=grid;}
 }
 void gui_scene_overview_open(int scene) {
     if(scene<0 || scene>=SEQ_NUM_SCENES) return;
-    gstate.overview_track=scene; // pinned index, independent of engine scene changes
-    gstate.clock_help=GUI_OVERVIEW_SCENE;
+    // pinned index, independent of engine scene changes
+    gui_tracker_open(GUI_OVERVIEW_SONG,scene);
 }
 static int gui_overview_read_only(void) {
     return gstate.clock_help==GUI_OVERVIEW_TRACK || gstate.clock_help==GUI_OVERVIEW_SCENE ||
-        gstate.clock_help==GUI_OVERVIEW_LANES;
+        gstate.clock_help==GUI_OVERVIEW_LANES || gstate.clock_help==GUI_OVERVIEW_TRACKER ||
+        gstate.clock_help==GUI_OVERVIEW_SONG;
 }
 void gui_overview_open(int mode) {
     if(!panel_menu_overview_count(mode)) return;
@@ -990,9 +1012,231 @@ static int gui_draw_lanes(int full) {
     return dirty;
 }
 
+// ---- Tracker overview (read-only) ----
+// SONG: 6 tracks of one scene (first note per step). TRACKER: one track,
+// 6 slots. Rows: title, header, 16 steps, blank, 2 footer lines. Cells
+// are 3 characters + flag; velocity sets brightness, region dims; dark grey
+// background = step enabled, black = disabled (region/Pattern/Euclid).
+#define GUI_TRK_ROW_H 11
+#define GUI_TRK_NUM_W 24
+#define GUI_TRK_CELL_W 32
+#define GUI_TRK_EMPTY 0xff3a3a3a
+#define GUI_TRK_HELD 0xff707070
+#define GUI_TRK_HEAD_BG 0xff484848   // playhead cell
+#define GUI_TRK_ON_BG 0xff1c1c1c     // enabled step (drum lane colour)
+static int gui_trk_is_cond(int type) {
+    return type==SONG_EVENT_PROBABILITY || type==SONG_EVENT_EUCLIDEAN ||
+        type==SONG_EVENT_PRE || type==SONG_EVENT_NON_PRE || type==SONG_EVENT_SCENE;
+}
+static void gui_trk_note(char out[4],int track,int note) {
+    char name[12];
+    const char *drum=song_get_track_type(track)==SONG_TRACK_TYPE_DRUM ?
+        panel_utils_drum_short(note) : 0;
+    if(drum) snprintf(name,sizeof(name),"%s",drum);
+    else panel_utils_note_to_name(name,note,1,1);
+    snprintf(out,4,"%-3.3s",name);
+}
+// A note from an earlier step (same slot, or any slot if slot<0) still sounds.
+static int gui_trk_held(int scene,int track,int step,int slot) {
+    int ticks=seq_utils_step_len_to_ticks(song_get_step_length(scene,track));
+    if(ticks<=0) return 0;
+    struct track_event e;
+    for(int back=1;back<=16;back++) {
+        int prev=(step-back+SEQ_NUM_STEPS)%SEQ_NUM_STEPS;
+        for(int i=0;i<SEQ_TRACK_POLY;i++) {
+            if(slot>=0 && i!=slot) continue;
+            if(song_get_step_event(scene,track,prev,i,&e)!=0 || e.type!=SONG_EVENT_NOTE) continue;
+            if(e.length>back*ticks) return 1;
+            if(slot>=0) return 0;  // a new note in this slot ends the search
+        }
+    }
+    return 0;
+}
+static int gui_trk_level(int vel) {return vel<40 ? 1 : vel<70 ? 2 : vel<100 ? 3 : 4;}
+// One cell: text (4 chars) and attribute (bits 0-2 level, 3 empty, 4 held).
+static uint8_t gui_trk_cell(int scene,int track,int step,int slot,char out[5]) {
+    struct track_event e,first={0};
+    int notes=0,cond=0,glide=0,harm=0,cc=0,delay=0,found=-1,other=-1;
+    for(int i=0;i<SEQ_TRACK_POLY;i++) {
+        if(song_get_step_event(scene,track,step,i,&e)!=0) continue;
+        if(slot>=0 && i!=slot) {
+            if(gui_trk_is_cond(e.type)) cond=1;
+            continue;
+        }
+        if(e.type==SONG_EVENT_NOTE) {
+            if(!notes++) {first=e;found=i;}
+            if(e.delay!=SEQ_START_DELAY_INHERIT) delay=1;
+        }
+        else if(gui_trk_is_cond(e.type)) cond=1;
+        else if(e.type==SONG_EVENT_GLIDE) glide=1;
+        else if(e.type==SONG_EVENT_HARMONY || e.type==SONG_EVENT_INVERSION) harm=1;
+        else if(e.type==SONG_EVENT_CC || e.type==SONG_EVENT_PROGCHG ||
+                e.type==SONG_EVENT_INTERNAL_CC) cc=1;
+        if(other<0 && e.type!=SONG_EVENT_NOTE) {other=i;if(!notes) first=e;}
+    }
+    char name[4]="...",flag=' ';
+    uint8_t attr=0x08;
+    if(notes) {gui_trk_note(name,track,first.data0);attr=gui_trk_level(first.data1);}
+    else if(slot>=0 && other>=0) {
+        // Track view: non-note slots get a short type name.
+        switch(first.type) {
+            case SONG_EVENT_CC: snprintf(name,4,"c%02d",first.data0%100);break;
+            case SONG_EVENT_INTERNAL_CC: snprintf(name,4,"i%02d",first.data0%100);break;
+            case SONG_EVENT_PROGCHG: snprintf(name,4,"p%02d",first.data0%100);break;
+            case SONG_EVENT_PROBABILITY: snprintf(name,4,"%%%02d",first.data0%100);break;
+            case SONG_EVENT_EUCLIDEAN: strcpy(name,"Euc");break;
+            case SONG_EVENT_PRE: strcpy(name,"Pre");break;
+            case SONG_EVENT_NON_PRE: strcpy(name,"!Pr");break;
+            case SONG_EVENT_SCENE: strcpy(name,"Scn");break;
+            case SONG_EVENT_HARMONY: strcpy(name,"Hrm");break;
+            case SONG_EVENT_INVERSION: strcpy(name,"Inv");break;
+            case SONG_EVENT_GLIDE: strcpy(name,"Gli");break;
+            default: strcpy(name,"???");break;
+        }
+        attr=3;cc=glide=harm=0;
+    }
+    else if(gui_trk_held(scene,track,step,slot)) {strcpy(name,"|||");attr=0x10;}
+    if(notes>1) flag='+';
+    else if(notes && song_get_ratchet_mode(scene,track,step)>1) flag='"';
+    else if(cond && (notes || slot<0)) flag='?';
+    else if(glide) flag='~';
+    else if(harm) flag='h';
+    else if(cc) flag='c';
+    else if(delay) flag='\'';
+    if(found<0 && !(attr&7) && flag!=' ' && slot<0) attr=1;  // events, no note
+    snprintf(out,5,"%s%c",name,flag);
+    return attr;
+}
+static int gui_trk_harmony_at(int scene,int song,int index,int step) {
+    struct track_event e;
+    for(int t=song?0:index;t<(song?SEQ_NUM_TRACKS:index+1);t++)
+        for(int i=0;i<SEQ_TRACK_POLY;i++)
+            if(song_get_step_event(scene,t,step,i,&e)==0 && e.type==SONG_EVENT_HARMONY) return 1;
+    return 0;
+}
+static void gui_trk_label(int x,int y,int w,const char *text,uint32_t fg,uint32_t bg) {
+    struct gfx_label *label=&gstate.clock_help_label;
+    memset(label,0,sizeof(*label));
+    label->x=x;label->y=y;label->w=w;label->h=10;
+    label->font=GFX_FONT_SMALLTEXT_8X10;label->fg_color=fg;label->bg_color=bg;
+    snprintf(label->text,sizeof(label->text),"%s",text);
+    gfx_fill_rect(x,y,w,10,bg);
+    gfx_draw_string(label);
+}
+// Draw a text row only when its text or attributes changed.
+static int gui_trk_row(int row,const char *text,const uint8_t attr[7],uint32_t fg) {
+    static const uint8_t none[7]={0};
+    if(!attr) attr=none;
+    if(!strcmp(text,gstate.trk_rows[row]) && !memcmp(attr,gstate.trk_attr[row],7)) return 0;
+    snprintf(gstate.trk_rows[row],sizeof(gstate.trk_rows[row]),"%s",text);
+    memcpy(gstate.trk_attr[row],attr,7);
+    gui_trk_label(gstate.GUI_GRID_X+2,gstate.GUI_GRID_Y+2+row*GUI_TRK_ROW_H,232,text,fg,GUI_TEXT_BG_COLOR);
+    return 1;
+}
+static int gui_draw_tracker(int full) {
+    int song=gstate.clock_help==GUI_OVERVIEW_SONG,index=gstate.overview_track,dirty=0;
+    int scene=song ? index : seq_ctrl_get_scene();
+    int ref=song ? seq_utils_clamp(seq_ctrl_get_first_track(),0,SEQ_NUM_TRACKS-1) : index;
+    int live=seq_ctrl_get_run_state() && scene==seq_engine_get_current_scene();
+    if(gstate.lane_follow && live) gstate.lane_page=(gstate.active_step[ref]&63)/16;
+    int page=gstate.lane_page&3;
+    int x0=gstate.GUI_GRID_X+2,y0=gstate.GUI_GRID_Y+2;
+    if(full) {memset(gstate.trk_rows,0,sizeof(gstate.trk_rows));memset(gstate.trk_attr,0xff,sizeof(gstate.trk_attr));}
+    char text[30];
+    snprintf(text,sizeof(text),"%s%c %02u-%02u p%c/4%s",song ? "SCENE " : "T",
+        '1'+seq_utils_clamp(song ? scene : index,0,5),(unsigned)page*16+1,(unsigned)page*16+16,
+        '1'+page,gstate.lane_follow && live ? " play" : "");
+    dirty|=gui_trk_row(0,text,0,GUI_FONT_COLOR_NORMAL);
+    // Header: selected tracks bright (SONG), slot numbers (TRACKER).
+    {
+        uint8_t attr[7]={0};
+        strcpy(text," # ");
+        for(int c=0;c<6;c++) {
+            char col[6];snprintf(col,sizeof(col)," %c%d ",song?'T':'s',c+1);strcat(text,col);
+            attr[c]=song && seq_ctrl_get_track_select(c);
+        }
+        if(strcmp(text,gstate.trk_rows[1]) || memcmp(attr,gstate.trk_attr[1],7)) {
+            strcpy(gstate.trk_rows[1],text);memcpy(gstate.trk_attr[1],attr,7);
+            int y=y0+GUI_TRK_ROW_H;
+            gui_trk_label(x0,y,GUI_TRK_NUM_W," # ",GUI_FONT_COLOR_GREY,GUI_TEXT_BG_COLOR);
+            for(int c=0;c<6;c++) {
+                char col[6];snprintf(col,sizeof(col)," %c%d ",song?'T':'s',c+1);
+                gui_trk_label(x0+GUI_TRK_NUM_W+c*GUI_TRK_CELL_W,y,GUI_TRK_CELL_W,col,
+                    attr[c] ? GUI_FONT_COLOR_NORMAL : GUI_FONT_COLOR_GREY,
+                    attr[c] ? GUI_FONT_COLOR_HIGHLIGHT_BG : GUI_TEXT_BG_COLOR);
+            }
+            dirty=1;
+        }
+    }
+    // Enabled = in region and not masked by Pattern/Euclid (lane rule).
+    uint8_t enabled[6][16];
+    for(int c=0;c<6;c++) {
+        int track=song ? c : index;
+        int start=seq_utils_clamp(song_get_motion_start(scene,track),0,63);
+        int length=seq_utils_clamp(song_get_motion_length(scene,track),1,64);
+        int pattern=seq_engine_get_effective_pattern_type(track);
+        int euclid=scene==seq_engine_get_current_scene() ?
+            seq_engine_get_effective_euclidean_density(track) :
+            song_get_euclidean_density(scene,track);
+        for(int r=0;r<16;r++) {
+            int step=page*16+r;
+            int in_region=((step-start+SEQ_NUM_STEPS)%SEQ_NUM_STEPS)<length;
+            enabled[c][r]=in_region && ((pattern==PATTERN_AS_RECORDED && euclid>=SEQ_EUCLIDEAN_DENSITY_MAX) ||
+                pattern_get_step_enable(scene,track,pattern,step));
+        }
+        if(!song) break;
+    }
+    for(int r=0;r<16;r++) {
+        int step=page*16+r,row=2+r;
+        char cells[6][5];uint8_t attr[7];
+        int gutter=gui_trk_harmony_at(scene,song,index,step);
+        attr[6]=gutter;
+        for(int c=0;c<6;c++) {
+            int track=song ? c : index;
+            int start=seq_utils_clamp(song_get_motion_start(scene,track),0,63);
+            int length=seq_utils_clamp(song_get_motion_length(scene,track),1,64);
+            int in_region=((step-start+SEQ_NUM_STEPS)%SEQ_NUM_STEPS)<length;
+            attr[c]=gui_trk_cell(scene,track,step,song?-1:c,cells[c]);
+            if(in_region) attr[c]|=0x20;
+            if(enabled[song?c:0][r]) attr[c]|=0x80;
+            if(live && gstate.active_step[track]==step) attr[c]|=0x40;
+        }
+        snprintf(text,sizeof(text),"%02d%c%s%s%s%s%s%s",(step+1)%100,gutter?'*':' ',
+            cells[0],cells[1],cells[2],cells[3],cells[4],cells[5]);
+        if(!strcmp(text,gstate.trk_rows[row]) && !memcmp(attr,gstate.trk_attr[row],7)) continue;
+        strcpy(gstate.trk_rows[row],text);memcpy(gstate.trk_attr[row],attr,7);
+        int y=y0+row*GUI_TRK_ROW_H;
+        char num[4];snprintf(num,sizeof(num),"%02d%c",(step+1)%100,gutter?'*':' ');
+        gui_trk_label(x0,y,GUI_TRK_NUM_W,num,(step&3) ? GUI_FONT_COLOR_GREY : GUI_FONT_COLOR_NORMAL,
+            GUI_TEXT_BG_COLOR);
+        for(int c=0;c<6;c++) {
+            int track=song ? c : index,level=attr[c]&7,in_region=!!(attr[c]&0x20);
+            uint32_t fg=attr[c]&0x08 ? GUI_TRK_EMPTY : attr[c]&0x10 ? GUI_TRK_HELD :
+                gui_lane_color(track,level,in_region,0);
+            if(!in_region && (attr[c]&0x18)) fg=0xff262626;
+            gui_trk_label(x0+GUI_TRK_NUM_W+c*GUI_TRK_CELL_W,y,GUI_TRK_CELL_W-1,cells[c],fg,
+                attr[c]&0x40 ? GUI_TRK_HEAD_BG : attr[c]&0x80 ? GUI_TRK_ON_BG : GUI_TEXT_BG_COLOR);
+        }
+        dirty=1;
+    }
+    // Footer: output and region of the reference track (harmony is in the
+    // main status lines below the overlay).
+    {
+        char chan[16];
+        int start=seq_utils_clamp(song_get_motion_start(scene,ref),0,63);
+        int length=seq_utils_clamp(song_get_motion_length(scene,ref),1,64);
+        panel_utils_channel_str(chan,song_get_midi_port_map(ref,0),song_get_midi_channel_map(ref,0));
+        snprintf(text,sizeof(text),"T%c %.8s Rgn %02u%c%02u",'1'+ref,chan,(unsigned)start+1,
+            start+length>64?'~':'-',(unsigned)(start+length-1)%64+1);
+        dirty|=gui_trk_row(19,text,0,GUI_FONT_COLOR_GREY);
+    }
+    return dirty;
+}
+
 static int gui_draw_clock_help(void) {
     int mode=gstate.clock_help, track_view=gui_overview_read_only();
     if(mode==GUI_OVERVIEW_LANES) track_view=2;
+    if(mode==GUI_OVERVIEW_TRACKER || mode==GUI_OVERVIEW_SONG) track_view=3;
     int count=track_view ? 1 : panel_menu_overview_count(mode);
     int selected = seq_utils_clamp(gstate.clock_help_selected,0,count-1), dirty = 0;
     if(!gstate.clock_help_drawn || gstate.overview_read_only_drawn!=track_view) {
@@ -1003,8 +1247,10 @@ static int gui_draw_clock_help(void) {
         gstate.clock_help_drawn = 1;
         dirty = 1;
         if(track_view==2) return gui_draw_lanes(1)|dirty;
+        if(track_view==3) return gui_draw_tracker(1)|dirty;
     }
     if(track_view==2) return gui_draw_lanes(0);
+    if(track_view==3) return gui_draw_tracker(0);
     int top = selected < 12 ? 0 : selected - 11;
     for(int row = 0; row < (track_view ? 14 : 18); row++) {
         char text[30] = {0};

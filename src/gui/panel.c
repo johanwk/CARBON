@@ -475,10 +475,11 @@ static int panel_handle_clock_help_input(int ctrl, int val) {
     if(ctrl >= PANEL_ENC_SPEED) {
         if(gui_overview_mode()==GUI_OVERVIEW_TRACK ||
                 gui_overview_mode()==GUI_OVERVIEW_SCENE ||
-                gui_overview_mode()==GUI_OVERVIEW_LANES) {
-            // read-only; Motion Start pages DRUM lanes / Settings
-            if(ctrl == PANEL_ENC_MOTION_START && val &&
-                    gui_overview_mode()!=GUI_OVERVIEW_SCENE)
+                gui_overview_mode()==GUI_OVERVIEW_LANES ||
+                gui_overview_mode()==GUI_OVERVIEW_TRACKER ||
+                gui_overview_mode()==GUI_OVERVIEW_SONG) {
+            // read-only; Motion Start pages lanes/tracker, then Settings
+            if(ctrl == PANEL_ENC_MOTION_START && val)
                 gui_overview_page(seq_utils_enc_val_to_change(val));
             return 1;
         }
@@ -487,7 +488,8 @@ static int panel_handle_clock_help_input(int ctrl, int val) {
         return 1; // only selection and Value edit are active
     }
     // DRUM lanes stay open for Record and Run/Stop: watch a take land.
-    if(gui_overview_mode()==GUI_OVERVIEW_LANES && !pstate.shift_state &&
+    if((gui_overview_mode()==GUI_OVERVIEW_LANES || gui_overview_mode()==GUI_OVERVIEW_TRACKER ||
+            gui_overview_mode()==GUI_OVERVIEW_SONG) && !pstate.shift_state &&
             (ctrl == PANEL_SW_RECORD || ctrl == PANEL_SW_RUN_STOP)) return 0;
     // Other button presses close help before retaining their normal action.
     // Releases still reach the owner that saw the original press.
