@@ -316,6 +316,8 @@ int main(int argc,char **argv) {
 #ifdef RENDER_DUMP_TEXT
         for(int l=0;l<GUI_NUM_STATUS_LINES;l++) printf("%d|%s|\n",l,gstate.status_lines[l]);
 #endif
+        step_edit_toggle_details(); /* VOICE: third view is the tracker */
+        bad|=shot(argv[1],"28-step-edit-tracker",screen);
         step_edit_toggle_details(); step_edit_set_enable(0);
         boot(screen); step_edit_set_enable(1); step_edit_adjust_cursor(11,0);
         step_edit_toggle_details(); bad|=shot(argv[1],"09-step-anatomy",screen);

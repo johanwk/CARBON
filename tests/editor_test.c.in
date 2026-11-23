@@ -32,6 +32,10 @@ void gui_lane_edit_set(int on,int track,const int *lanes,int cursor,int step) {
     lane_gui_on=on;lane_gui_cursor=cursor;lane_gui_step=step;
     if(lanes) memcpy(lane_gui_lanes,lanes,sizeof(lane_gui_lanes));
 }
+static int trk_gui_on, trk_gui_track, trk_gui_step, trk_gui_slot;
+void gui_trk_edit_set(int on,int track,int step,int slot) {
+    trk_gui_on=on;trk_gui_track=track;trk_gui_step=step;trk_gui_slot=slot;
+}
 int seq_ctrl_get_run_state(void) { return running; }
 int seq_ctrl_get_scene(void) { return 0; }
 int seq_ctrl_get_first_track(void) { return 0; }
@@ -467,11 +471,24 @@ static void test_lane_edit(void) {
     sedits.event_pos=-1;
     /* rows are fixed while visiting: removing every 42 keeps its row */
     step_edit_adjust_cursor(1,1); assert(slanes.cursor==1 && slanes.lanes[1]==42);
-    /* cycle back to compact; VOICE never shows lanes */
+    /* cycle back to compact; VOICE shows the tracker instead of lanes */
     step_edit_toggle_details(); assert(!slanes.on && !step_details_preference && !lane_gui_on);
     test_track_type=SONG_TRACK_TYPE_VOICE;
     step_edit_toggle_details(); step_edit_toggle_details();
-    assert(!slanes.on && !step_details_preference);
+    assert(slanes.on && !step_details_preference && trk_gui_on && !lane_gui_on);
+    /* Start moves the step, Shift+Start the slot; the view follows */
+    sedits.step_pos=3;sedits.event_pos=-1;
+    step_edit_adjust_cursor(1,0);assert(trk_gui_on && trk_gui_step==4 && trk_gui_slot==-1);
+    step_edit_adjust_cursor(2,1);assert(trk_gui_slot==1);
+    /* a DRUM track keeps the third view as lanes, back to VOICE: tracker */
+    test_track_type=SONG_TRACK_TYPE_DRUM;step_edit_update_display();
+    assert(lane_gui_on && !trk_gui_on);
+    test_track_type=SONG_TRACK_TYPE_VOICE;step_edit_update_display();
+    assert(trk_gui_on && !lane_gui_on);
+    /* Region (Shift+Start to -2) leaves the tracker drawing */
+    sedits.event_pos=-1;step_edit_adjust_cursor(-1,1);assert(!trk_gui_on);
+    sedits.event_pos=-1;
+    step_edit_toggle_details(); assert(!slanes.on && !trk_gui_on);
     step_details_preference=0;
 }
 // Transpose on a row with hits moves the whole lane (all steps), skipping

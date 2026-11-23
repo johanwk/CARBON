@@ -305,6 +305,9 @@ struct gui_state {
     // Tracker overview cache: row text and per-cell attributes.
     char trk_rows[21][30];
     uint8_t trk_attr[21][7];
+    // Step Edit tracker view (VOICE; owned by step_edit.c)
+    uint8_t trk_edit, trk_edit_drawn, trk_edit_track, trk_edit_step;
+    int8_t trk_edit_slot;  // -1 = all slots
     // Step Edit lane view (editable; owned by step_edit.c)
     uint8_t lane_edit, lane_edit_drawn, lane_edit_track, lane_edit_step;
     int8_t lane_edit_lanes[10], lane_edit_cursor, lane_cursor_drawn_row, lane_cursor_drawn_col;
@@ -408,6 +411,7 @@ int gui_init(void) {
     }
     gstate.grid_overlay_enable = 0;
     gstate.lane_edit = gstate.lane_edit_drawn = 0;
+    gstate.trk_edit = gstate.trk_edit_drawn = 0;
 
     // reset the preview grid states
     for(i = 0; i < SEQ_NUM_TRACKS; i ++) {
@@ -1145,19 +1149,29 @@ static int gui_trk_row(int row,const char *text,const uint8_t attr[7],uint32_t f
     gui_trk_label(gstate.GUI_GRID_X+2,gstate.GUI_GRID_Y+2+row*GUI_TRK_ROW_H,232,text,fg,GUI_TEXT_BG_COLOR);
     return 1;
 }
+void gui_trk_edit_set(int on,int track,int step,int slot) {
+    if(!on) {gstate.trk_edit=0;return;}
+    gstate.trk_edit_track=seq_utils_clamp(track,0,SEQ_NUM_TRACKS-1);
+    gstate.trk_edit_step=step&(SEQ_NUM_STEPS-1);
+    gstate.trk_edit_slot=seq_utils_clamp(slot,-1,SEQ_TRACK_POLY-1);
+    gstate.trk_edit=1;
+}
 static int gui_draw_tracker(int full) {
-    int song=gstate.clock_help==GUI_OVERVIEW_SONG,index=gstate.overview_track,dirty=0;
+    int edit=gstate.trk_edit && !gstate.clock_help;
+    int song=!edit && gstate.clock_help==GUI_OVERVIEW_SONG,dirty=0;
+    int index=edit ? gstate.trk_edit_track : gstate.overview_track;
     int scene=song ? index : seq_ctrl_get_scene();
     int ref=song ? seq_utils_clamp(seq_ctrl_get_first_track(),0,SEQ_NUM_TRACKS-1) : index;
     int live=seq_ctrl_get_run_state() && scene==seq_engine_get_current_scene();
-    if(gstate.lane_follow && live) gstate.lane_page=(gstate.active_step[ref]&63)/16;
+    if(edit) gstate.lane_page=gstate.trk_edit_step/16;  // page follows the cursor
+    else if(gstate.lane_follow && live) gstate.lane_page=(gstate.active_step[ref]&63)/16;
     int page=gstate.lane_page&3;
     int x0=gstate.GUI_GRID_X+2,y0=gstate.GUI_GRID_Y+2;
     if(full) {memset(gstate.trk_rows,0,sizeof(gstate.trk_rows));memset(gstate.trk_attr,0xff,sizeof(gstate.trk_attr));}
     char text[30];
-    snprintf(text,sizeof(text),"%s%c %02u-%02u p%c/4%s",song ? "SCENE " : "T",
+    snprintf(text,sizeof(text),"%s%s%c %02u-%02u p%c/4%s",edit ? "EDIT " : "",song ? "SCENE " : "T",
         '1'+seq_utils_clamp(song ? scene : index,0,5),(unsigned)page*16+1,(unsigned)page*16+16,
-        '1'+page,gstate.lane_follow && live ? " play" : "");
+        '1'+page,!edit && gstate.lane_follow && live ? " play" : "");
     dirty|=gui_trk_row(0,text,0,GUI_FONT_COLOR_NORMAL);
     // Header: selected tracks bright (SONG), slot numbers (TRACKER).
     {
@@ -1202,7 +1216,10 @@ static int gui_draw_tracker(int full) {
         int step=page*16+r,row=2+r;
         char cells[6][5];uint8_t attr[7];
         int gutter=gui_trk_harmony_at(scene,song,index,step);
-        attr[6]=gutter;
+        // attr[6]: bit 0 Hrm gutter, bits 1-3 cursor column+1 (7 = all slots)
+        int cursor=edit && step==gstate.trk_edit_step ?
+            (gstate.trk_edit_slot<0 ? 7 : gstate.trk_edit_slot+1) : 0;
+        attr[6]=gutter|(cursor<<1);
         for(int c=0;c<6;c++) {
             int track=song ? c : index;
             int start=seq_utils_clamp(song_get_motion_start(scene,track),0,63);
@@ -1226,8 +1243,9 @@ static int gui_draw_tracker(int full) {
             uint32_t fg=attr[c]&0x08 ? GUI_TRK_EMPTY : attr[c]&0x10 ? GUI_TRK_HELD :
                 gui_lane_color(track,level,in_region,0);
             if(!in_region && (attr[c]&0x18)) fg=0xff262626;
-            gui_trk_label(x0+GUI_TRK_NUM_W+c*GUI_TRK_CELL_W,y,GUI_TRK_CELL_W-1,cells[c],fg,
-                attr[c]&0x40 ? GUI_TRK_HEAD_BG : attr[c]&0x80 ? GUI_TRK_ON_BG : GUI_TEXT_BG_COLOR);
+            uint32_t bg=attr[c]&0x40 ? GUI_TRK_HEAD_BG : attr[c]&0x80 ? GUI_TRK_ON_BG : GUI_TEXT_BG_COLOR;
+            if(cursor==7 || cursor==c+1) {bg=GUI_OVERLAY_COLOR_HIGH;fg=GUI_TEXT_BG_COLOR;}  // edit cursor
+            gui_trk_label(x0+GUI_TRK_NUM_W+c*GUI_TRK_CELL_W,y,GUI_TRK_CELL_W-1,cells[c],fg,bg);
         }
         dirty=1;
     }
@@ -1332,6 +1350,25 @@ static int gui_draw_clock_help(void) {
     return dirty;
 }
 
+// Tracker edit view: full draw on entry, grid restored on exit.
+static int gui_draw_trk_edit(void) {
+    int full=!gstate.trk_edit_drawn;
+    if(full) {
+        gfx_fill_rect(gstate.GUI_GRID_X, gstate.GUI_GRID_Y,
+            gstate.GUI_GRID_W, gstate.GUI_GRID_H, GUI_TEXT_BG_COLOR);
+        gstate.trk_edit_drawn=1;
+    }
+    return gui_draw_tracker(full)|full;
+}
+static int gui_trk_edit_restore(void) {
+    if(gstate.trk_edit || !gstate.trk_edit_drawn) return 0;
+    gstate.trk_edit_drawn = 0;
+    if(gstate.clock_help) return 0;
+    gui_draw_grid_bg();
+    memset(gstate.grid_state, 0, sizeof(gstate.grid_state));
+    memset(gstate.pitch_marks, 0, sizeof(gstate.pitch_marks));
+    return 1;
+}
 // Lane edit view: full draw on entry, grid restored on exit.
 static int gui_draw_lane_edit(void) {
     int full=!gstate.lane_edit_drawn;
@@ -1357,6 +1394,7 @@ static int gui_clock_help_restore(void) {
     if(gstate.clock_help || !gstate.clock_help_drawn) return 0;
     gstate.clock_help_drawn = 0;
     gstate.lane_edit_drawn = 0;  // lane edit (if active) redraws in full
+    gstate.trk_edit_drawn = 0;
     gui_draw_grid_bg();
     memset(gstate.grid_state, 0, sizeof(gstate.grid_state));
     memset(gstate.pitch_marks, 0, sizeof(gstate.pitch_marks));
@@ -1407,6 +1445,7 @@ void gui_refresh_task(void) {
 
     dirty += gui_clock_help_restore();
     dirty += gui_lane_edit_restore();
+    dirty += gui_trk_edit_restore();
     // CCi overrides need no stored-song event; unchanged labels do not redraw.
     gui_update_song_mode();
 
@@ -1422,6 +1461,7 @@ void gui_refresh_task(void) {
         gstate.force_refresh = 0;
         gstate.clock_help_drawn = 0;
         gstate.lane_edit_drawn = 0;
+        gstate.trk_edit_drawn = 0;
 	    gui_clear_screen();
 	    // dirty all the labels
         for(i = 0; i < GUI_MAX_LABELS; i ++) {
@@ -1442,7 +1482,8 @@ void gui_refresh_task(void) {
 	// attempt to redraw the squares
 	dirty += gui_draw_preview_grids();
     dirty += gstate.clock_help ? gui_draw_clock_help() :
-        gstate.lane_edit ? gui_draw_lane_edit() : gui_draw_main_grid();
+        gstate.lane_edit ? gui_draw_lane_edit() :
+        gstate.trk_edit ? gui_draw_trk_edit() : gui_draw_main_grid();
 	if(dirty) {
 		gfx_commit();
 	}

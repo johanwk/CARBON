@@ -94,18 +94,26 @@ static void step_edit_lanes_build(void);
 static void step_edit_lanes_publish(void);
 static void step_edit_lanes_cursor_to_step(void);
 
-// Long-press Edit: compact -> expanded -> lanes (DRUM only) -> compact.
+// Tracker view: the third view on VOICE tracks (slanes.on is shared, so a
+// track switch keeps the third view: lanes for DRUM, tracker for VOICE).
+static int step_edit_tracker_active(void) {
+    return slanes.on && sedits.enable && sedits.event_pos != STEP_EDIT_EVENT_POS_REGION &&
+        song_get_track_type(sedits.track) != SONG_TRACK_TYPE_DRUM;
+}
+
+// Long-press Edit: compact -> expanded -> lanes (DRUM) / tracker (VOICE) -> compact.
 void step_edit_toggle_details(void) {
     if(!sedits.enable) return;
-    int drum = song_get_track_type(sedits.track) == SONG_TRACK_TYPE_DRUM &&
-        sedits.event_pos != STEP_EDIT_EVENT_POS_REGION;
-    if(slanes.on && !drum) slanes.on = 0;  // lanes kept from a DRUM track
+    int drum = song_get_track_type(sedits.track) == SONG_TRACK_TYPE_DRUM;
+    int region = sedits.event_pos == STEP_EDIT_EVENT_POS_REGION;
     if(slanes.on) {slanes.on = 0; step_details_preference = 0;}
-    else if(step_details_preference && drum) {
+    else if(step_details_preference && !region) {
         slanes.on = 1; step_details_preference = 0;
-        sedits.event_pos = STEP_EDIT_EVENT_POS_ALL;
-        step_edit_lanes_build();
-        step_edit_lanes_cursor_to_step();
+        if(drum) {
+            sedits.event_pos = STEP_EDIT_EVENT_POS_ALL;
+            step_edit_lanes_build();
+            step_edit_lanes_cursor_to_step();
+        }
     }
     else step_details_preference = !step_details_preference;
     sedits.edit_timeout=panel_menu_get_timeout();
@@ -306,7 +314,10 @@ void step_edit_set_enable(int enable) {
             if(sedits.event_pos == STEP_EDIT_EVENT_POS_REGION)
                 sedits.event_pos = STEP_EDIT_EVENT_POS_ALL;  // a new visit starts on a step
             sedits.region_filter = -1;
-            if(slanes.on) {step_edit_lanes_build(); step_edit_lanes_cursor_to_step();}
+            if(slanes.on && song_get_track_type(sedits.track) == SONG_TRACK_TYPE_DRUM) {
+                sedits.event_pos = STEP_EDIT_EVENT_POS_ALL;
+                step_edit_lanes_build(); step_edit_lanes_cursor_to_step();
+            }
             panel_menu_set_mode(PANEL_MENU_NONE);  // disable any menu mode
             gui_grid_clear_overlay();
             gui_grid_set_overlay_enable(1);
@@ -320,6 +331,7 @@ void step_edit_set_enable(int enable) {
     else if(sedits.enable) {
         sedits.enable = 0;
         gui_lane_edit_set(0, 0, 0, 0, 0);
+        gui_trk_edit_set(0, 0, 0, 0);
         gui_step_details_set(0);
         sedits.undo_captured = 0;
         sedits.edit_timeout = 0;
@@ -1679,8 +1691,9 @@ void step_edit_update_display(void) {
     struct track_event event = {.delay = SEQ_START_DELAY_INHERIT};
     gui_step_details_set(sedits.enable && step_details_preference);
     gui_clear_status_text_all();
-    if(step_edit_lanes_active()) {step_edit_lanes_display(); return;}
+    if(step_edit_lanes_active()) {gui_trk_edit_set(0, 0, 0, 0); step_edit_lanes_display(); return;}
     gui_lane_edit_set(0, 0, 0, 0, 0);
+    gui_trk_edit_set(step_edit_tracker_active(), sedits.track, sedits.step_pos, sedits.event_pos);
     step_edit_update_title();
     if(sedits.event_pos == STEP_EDIT_EVENT_POS_REGION) {
         step_edit_region_display();
