@@ -487,6 +487,11 @@ static int panel_handle_clock_help_input(int ctrl, int val) {
         if(ctrl == PANEL_ENC_MOTION_LENGTH && val) gui_overview_edit(seq_utils_enc_val_to_change(val));
         return 1; // only selection and Value edit are active
     }
+    // Track and song views stay open for track select and Shift+track mute
+    // (track views follow the selected track); Scene+number still closes.
+    if(ctrl>=PANEL_SW_1 && ctrl<=PANEL_SW_6 && !pstate.scene_state &&
+            gui_overview_mode()>=GUI_OVERVIEW_SONG && gui_overview_mode()!=GUI_OVERVIEW_SCENE)
+        return 0;
     // DRUM lanes stay open for Record and Run/Stop: watch a take land.
     if((gui_overview_mode()==GUI_OVERVIEW_LANES || gui_overview_mode()==GUI_OVERVIEW_TRACKER ||
             gui_overview_mode()==GUI_OVERVIEW_SONG) && !pstate.shift_state &&

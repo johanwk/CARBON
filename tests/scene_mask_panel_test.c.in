@@ -199,6 +199,21 @@ static void test_scene_holds(void) {
         assert(panel_handle_clock_help_input(enc,1));
     assert(edits==help_edits && scroll==help_scroll);
     assert(help_pages==pages+1);            /* Motion Start pages song tracker/settings */
+    /* Track buttons keep track/song views open (also Shift = mute); not the
+       scene Settings page, and not Scene+number. */
+    for(int m=0;m<5;m++) {
+        static const int modes[5]={GUI_OVERVIEW_TRACK,GUI_OVERVIEW_LANES,GUI_OVERVIEW_TRACKER,
+            GUI_OVERVIEW_SONG,GUI_OVERVIEW_SCENE};
+        for(int sh=0;sh<2;sh++) {
+            memset(&pstate,0,sizeof(pstate));pstate.shift_state=sh;
+            help_active=1;help_mode=modes[m];
+            assert(!panel_handle_clock_help_input(PANEL_SW_3,1));
+            assert(help_active==(modes[m]!=GUI_OVERVIEW_SCENE));
+        }
+        memset(&pstate,0,sizeof(pstate));pstate.scene_state=1;help_active=1;help_mode=modes[m];
+        assert(!panel_handle_clock_help_input(PANEL_SW_3,1) && !help_active);
+    }
+    memset(&pstate,0,sizeof(pstate));help_active=1;help_mode=GUI_OVERVIEW_SCENE;
     assert(!panel_handle_clock_help_input(PANEL_SW_SCENE,0) && help_active);
     assert(!panel_handle_clock_help_input(PANEL_SW_6,0) && help_active);
     assert(panel_handle_clock_help_input(PANEL_SW_CLOCK,1));

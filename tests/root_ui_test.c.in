@@ -519,6 +519,12 @@ static void test_drum_lanes(void) {
         ui_mask_step=-1;gui_overview_page(-1);gui_draw_clock_help();
         gui_overview_page(9);assert(gui_overview_mode()==GUI_OVERVIEW_TRACK);
         gui_overview_page(-1);assert(gui_overview_mode()==GUI_OVERVIEW_TRACKER && gstate.lane_page==3);
+        /* track select follows: page/follow kept; Settings stays Settings */
+        gui_overview_follow_track(2);
+        assert(gstate.overview_track==2 && gui_overview_mode()==GUI_OVERVIEW_TRACKER && gstate.lane_page==3);
+        gui_overview_page(9);gui_overview_follow_track(0);
+        assert(gstate.overview_track==0 && gui_overview_mode()==GUI_OVERVIEW_TRACK);
+        gui_overview_page(-1);
         /* Scene: song tracker, first notes per track; drum names on DRUM tracks */
         gui_scene_overview_open(0);assert(gui_overview_mode()==GUI_OVERVIEW_SONG);
         gui_overview_page(-9);assert(gui_draw_clock_help());

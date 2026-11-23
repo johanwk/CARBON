@@ -675,6 +675,18 @@ void gui_track_overview_open(int track) {
     }
     gui_tracker_open(GUI_OVERVIEW_TRACKER,track);
 }
+// Track views follow the selected track (page/follow kept); lanes for
+// DRUM, tracker for VOICE; the Settings page stays Settings.
+static void gui_overview_follow_track(int track) {
+    int mode=gstate.clock_help;
+    if(track<0 || track>=SEQ_NUM_TRACKS || track==gstate.overview_track) return;
+    if(mode!=GUI_OVERVIEW_TRACK && mode!=GUI_OVERVIEW_LANES && mode!=GUI_OVERVIEW_TRACKER) return;
+    gstate.overview_track=track;
+    if(mode!=GUI_OVERVIEW_TRACK)
+        gstate.clock_help=song_get_track_type(track)==SONG_TRACK_TYPE_DRUM ?
+            GUI_OVERVIEW_LANES : GUI_OVERVIEW_TRACKER;
+    gstate.clock_help_drawn=0;  // full redraw
+}
 void gui_overview_page(int change) {
     int mode=gstate.clock_help,index=gstate.overview_track,grid,last;
     if(!change || index>=SEQ_NUM_TRACKS) return;
@@ -2107,6 +2119,7 @@ void gui_update_first_track(int first) {
         return;
     }
     gstate.first_track = first;
+    gui_overview_follow_track(first);
 
     // track number
     if(!gstate.status_override) {
