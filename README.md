@@ -154,10 +154,6 @@ clock source and minimal steps; do not attach private songs without consent.
 Keep fixes focused; this release freezes the musical feature set. Never upload
 commercial MIDI files or personal backups as test fixtures without rights.
 
-This cumulative release includes PR #10/#11/#12 plus subsequent work. Those
-narrower PR branches remain separate and unchanged. This prerelease does not
-depend on those submissions being reviewed or merged.
-
 ## Licensing / using code in your own projects
 
 __THIS CODE IS GPL LICENSED UNLESS SPECIFIED OTHERWISE__
