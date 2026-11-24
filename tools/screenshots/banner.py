@@ -21,8 +21,8 @@ PANELS = [
   "One chord, many harmonies", "Steer other tracks from a Bias track"),
  ("20-drum-lanes-p1", None, "cond", "Drum lanes",
   "Hold a DRUM track; edit in Step Edit"),
- ("04-clock-overview", None, "out", "Every setting on one page",
-  "Hold a menu button"),
+ ("26-song-tracker", None, "out", "Tracker view",
+  "Hold Scene + number; edit in Step Edit"),
 ]
 
 def e(t): return html.escape(t)
