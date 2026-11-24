@@ -73,6 +73,8 @@ static int euc_density=100, euc_rotation, euc_calls;
 int song_get_euclidean_density(int scene,int track) {return euc_density;}
 int song_get_euclidean_rotation(int scene,int track) {return euc_rotation;}
 void seq_ctrl_adjust_euclidean_density(int change) {euc_density+=change;euc_calls++;}
+static int euc_set_scene=-1, euc_set_track=-1;
+void song_set_euclidean_density(int scene,int track,int d) {euc_density=d;euc_set_scene=scene;euc_set_track=track;}
 void seq_ctrl_adjust_euclidean_rotation(int change) {euc_rotation+=change;euc_calls++;}
 static int test_track_type = SONG_TRACK_TYPE_VOICE;
 int song_get_track_type(int track) {return test_track_type;}
@@ -251,6 +253,28 @@ static void test_expanded_details(void) {
     assert(!memcmp(saved,events,sizeof(saved)));
 }
 
+/* Shift + Pattern: Euclid density of the edited scene/track; no undo point,
+   ratchet unchanged; title shows the value until the hint times out. */
+static void test_step_edit_euclid(void) {
+    for(int view=0;view<3;view++) {
+        setup();sedits.enable=1;sedits.event_pos=-1;sedits.scene=2;sedits.track=3;
+        step_details_preference=view==1;slanes.on=view==2;test_track_type=SONG_TRACK_TYPE_VOICE;
+        euc_density=100;ratchet=1;int undo=undo_captures;
+        step_edit_adjust_ratchet_mode(-3,1);            /* length 64: 1% per detent */
+        assert(euc_density==97 && euc_set_scene==2 && euc_set_track==3);
+        assert(ratchet==1 && undo_captures==undo && !euc_calls);
+        assert(!strcmp(rows[0],"Euclid T4 Density 97%"));
+        step_edit_adjust_ratchet_mode(-200,1);assert(euc_density==0);
+        step_edit_adjust_ratchet_mode(500,1);assert(euc_density==100);
+        for(int ms=0;ms<1500;ms++) {sedits.edit_timeout=0;step_edit_timer_task();}
+        assert(!strncmp(rows[0],"Edit - Track:",13));
+        step_edit_adjust_ratchet_mode(1,0);assert(ratchet==2);   /* plain Pattern: ratchet */
+    }
+    /* Region: neither */
+    setup();sedits.enable=1;sedits.event_pos=-2;euc_density=50;
+    step_edit_adjust_ratchet_mode(5,1);assert(euc_density==50);
+    slanes.on=0;step_details_preference=0;sedits.event_pos=-1;
+}
 static void test_silent_ratchet_edit(void) {
     for(int expanded=0;expanded<2;expanded++) {
         setup();sedits.enable=1;sedits.event_pos=-1;
@@ -585,6 +609,7 @@ int main(void) {
     test_region_filter();
     test_region_edit();
     test_silent_ratchet_edit();
+    test_step_edit_euclid();
     test_expanded_details();
     test_group_transpose_notes_only();
     test_undo_preserves_editor();

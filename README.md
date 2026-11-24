@@ -106,6 +106,8 @@ songs; faithful downgrade of 1.38 songs is not supported.
 - Scn: select a Scn slot in Step Edit, then buttons 1--6 toggle allowed scenes
   with matching LEDs. See [scene gates](SCENE-GATES.org).
 - Shift+Pattern: density; Shift+Transpose: Euclidean rotation in normal mode.
+  In Step Edit, Shift+Pattern sets density of the edited track and scene
+  (no undo point); rotation stays outside Step Edit.
 - Clock menu: Perform Grid (Straight) and Perform Pitch (Octaves/Octaves+5ths).
   These protect manual gestures, not all automation. Running edits apply next
   4/4 bar; turning back cancels. Stop/reset/scene/song boundaries cancel edits.

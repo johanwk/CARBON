@@ -62,6 +62,7 @@ struct step_edit_state {
     int event_pos;  // the event edit pos or STEP_EDIT_EVENT_POS_ALL for global
     int undo_captured; // one checkpoint for the entire visit to this step
     int cci_hint_timeout;  // milliseconds remaining for title help
+    int euclid_hint_timeout;  // milliseconds the title shows Euclid density
     int cci_hint_controller;
     int cci_hint_value;
     int cci_hint_show_value;
@@ -171,6 +172,8 @@ void step_edit_init(void) {
 
 // run step edit timer task
 void step_edit_timer_task(void) {
+    if(sedits.enable && sedits.euclid_hint_timeout > 0 && --sedits.euclid_hint_timeout == 0)
+        step_edit_update_title();
     if(sedits.enable && sedits.cci_hint_timeout > 0) {
         if(--sedits.cci_hint_timeout == 0 ||
                 (sedits.cci_hint_show_value &&
@@ -767,6 +770,7 @@ void step_edit_adjust_cursor(int change, int shift) {
     }
     sedits.edit_timeout = panel_menu_get_timeout();
     sedits.cci_hint_timeout = 0;
+    sedits.euclid_hint_timeout = 0;
 
     // select event pos
     if(shift) {
@@ -963,6 +967,25 @@ void step_edit_adjust_start_delay(int change, int shift) {
     step_edit_update_display();
 }
 
+// Shift + Pattern (compact/expanded/tracker): track Euclidean density of
+// the edited scene and track, same step size as outside Step Edit. Not an
+// undo point; rotation stays outside Step Edit (Shift + Transpose there).
+#define STEP_EDIT_EUCLID_HINT_MS 1500
+static void step_edit_adjust_euclid_density(int change) {
+    sedits.edit_timeout = panel_menu_get_timeout();
+    if(change) {
+        int length = seq_utils_clamp(song_get_motion_length(sedits.scene, sedits.track), 1, SEQ_NUM_STEPS);
+        int scale = (SEQ_NUM_STEPS + (length >> 1)) / length;
+        if(scale < 1) scale = 1;
+        song_set_euclidean_density(sedits.scene, sedits.track,
+            seq_utils_clamp(song_get_euclidean_density(sedits.scene, sedits.track) + change * scale,
+            SEQ_EUCLIDEAN_DENSITY_MIN, SEQ_EUCLIDEAN_DENSITY_MAX));
+    }
+    sedits.cci_hint_timeout = 0;
+    sedits.euclid_hint_timeout = STEP_EDIT_EUCLID_HINT_MS;
+    step_edit_update_display();
+}
+
 // adjust the ratchet mode
 void step_edit_adjust_ratchet_mode(int change, int shift) {
     if(step_edit_lanes_active()) {
@@ -972,6 +995,7 @@ void step_edit_adjust_ratchet_mode(int change, int shift) {
         return;
     }
     if(sedits.event_pos == STEP_EDIT_EVENT_POS_REGION) return;  // not a region parameter
+    if(shift) {step_edit_adjust_euclid_density(change); return;}
     if(change && step_edit_prepare_undo() < 0) return;
     sedits.edit_timeout = panel_menu_get_timeout();
     song_set_ratchet_mode(sedits.scene, sedits.track, sedits.step_pos,
@@ -1669,6 +1693,12 @@ static void step_edit_update_title(void) {
         snprintf(title, sizeof(title), "Hrm: %s / %s", scale,
             event.data1 == SONG_HARMONY_ROOT_KEEP ? "Keep" :
             scale_root_name((int)event.data1 - SONG_HARMONY_ROOT_C));
+        gui_set_status_text(0, title);
+        return;
+    }
+    if(sedits.euclid_hint_timeout > 0) {
+        snprintf(title, sizeof(title), "Euclid T%d Density %d%%", sedits.track + 1,
+            song_get_euclidean_density(sedits.scene, sedits.track));
         gui_set_status_text(0, title);
         return;
     }
