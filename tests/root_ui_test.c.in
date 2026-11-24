@@ -407,6 +407,18 @@ static void gui_refresh_task_lane_test(void) {
     gui_lane_edit_set(1,0,rows,0,21);assert(gui_draw_lane_edit()); /* cursor moved */
     assert(gstate.lane_cursor_drawn_row==9 && gstate.lane_cursor_drawn_col==5);
     gui_lane_edit_set(0,0,0,0,0);assert(gui_lane_edit_restore() && !gstate.lane_edit_drawn);
+    /* Race: a track switch starts the tracker before the lane restore runs.
+       The tracker has drawn in full over the lanes: the restore must not
+       paint the grid or force a second full draw (flicker); the ended view
+       still redraws in full next time. */
+    gstate.lane_edit_drawn=1;gstate.trk_edit=1;gstate.trk_edit_drawn=1;
+    gstate.grid_state[0]=5;
+    assert(!gui_lane_edit_restore() && gstate.trk_edit_drawn && !gstate.lane_edit_drawn);
+    assert(gstate.grid_state[0]==5);
+    gstate.trk_edit=0;gstate.trk_edit_drawn=1;gstate.lane_edit=1;gstate.lane_edit_drawn=1;
+    assert(!gui_trk_edit_restore() && gstate.lane_edit_drawn && !gstate.trk_edit_drawn);
+    assert(gstate.grid_state[0]==5);
+    gstate.lane_edit=gstate.lane_edit_drawn=gstate.trk_edit_drawn=0;
 }
 static struct track_event LN(int p,int v) {
     return (struct track_event){.type=SONG_EVENT_NOTE,.data0=p,.data1=v,.length=12,.delay=SEQ_START_DELAY_INHERIT};

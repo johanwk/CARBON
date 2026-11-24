@@ -1385,6 +1385,7 @@ static int gui_trk_edit_restore(void) {
     if(gstate.trk_edit || !gstate.trk_edit_drawn) return 0;
     gstate.trk_edit_drawn = 0;
     if(gstate.clock_help) return 0;
+    if(gstate.lane_edit) return 0;  // same race, other direction: lanes own the area
     gui_draw_grid_bg();
     memset(gstate.grid_state, 0, sizeof(gstate.grid_state));
     memset(gstate.pitch_marks, 0, sizeof(gstate.pitch_marks));
@@ -1404,8 +1405,12 @@ static int gui_draw_lane_edit(void) {
 }
 static int gui_lane_edit_restore(void) {
     if(gstate.lane_edit || !gstate.lane_edit_drawn) return 0;
-    gstate.lane_edit_drawn = 0;
+    gstate.lane_edit_drawn = 0;  // ended: the next lane view draws in full
     if(gstate.clock_help) return 0;  // overview owns the area; it restores later
+    // A track switch (RT task) can start the tracker before this restore
+    // runs; it has then already drawn in full over the lanes. Leave it alone:
+    // no grid background, no second full draw (both show as flicker).
+    if(gstate.trk_edit) return 0;
     gui_draw_grid_bg();
     memset(gstate.grid_state, 0, sizeof(gstate.grid_state));
     memset(gstate.pitch_marks, 0, sizeof(gstate.pitch_marks));

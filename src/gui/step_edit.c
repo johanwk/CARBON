@@ -95,6 +95,7 @@ static void step_edit_lanes_build(void);
 static void step_edit_lanes_publish(void);
 static void step_edit_lanes_cursor_to_step(void);
 
+static void step_edit_region_overlay(int on);
 // Tracker view: the third view on VOICE tracks (slanes.on is shared, so a
 // track switch keeps the third view: lanes for DRUM, tracker for VOICE).
 static int step_edit_tracker_active(void) {
@@ -107,8 +108,17 @@ void step_edit_toggle_details(void) {
     if(!sedits.enable) return;
     int drum = song_get_track_type(sedits.track) == SONG_TRACK_TYPE_DRUM;
     int region = sedits.event_pos == STEP_EDIT_EVENT_POS_REGION;
+    if(region) {
+        // From Region: leave it (as moving to a step does) and open the third
+        // view directly - lanes on DRUM, tracker on VOICE.
+        step_edit_region_overlay(0);
+        sedits.region_filter = -1;
+        sedits.event_pos = STEP_EDIT_EVENT_POS_ALL;
+        sedits.undo_captured = 0;
+        slanes.on = 0; step_details_preference = 1;
+    }
     if(slanes.on) {slanes.on = 0; step_details_preference = 0;}
-    else if(step_details_preference && !region) {
+    else if(step_details_preference) {
         slanes.on = 1; step_details_preference = 0;
         if(drum) {
             sedits.event_pos = STEP_EDIT_EVENT_POS_ALL;
@@ -126,7 +136,6 @@ void step_edit_adjust_step(int change, int mode, int single, int shift);
 void step_edit_update_display(void);
 static void step_edit_update_title(void);
 static void step_edit_show_cci_hint(void);
-static void step_edit_region_overlay(int on);
 static int step_edit_region_adjust(int change, int mode);
 static void step_edit_region_display(void);
 static int step_edit_prepare_undo(void) {

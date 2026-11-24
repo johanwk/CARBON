@@ -255,6 +255,20 @@ static void test_expanded_details(void) {
 
 /* Shift + Pattern: Euclid density of the edited scene/track; no undo point,
    ratchet unchanged; title shows the value until the hint times out. */
+/* Long press in Region opens the third view directly: lanes / tracker. */
+static void test_region_to_third_view(void) {
+    for(int drum=0;drum<2;drum++) for(int pref=0;pref<2;pref++) {
+        setup();region_mode=1;sedits.enable=1;sedits.event_pos=-2;sedits.step_pos=5;
+        sedits.region_filter=drum?36:-1;slanes.on=0;step_details_preference=pref;
+        test_track_type=drum?SONG_TRACK_TYPE_DRUM:SONG_TRACK_TYPE_VOICE;
+        step_edit_toggle_details();
+        assert(sedits.event_pos==-1 && sedits.region_filter==-1 && sedits.step_pos==5);
+        assert(slanes.on && !step_details_preference);
+        assert(drum ? (lane_gui_on && !trk_gui_on) : (trk_gui_on && !lane_gui_on));
+        step_edit_toggle_details();assert(!slanes.on && !step_details_preference);
+    }
+    region_mode=0;test_track_type=SONG_TRACK_TYPE_VOICE;
+}
 static void test_step_edit_euclid(void) {
     for(int view=0;view<3;view++) {
         setup();sedits.enable=1;sedits.event_pos=-1;sedits.scene=2;sedits.track=3;
@@ -610,6 +624,7 @@ int main(void) {
     test_region_edit();
     test_silent_ratchet_edit();
     test_step_edit_euclid();
+    test_region_to_third_view();
     test_expanded_details();
     test_group_transpose_notes_only();
     test_undo_preserves_editor();
