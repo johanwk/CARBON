@@ -10,7 +10,7 @@ SVG is self-contained and scales sharply. Callout text is live SVG text.
 Leaders are straight lines. On each side, boxes keep the vertical order of
 their targets and targets sit at a common edge, so leaders cannot cross.
 
-Usage: annotate.py DIAGRAM SCREEN.png OUT.svg     (DIAGRAM: main, stepedit)
+Usage: annotate.py DIAGRAM SCREEN.png OUT.svg     (DIAGRAM: see DIAGRAMS)
 """
 import base64, html, os, struct, subprocess, sys, zlib
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -495,6 +495,86 @@ DIAGRAMS = {
     "0-100%. Here 31%: 5 of 16 steps."),
    ("R", (152, 414), (48, 409, 112, 10), "Rotation  -  Shift+Transpose",
     "Shifts the hits along the window."),
+  ]),
+ # Drum lanes / tracker cards. LCD A geometry from gui.c: lanes at x 74 +
+ # 12*step, y 118 + 18*row; tracker text rows y 92 + 11*row, cells x 66 + 32*col.
+ "lanes": dict(
+  title="DRUM lanes (read-only)",
+  subtitle="Long press a DRUM track button. Rendered from example data.",
+  callouts=[
+   ("L", (42, 97), (42, 92, 120, 10), "Track, steps and page",
+    "16 steps per page. Motion Start pages 1-4, then the track's Settings page."),
+   ("L", (42, 232), (42, 208, 30, 100), "One row per drum",
+    "Up to 10 drums by hit count, low pitches at the bottom; the kick is always kept."),
+   ("L", (151, 252), (146, 244, 12, 18), "Ghost hit",
+    "Below velocity 40: small square. Otherwise brightness shows velocity."),
+   ("L", (224, 276), (218, 262, 12, 18), "Own delay",
+    "A dot in the corner: the note has its own delay."),
+   ("R", (100, 108), (74, 104, 192, 12), "Step numbers",
+    "First step of each beat."),
+   ("R", (240, 200), (218, 118, 48, 180), "Outside the region",
+    "Steps outside Motion Start/Length are darker. Black = masked by Pattern or Euclid."),
+   ("R", (260, 330), None, "Stays open",
+    "Track buttons switch track; Record and Run/Stop keep the view, to watch a take land."),
+  ]),
+ "laneedit": dict(
+  title="DRUM lanes in Step Edit",
+  subtitle="Long press Edit twice on a DRUM track. Rendered from example data.",
+  callouts=[
+   ("L", (42, 97), (42, 92, 140, 10), "EDIT: lanes view",
+    "Long press Edit cycles compact, expanded, lanes."),
+   ("L", (122, 271), (122, 262, 12, 18), "Cursor  -  Start / Shift+Start",
+    "Start moves the step, Shift+Start the row."),
+   ("L", (50, 145), (42, 118, 30, 90), "Empty rows",
+    "Transpose on an empty row chooses a drum. On a used row it moves the whole lane."),
+   ("R", (ch(29), 390), (48, 385, 224, 10), "Cursor hit",
+    "Drum, velocity, gate and delay of the hit under the cursor."),
+   ("R", (ch(29), 425), (48, 409, 224, 22), "Value adds and removes",
+    "Value adds a hit or sets velocity; Shift+Value deletes. Gate and Speed set gate and delay."),
+   ("R", (260, 200), None, "Fill and rotate a lane",
+    "Shift+Pattern: Euclidean fill. Shift+Transpose: rotate the lane."),
+  ]),
+ "songtracker": dict(
+  title="Tracker: whole scene",
+  subtitle="Long press Scene + number. Playing, follow on. Rendered from example data.",
+  callouts=[
+   ("L", (42, 97), (42, 92, 190, 10), "Scene, steps, page",
+    "play = follows the playhead. Motion Start pages 1-4 (stops follow), then Settings."),
+   ("L", (78, 108), (66, 103, 32, 10), "Selected track",
+    "Bright header. Tracks have numbers only; the footer shows its channel and region."),
+   ("L", (50, 207), (42, 202, 24, 10), "* = Hrm change",
+    "Step numbers: beat starts bright. A star marks a step holding a Hrm event."),
+   ("L", (130, 135), (130, 125, 32, 21), "Held note",
+    "||| : a note from an earlier step still sounds."),
+   ("L", (176, 163), (162, 158, 32, 10), "Playheads",
+    "Grey cell per track. T4 runs 8ths, so it is at step 5 while the others are at 10."),
+   ("R", (190, 108), None, "First note per track",
+    "Name (GM name on DRUM tracks). Brightness = velocity."),
+   ("R", (95, 163), (66, 158, 32, 10), "Flag after the note",
+    "+ more notes, \" ratchet, ? condition, ~ glide, h Hrm/Inv, c CC/PC, ' own delay."),
+   ("R", (240, 268), (226, 246, 32, 43), "Disabled steps",
+    "Dark grey = step plays. Black = outside the region or masked by Pattern/Euclid."),
+   ("R", (100, 306), (42, 301, 150, 10), "Footer",
+    "Reference track (first selected): output and region. Harmony stays in the status lines."),
+  ]),
+ "edittracker": dict(
+  title="Tracker in Step Edit",
+  subtitle="Long press Edit twice on a VOICE track. Rendered from example data.",
+  callouts=[
+   ("L", (42, 97), (42, 92, 150, 10), "EDIT: tracker view",
+    "Long press Edit cycles compact, expanded, tracker (lanes on DRUM tracks)."),
+   ("L", (78, 108), (66, 103, 192, 10), "Event slots s1-s6",
+    "One column per slot. Non-notes show short names: %50 Prb, Euc, c74 CC, Hrm, Gli."),
+   ("L", (78, 141), (66, 136, 32, 10), "Condition slot",
+    "Prb 50% in s1; the ? on the note next to it marks it as conditional."),
+   ("L", (140, 163), (130, 158, 32, 10), "Cursor  -  Start / Shift+Start",
+    "Start moves the step (page follows), Shift+Start the slot. All slots: whole row."),
+   ("R", (ch(29), 391), (48, 385, 224, 46), "Status lines",
+    "The usual Step Edit details for the cursor step and slot."),
+   ("R", (260, 220), None, "Edit with the usual dials",
+    "Transpose note, Length velocity, Gate gate, Speed delay, Pattern ratchet. On an empty slot Transpose or Length adds a note."),
+   ("R", (230, 103), None, "Track buttons",
+    "Switch track and stay in Step Edit and in this view; DRUM tracks show lanes."),
   ]),
  "stepedit": dict(
   title="Step Edit, expanded view",

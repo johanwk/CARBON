@@ -79,6 +79,7 @@ static int fx_start[6][6], fx_len[6][6], fx_rate[6][6], fx_mute[6][6], fx_bias[6
 static int fx_type[6]={0,0,0,0,1,1}, fx_scene_root[6]={-2,-2,7,-2,2,-2};
 static struct track_event fx_events[64][SEQ_TRACK_POLY];
 static int fx_ratchet[64], fx_delay[64];
+static int fx_song_on;  /* song tracker fixture active */
 /* Euclidean-style hits: k of n, with n not dividing the 8-step grid row, so
  * rows differ. Rotation is chosen so step 5 (index 4, the edited chord) hits. */
 static const int fx_k[6]={5,3,7,4,2,5}, fx_n[6]={13,10,12,11,7,9};
@@ -150,6 +151,7 @@ int seq_engine_get_effective_pattern_type(int t) { return 0; }
 int pattern_get_step_enable(int scene,int track,int pattern,int step) {
     if(fx_euc && track==0) return production_pattern_get_step_enable(scene,track,pattern,step);
     if(fx_drum_open && track==0) return 1;  /* drum fixture: all steps play */
+    if(fx_song_on) return 1;                /* song tracker: regions only */
     return fx_hit(track,step);
 }
 int seq_engine_get_effective_motion_start(int t) { return fx_start[fx_scene][t]; }
@@ -164,7 +166,8 @@ int seq_engine_record_preview(int track,uint8_t *pitch,uint8_t *step,uint8_t *ve
     int n=0; for(int i=0;i<4 && n<max;i++) {pitch[n]=46;step[n]=st[i];velocity[n]=96;n++;}
     return n;
 }
-int seq_ctrl_get_run_state(void) { return 0; }
+static int fx_running;
+int seq_ctrl_get_run_state(void) { return fx_running; }
 int seq_ctrl_get_scene(void) { return fx_scene; }
 int seq_ctrl_get_song_mode(void) { return 0; }
 int seq_ctrl_get_track_select(int t) { return fx_selected[t]; }
@@ -228,14 +231,44 @@ int song_get_num_step_events(int s,int t,int step) {
     int n=0; for(int i=0;i<SEQ_TRACK_POLY;i++) n+=!!fx_cell(step)[i].type; return t==fx_first?n:fx_hit(t,step);
 }
 int song_get_pattern_type(int s,int t) { return 0; }
-int song_get_ratchet_mode(int s,int t,int step) { return fx_ratchet[step]; }
+int song_get_ratchet_mode(int s,int t,int step) { return fx_song_on ? (t==0 && step==4 ? 2 : 1) : fx_ratchet[step]; }
 int song_get_root(void) { return 0; }
 int song_get_scene_midi_program(int s,int t,int m) { return -1; }
 int song_get_scene_root(int s) { return fx_scene_root[s]; }
 int song_get_effective_root(int s) { return fx_scene_root[s]==-2 ? 0 : fx_scene_root[s]; }
 int song_get_scene_sync(void) { return SONG_SCENE_SYNC_BEAT; }
 int song_get_start_delay(int s,int t,int step) { return fx_delay[step]; }
+/* Song tracker fixture: a small electro/house sketch, one part per track. */
+static struct track_event fx_song[6][64][SEQ_TRACK_POLY];
+static void fx_song_init(void) {
+    memset(fx_song,0,sizeof(fx_song));
+    #define EV(t,st,sl,ty,a,b,len) fx_song[t][st][sl]=(struct track_event){ty,a,b,SEQ_START_DELAY_INHERIT,len}
+    static const int bass[4]={45,45,41,43};          /* A1 A1 F1 G1, one per beat pair */
+    for(int st=0;st<16;st++) {
+        int root=bass[st/4];
+        if(st%4==0) EV(0,st,0,SONG_EVENT_NOTE,root,110,10);
+        if(st%4==2) EV(0,st,0,SONG_EVENT_NOTE,root+12,st%8==6?70:90,5);
+        if(st%4==0) EV(4,st,0,SONG_EVENT_NOTE,36,120,6);           /* BD */
+        if(st%8==4) EV(4,st,1,SONG_EVENT_NOTE,38,105,6);           /* SD */
+        if(st%2==0) EV(5,st,0,SONG_EVENT_NOTE,42,st%4?55:95,3);    /* CHH */
+        if(st%4==2) EV(5,st,0,SONG_EVENT_NOTE,46,85,6);            /* OHH */
+    }
+    /* chords: Am7 sustained, Hrm change on step 9 */
+    EV(2,0,0,SONG_EVENT_NOTE,57,80,72);EV(2,0,1,SONG_EVENT_NOTE,60,76,72);EV(2,0,2,SONG_EVENT_NOTE,64,76,72);
+    EV(2,8,0,SONG_EVENT_HARMONY,4,7,0);EV(2,8,1,SONG_EVENT_NOTE,53,80,48);EV(2,8,2,SONG_EVENT_NOTE,57,76,48);
+    EV(2,12,0,SONG_EVENT_NOTE,55,72,24);EV(2,12,1,SONG_EVENT_INVERSION,1,0,0);
+    /* lead: sparse, a Prb, a glide, a delayed note */
+    EV(1,2,0,SONG_EVENT_NOTE,72,100,12);
+    EV(1,6,0,SONG_EVENT_PROBABILITY,50,0,0);EV(1,6,1,SONG_EVENT_NOTE,76,64,6);
+    EV(1,10,0,SONG_EVENT_NOTE,74,96,24);EV(1,10,1,SONG_EVENT_GLIDE,3,64,0);
+    EV(1,14,0,SONG_EVENT_NOTE,69,84,6);fx_song[1][14][0].delay=6;
+    /* arp: eighths, soft */
+    for(int st=1;st<16;st+=2) EV(3,st,0,SONG_EVENT_NOTE,64+(st%6),40+st*4,4);
+    EV(3,13,1,SONG_EVENT_CC,74,90,0);
+    #undef EV
+}
 int song_get_step_event(int s,int t,int step,int slot,struct track_event *e) {
+    if(fx_song_on) {*e=fx_song[t][step][slot]; return e->type ? 0 : -1;}
     *e=fx_cell(step)[slot]; return e->type ? 0 : -1;
 }
 int song_get_step_length(int s,int t) { return fx_rate[s][t]; }
@@ -455,8 +488,19 @@ int main(int argc,char **argv) {
         bad|=shot(argv[1],"05-track-overview",screen);
         boot(screen); gui_scene_overview_open(1); gui_overview_page(9); /* Settings page */
         bad|=shot(argv[1],"06-scene-overview",screen);
-        boot(screen); gui_scene_overview_open(0); gui_overview_page(-9);
-        bad|=shot(argv[1],"26-song-tracker",screen);
+        {   /* Song tracker, running: playheads at different rates/regions. */
+            int st[6],ln[6];
+            for(int t=0;t<6;t++) {st[t]=fx_start[0][t];ln[t]=fx_len[0][t];fx_start[0][t]=0;fx_len[0][t]=16;}
+            fx_len[0][5]=12;                            /* T6: steps 13-16 disabled */
+            fx_song_init(); fx_song_on=1; fx_running=1;
+            boot(screen);
+            int head[6]={9,9,9,4,9,9};                 /* T4 runs 8ths */
+            for(int t=0;t<6;t++) gui_update_active_step(t,head[t]);
+            gui_scene_overview_open(0);
+            bad|=shot(argv[1],"26-song-tracker",screen);
+            gui_clock_help_set(0); fx_song_on=0; fx_running=0;
+            for(int t=0;t<6;t++) {fx_start[0][t]=st[t];fx_len[0][t]=ln[t];}
+        }
         boot(screen); gui_track_overview_open(0); gui_overview_page(-9);
         bad|=shot(argv[1],"27-track-tracker",screen);
         boot(screen); gui_overview_open(PANEL_MENU_SYS); bad|=shot(argv[1],"07-sys-overview",screen);

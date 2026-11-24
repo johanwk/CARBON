@@ -1,0 +1,71 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1260 770" font-family="Helvetica, Arial, sans-serif">
+<defs><marker id="dot" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="7" markerHeight="7"><circle cx="5" cy="5" r="4" fill="#d98a1f"/></marker></defs>
+<rect width="1260" height="770" fill="#fff"/>
+<text x="630.0" y="48" text-anchor="middle" font-size="32" font-weight="bold" fill="#222">Tracker in Step Edit</text>
+<text x="630.0" y="80" text-anchor="middle" font-size="18" fill="#777">Long press Edit twice on a VOICE track. Rendered from example data.</text>
+<rect x="422" y="102" width="416.0" height="616.0" rx="10" fill="#333"/>
+<image x="430" y="110" width="400.0" height="600.0" preserveAspectRatio="none" style="image-rendering:pixelated" href="data:image/png;base64,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"/>
+<rect x="482.5" y="225.0" width="187.5" height="12.5" fill="none" stroke="#d98a1f" stroke-width="2.5" rx="3"/>
+<rect x="512.5" y="238.75" width="240.0" height="12.5" fill="none" stroke="#d98a1f" stroke-width="2.5" rx="3"/>
+<rect x="512.5" y="280.0" width="40.0" height="12.5" fill="none" stroke="#d98a1f" stroke-width="2.5" rx="3"/>
+<rect x="592.5" y="307.5" width="40.0" height="12.5" fill="none" stroke="#d98a1f" stroke-width="2.5" rx="3"/>
+<rect x="490.0" y="591.25" width="280.0" height="57.5" fill="none" stroke="#d98a1f" stroke-width="2.5" rx="3"/>
+<line x1="360" y1="231.25" x2="482.5" y2="231.25" stroke="#d98a1f" stroke-width="2" marker-end="url(#dot)"/>
+<rect x="20" y="176.25" width="340" height="110" rx="8" fill="#fff8ec" stroke="#d98a1f" stroke-width="2"/>
+<circle cx="40" cy="198.25" r="13" fill="#d98a1f"/>
+<text x="40" y="204.25" text-anchor="middle" font-size="16" font-weight="bold" fill="#fff">1</text>
+<text x="62" y="205.25" font-size="21" font-weight="bold" fill="#222">EDIT: tracker view</text>
+<text x="36" y="230.25" font-size="17" fill="#333">Long press Edit cycles compact,</text>
+<text x="36" y="252.25" font-size="17" fill="#333">expanded, tracker (lanes on DRUM</text>
+<text x="36" y="274.25" font-size="17" fill="#333">tracks).</text>
+<line x1="360" y1="357.25" x2="527.5" y2="245.0" stroke="#d98a1f" stroke-width="2" marker-end="url(#dot)"/>
+<rect x="20" y="302.25" width="340" height="110" rx="8" fill="#fff8ec" stroke="#d98a1f" stroke-width="2"/>
+<circle cx="40" cy="324.25" r="13" fill="#d98a1f"/>
+<text x="40" y="330.25" text-anchor="middle" font-size="16" font-weight="bold" fill="#fff">2</text>
+<text x="62" y="331.25" font-size="21" font-weight="bold" fill="#222">Event slots s1-s6</text>
+<text x="36" y="356.25" font-size="17" fill="#333">One column per slot. Non-notes</text>
+<text x="36" y="378.25" font-size="17" fill="#333">show short names: %50 Prb, Euc,</text>
+<text x="36" y="400.25" font-size="17" fill="#333">c74 CC, Hrm, Gli.</text>
+<line x1="360" y1="483.25" x2="527.5" y2="286.25" stroke="#d98a1f" stroke-width="2" marker-end="url(#dot)"/>
+<rect x="20" y="428.25" width="340" height="110" rx="8" fill="#fff8ec" stroke="#d98a1f" stroke-width="2"/>
+<circle cx="40" cy="450.25" r="13" fill="#d98a1f"/>
+<text x="40" y="456.25" text-anchor="middle" font-size="16" font-weight="bold" fill="#fff">3</text>
+<text x="62" y="457.25" font-size="21" font-weight="bold" fill="#222">Condition slot</text>
+<text x="36" y="482.25" font-size="17" fill="#333">Prb 50% in s1; the ? on the note</text>
+<text x="36" y="504.25" font-size="17" fill="#333">next to it marks it as</text>
+<text x="36" y="526.25" font-size="17" fill="#333">conditional.</text>
+<line x1="360" y1="622.25" x2="605.0" y2="313.75" stroke="#d98a1f" stroke-width="2" marker-end="url(#dot)"/>
+<rect x="20" y="554.25" width="340" height="136" rx="8" fill="#fff8ec" stroke="#d98a1f" stroke-width="2"/>
+<circle cx="40" cy="576.25" r="13" fill="#d98a1f"/>
+<text x="40" y="582.25" text-anchor="middle" font-size="16" font-weight="bold" fill="#fff">4</text>
+<text x="62" y="583.25" font-size="21" font-weight="bold" fill="#222">Cursor  -</text>
+<text x="62" y="609.25" font-size="21" font-weight="bold" fill="#222">Start / Shift+Start</text>
+<text x="36" y="634.25" font-size="17" fill="#333">Start moves the step (page</text>
+<text x="36" y="656.25" font-size="17" fill="#333">follows), Shift+Start the slot.</text>
+<text x="36" y="678.25" font-size="17" fill="#333">All slots: whole row.</text>
+<line x1="900.0" y1="238.75" x2="717.5" y2="238.75" stroke="#d98a1f" stroke-width="2" marker-end="url(#dot)"/>
+<rect x="900.0" y="183.75" width="340" height="110" rx="8" fill="#fff8ec" stroke="#d98a1f" stroke-width="2"/>
+<circle cx="920.0" cy="205.75" r="13" fill="#d98a1f"/>
+<text x="920.0" y="211.75" text-anchor="middle" font-size="16" font-weight="bold" fill="#fff">7</text>
+<text x="942.0" y="212.75" font-size="21" font-weight="bold" fill="#222">Track buttons</text>
+<text x="916.0" y="237.75" font-size="17" fill="#333">Switch track and stay in Step Edit</text>
+<text x="916.0" y="259.75" font-size="17" fill="#333">and in this view; DRUM tracks show</text>
+<text x="916.0" y="281.75" font-size="17" fill="#333">lanes.</text>
+<line x1="900.0" y1="388.75" x2="755.0" y2="385.0" stroke="#d98a1f" stroke-width="2" marker-end="url(#dot)"/>
+<rect x="900.0" y="309.75" width="340" height="158" rx="8" fill="#fff8ec" stroke="#d98a1f" stroke-width="2"/>
+<circle cx="920.0" cy="331.75" r="13" fill="#d98a1f"/>
+<text x="920.0" y="337.75" text-anchor="middle" font-size="16" font-weight="bold" fill="#fff">6</text>
+<text x="942.0" y="338.75" font-size="21" font-weight="bold" fill="#222">Edit with the usual</text>
+<text x="942.0" y="364.75" font-size="21" font-weight="bold" fill="#222">dials</text>
+<text x="916.0" y="389.75" font-size="17" fill="#333">Transpose note, Length velocity,</text>
+<text x="916.0" y="411.75" font-size="17" fill="#333">Gate gate, Speed delay, Pattern</text>
+<text x="916.0" y="433.75" font-size="17" fill="#333">ratchet. On an empty slot</text>
+<text x="916.0" y="455.75" font-size="17" fill="#333">Transpose or Length adds a note.</text>
+<line x1="900.0" y1="598.75" x2="780.0" y2="598.75" stroke="#d98a1f" stroke-width="2" marker-end="url(#dot)"/>
+<rect x="900.0" y="554.75" width="340" height="88" rx="8" fill="#fff8ec" stroke="#d98a1f" stroke-width="2"/>
+<circle cx="920.0" cy="576.75" r="13" fill="#d98a1f"/>
+<text x="920.0" y="582.75" text-anchor="middle" font-size="16" font-weight="bold" fill="#fff">5</text>
+<text x="942.0" y="583.75" font-size="21" font-weight="bold" fill="#222">Status lines</text>
+<text x="916.0" y="608.75" font-size="17" fill="#333">The usual Step Edit details for</text>
+<text x="916.0" y="630.75" font-size="17" fill="#333">the cursor step and slot.</text>
+</svg>

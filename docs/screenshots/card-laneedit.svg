@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1260 770" font-family="Helvetica, Arial, sans-serif">
+<defs><marker id="dot" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="7" markerHeight="7"><circle cx="5" cy="5" r="4" fill="#d98a1f"/></marker></defs>
+<rect width="1260" height="770" fill="#fff"/>
+<text x="630.0" y="48" text-anchor="middle" font-size="32" font-weight="bold" fill="#222">DRUM lanes in Step Edit</text>
+<text x="630.0" y="80" text-anchor="middle" font-size="18" fill="#777">Long press Edit twice on a DRUM track. Rendered from example data.</text>
+<rect x="422" y="102" width="416.0" height="616.0" rx="10" fill="#333"/>
+<image x="430" y="110" width="400.0" height="600.0" preserveAspectRatio="none" style="image-rendering:pixelated" href="data:image/png;base64,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"/>
+<rect x="482.5" y="225.0" width="175.0" height="12.5" fill="none" stroke="#d98a1f" stroke-width="2.5" rx="3"/>
+<rect x="582.5" y="437.5" width="15.0" height="22.5" fill="none" stroke="#d98a1f" stroke-width="2.5" rx="3"/>
+<rect x="482.5" y="257.5" width="37.5" height="112.5" fill="none" stroke="#d98a1f" stroke-width="2.5" rx="3"/>
+<rect x="490.0" y="591.25" width="280.0" height="12.5" fill="none" stroke="#d98a1f" stroke-width="2.5" rx="3"/>
+<rect x="490.0" y="621.25" width="280.0" height="27.5" fill="none" stroke="#d98a1f" stroke-width="2.5" rx="3"/>
+<line x1="360" y1="231.25" x2="482.5" y2="231.25" stroke="#d98a1f" stroke-width="2" marker-end="url(#dot)"/>
+<rect x="20" y="187.25" width="340" height="88" rx="8" fill="#fff8ec" stroke="#d98a1f" stroke-width="2"/>
+<circle cx="40" cy="209.25" r="13" fill="#d98a1f"/>
+<text x="40" y="215.25" text-anchor="middle" font-size="16" font-weight="bold" fill="#fff">1</text>
+<text x="62" y="216.25" font-size="21" font-weight="bold" fill="#222">EDIT: lanes view</text>
+<text x="36" y="241.25" font-size="17" fill="#333">Long press Edit cycles compact,</text>
+<text x="36" y="263.25" font-size="17" fill="#333">expanded, lanes.</text>
+<line x1="360" y1="346.25" x2="492.5" y2="291.25" stroke="#d98a1f" stroke-width="2" marker-end="url(#dot)"/>
+<rect x="20" y="291.25" width="340" height="110" rx="8" fill="#fff8ec" stroke="#d98a1f" stroke-width="2"/>
+<circle cx="40" cy="313.25" r="13" fill="#d98a1f"/>
+<text x="40" y="319.25" text-anchor="middle" font-size="16" font-weight="bold" fill="#fff">3</text>
+<text x="62" y="320.25" font-size="21" font-weight="bold" fill="#222">Empty rows</text>
+<text x="36" y="345.25" font-size="17" fill="#333">Transpose on an empty row chooses</text>
+<text x="36" y="367.25" font-size="17" fill="#333">a drum. On a used row it moves the</text>
+<text x="36" y="389.25" font-size="17" fill="#333">whole lane.</text>
+<line x1="360" y1="474.25" x2="582.5" y2="448.75" stroke="#d98a1f" stroke-width="2" marker-end="url(#dot)"/>
+<rect x="20" y="417.25" width="340" height="114" rx="8" fill="#fff8ec" stroke="#d98a1f" stroke-width="2"/>
+<circle cx="40" cy="439.25" r="13" fill="#d98a1f"/>
+<text x="40" y="445.25" text-anchor="middle" font-size="16" font-weight="bold" fill="#fff">2</text>
+<text x="62" y="446.25" font-size="21" font-weight="bold" fill="#222">Cursor  -</text>
+<text x="62" y="472.25" font-size="21" font-weight="bold" fill="#222">Start / Shift+Start</text>
+<text x="36" y="497.25" font-size="17" fill="#333">Start moves the step, Shift+Start</text>
+<text x="36" y="519.25" font-size="17" fill="#333">the row.</text>
+<line x1="900.0" y1="360.0" x2="755.0" y2="360.0" stroke="#d98a1f" stroke-width="2" marker-end="url(#dot)"/>
+<rect x="900.0" y="316.0" width="340" height="88" rx="8" fill="#fff8ec" stroke="#d98a1f" stroke-width="2"/>
+<circle cx="920.0" cy="338.0" r="13" fill="#d98a1f"/>
+<text x="920.0" y="344.0" text-anchor="middle" font-size="16" font-weight="bold" fill="#fff">6</text>
+<text x="942.0" y="345.0" font-size="21" font-weight="bold" fill="#222">Fill and rotate a lane</text>
+<text x="916.0" y="370.0" font-size="17" fill="#333">Shift+Pattern: Euclidean fill.</text>
+<text x="916.0" y="392.0" font-size="17" fill="#333">Shift+Transpose: rotate the lane.</text>
+<line x1="900.0" y1="580.0" x2="780.0" y2="597.5" stroke="#d98a1f" stroke-width="2" marker-end="url(#dot)"/>
+<rect x="900.0" y="536.0" width="340" height="88" rx="8" fill="#fff8ec" stroke="#d98a1f" stroke-width="2"/>
+<circle cx="920.0" cy="558.0" r="13" fill="#d98a1f"/>
+<text x="920.0" y="564.0" text-anchor="middle" font-size="16" font-weight="bold" fill="#fff">4</text>
+<text x="942.0" y="565.0" font-size="21" font-weight="bold" fill="#222">Cursor hit</text>
+<text x="916.0" y="590.0" font-size="17" fill="#333">Drum, velocity, gate and delay of</text>
+<text x="916.0" y="612.0" font-size="17" fill="#333">the hit under the cursor.</text>
+<line x1="900.0" y1="695.0" x2="780.0" y2="641.25" stroke="#d98a1f" stroke-width="2" marker-end="url(#dot)"/>
+<rect x="900.0" y="640.0" width="340" height="110" rx="8" fill="#fff8ec" stroke="#d98a1f" stroke-width="2"/>
+<circle cx="920.0" cy="662.0" r="13" fill="#d98a1f"/>
+<text x="920.0" y="668.0" text-anchor="middle" font-size="16" font-weight="bold" fill="#fff">5</text>
+<text x="942.0" y="669.0" font-size="21" font-weight="bold" fill="#222">Value adds and removes</text>
+<text x="916.0" y="694.0" font-size="17" fill="#333">Value adds a hit or sets velocity;</text>
+<text x="916.0" y="716.0" font-size="17" fill="#333">Shift+Value deletes. Gate and</text>
+<text x="916.0" y="738.0" font-size="17" fill="#333">Speed set gate and delay.</text>
+</svg>

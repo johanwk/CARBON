@@ -55,6 +55,12 @@ if [ "$OUT" = docs/screenshots/fixtures ] && [ "$LAYOUT" = a ]; then
     python3 tools/screenshots/annotate.py anatomy "$OUT/09-step-anatomy-lcda.png" \
         docs/screenshots/step-anatomy.svg
     echo docs/screenshots/step-anatomy.svg
+    for card in "lanes 20-drum-lanes-p1" "laneedit 23-drum-lane-edit" \
+            "songtracker 26-song-tracker" "edittracker 28-step-edit-tracker"; do
+        set -- $card
+        python3 tools/screenshots/annotate.py "$1" "$OUT/$2-lcda.png" docs/screenshots/card-$1.svg
+        echo docs/screenshots/card-$1.svg
+    done
     echo docs/screenshots/main-display-annotated.svg
     echo docs/screenshots/step-edit-annotated.svg
 fi
