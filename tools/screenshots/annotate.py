@@ -514,7 +514,9 @@ DIAGRAMS = {
     "First step of each beat."),
    ("R", (240, 200), (218, 118, 48, 180), "Outside the region",
     "Steps outside Motion Start/Length are darker. Black = masked by Pattern or Euclid."),
-   ("R", (260, 330), None, "Stays open",
+   ("R", (200, 317), (42, 312, 200, 10), "Outputs A and B",
+    "DIN, USB or the CV jacks used. A DRUM track on CV with ABCD pairing shows CV ABCD: the drum map."),
+   ("R", (260, 345), None, "Stays open",
     "Track buttons switch track; Record and Run/Stop keep the view, to watch a take land."),
   ]),
  "laneedit": dict(
@@ -554,8 +556,10 @@ DIAGRAMS = {
     "+ more notes, \" ratchet, ? condition, ~ glide, h Hrm/Inv, c CC/PC, ' own delay."),
    ("R", (240, 268), (226, 246, 32, 43), "Disabled steps",
     "Dark grey = step plays. Black = outside the region or masked by Pattern/Euclid."),
-   ("R", (100, 306), (42, 301, 150, 10), "Footer",
-    "Reference track (first selected): output and region. Harmony stays in the status lines."),
+   ("R", (100, 306), (42, 301, 96, 10), "Footer: region",
+    "Reference track (first selected). Harmony stays in the status lines."),
+   ("R", (200, 317), (42, 312, 200, 10), "Outputs A and B",
+    "As heard: DIN1/DIN2/USBHOST/USBDEV + channel, or CV jacks for the pairing. CV ABCD = DRUM drum map."),
   ]),
  "edittracker": dict(
   title="Tracker in Step Edit",

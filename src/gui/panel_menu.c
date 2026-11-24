@@ -952,6 +952,13 @@ static void panel_menu_midi_row(int item, struct clock_menu_row *row) {
             panel_utils_channel_str(tempstr,
                 song_get_midi_port_map(track, 0),
                 song_get_midi_channel_map(track, 0));
+            // DRUM + CV + ABCD pairing: the fixed drum map decides the jack.
+            if(song_get_midi_port_map(track, 0) == MIDI_PORT_CV_OUT &&
+                    song_get_track_type(track) == SONG_TRACK_TYPE_DRUM &&
+                    song_get_cvgate_pairs() == SONG_CVGATE_PAIR_ABCD) {
+                snprintf(row->subtitle, sizeof(row->subtitle), "Track %d  CV drum map", track + 1);
+                strcpy(tempstr, "CV ABCD");
+            }
             snprintf(row->value, sizeof(row->value), "%s", tempstr);
             break;
         case PANEL_MENU_MIDI_TRACK_OUTB_CHAN:
@@ -961,6 +968,13 @@ static void panel_menu_midi_row(int item, struct clock_menu_row *row) {
             panel_utils_channel_str(tempstr,
                 song_get_midi_port_map(track, 1),
                 song_get_midi_channel_map(track, 1));
+            // DRUM + CV + ABCD pairing: the fixed drum map decides the jack.
+            if(song_get_midi_port_map(track, 1) == MIDI_PORT_CV_OUT &&
+                    song_get_track_type(track) == SONG_TRACK_TYPE_DRUM &&
+                    song_get_cvgate_pairs() == SONG_CVGATE_PAIR_ABCD) {
+                snprintf(row->subtitle, sizeof(row->subtitle), "Track %d  CV drum map", track + 1);
+                strcpy(tempstr, "CV ABCD");
+            }
             snprintf(row->value, sizeof(row->value), "%s", tempstr);
             break;
         case PANEL_MENU_MIDI_KEY_SPLIT:

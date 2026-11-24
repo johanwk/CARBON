@@ -796,6 +796,8 @@ static void gui_scene_overview_row(int scene,int row,char text[30]) {
 }
 
 // ---- DRUM lane overview (read-only) ----
+static void gui_trk_label(int x,int y,int w,const char *text,uint32_t fg,uint32_t bg);
+static void gui_outputs_line(int track,char text[30]);
 #define GUI_LANES_MAX 10
 #define GUI_LANE_NAME_W 34
 #define GUI_LANE_PITCH 12   // step column pitch (11 px cell + 1 px gap)
@@ -1025,6 +1027,17 @@ static int gui_draw_lanes(int full) {
             GUI_GRID_TRACK_COLOR_ACTIVE[seq_utils_clamp(track,0,5)]);
         gstate.lane_playhead=head;dirty=1;
     }
+    // Output assignments below the playhead bar (row 12 of the text cache).
+    {
+        char out[30];
+        gui_outputs_line(track,out);
+        if(strcmp(out,gstate.clock_help_rows[12])) {
+            snprintf(gstate.clock_help_rows[12],sizeof(gstate.clock_help_rows[12]),"%s",out);
+            gui_trk_label(x0+2,y0+GUI_LANE_TOP+GUI_LANES_MAX*GUI_LANE_H+14,232,out,
+                GUI_FONT_COLOR_GREY,GUI_TEXT_BG_COLOR);
+            dirty=1;
+        }
+    }
     return dirty;
 }
 
@@ -1139,6 +1152,14 @@ static void gui_trk_label(int x,int y,int w,const char *text,uint32_t fg,uint32_
     gfx_fill_rect(x,y,w,10,bg);
     gfx_draw_string(label);
 }
+// "A: CV A  B: DIN1 12" for a track (output assignments as heard).
+static void gui_outputs_line(int track,char text[30]) {
+    char a[12],b[12];
+    int drum=song_get_track_type(track)==SONG_TRACK_TYPE_DRUM,pairs=song_get_cvgate_pairs();
+    panel_utils_output_str(a,song_get_midi_port_map(track,0),song_get_midi_channel_map(track,0),pairs,drum);
+    panel_utils_output_str(b,song_get_midi_port_map(track,1),song_get_midi_channel_map(track,1),pairs,drum);
+    snprintf(text,30,"A: %.10s  B: %.10s",a,b);
+}
 // Draw a text row only when its text or attributes changed.
 static int gui_trk_row(int row,const char *text,const uint8_t attr[7],uint32_t fg) {
     static const uint8_t none[7]={0};
@@ -1249,16 +1270,16 @@ static int gui_draw_tracker(int full) {
         }
         dirty=1;
     }
-    // Footer: output and region of the reference track (harmony is in the
+    // Footer: region and outputs of the reference track (harmony is in the
     // main status lines below the overlay).
     {
-        char chan[16];
         int start=seq_utils_clamp(song_get_motion_start(scene,ref),0,63);
         int length=seq_utils_clamp(song_get_motion_length(scene,ref),1,64);
-        panel_utils_channel_str(chan,song_get_midi_port_map(ref,0),song_get_midi_channel_map(ref,0));
-        snprintf(text,sizeof(text),"T%c %.8s Rgn %02u%c%02u",'1'+ref,chan,(unsigned)start+1,
+        snprintf(text,sizeof(text),"T%c Rgn %02u%c%02u",'1'+ref,(unsigned)start+1,
             start+length>64?'~':'-',(unsigned)(start+length-1)%64+1);
         dirty|=gui_trk_row(19,text,0,GUI_FONT_COLOR_GREY);
+        gui_outputs_line(ref,text);
+        dirty|=gui_trk_row(20,text,0,GUI_FONT_COLOR_GREY);
     }
     return dirty;
 }

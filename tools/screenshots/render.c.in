@@ -217,10 +217,11 @@ int song_get_key_split(int t) { return 0; } int song_get_key_velocity_scale(void
 int song_get_magic_chance(void) { return 100; } int song_get_magic_range(void) { return 12; }
 int song_get_metronome_mode(void) { return SONG_METRONOME_OFF; } int song_get_metronome_sound_len(void) { return 10; }
 int song_get_midi_autolive(void) { return 0; }
-int song_get_midi_channel_map(int t,int m) { return m<0?0:t; }
+int song_get_midi_channel_map(int t,int m) { return m ? (t==0 ? 2 : 0) : t; }
 int song_get_midi_clock_source(void) { return -1; }
 int song_get_midi_port_clock_out(int p) { return 0; }
-int song_get_midi_port_map(int t,int m) { return m ? -1 : 0; }
+/* Output A: DIN1 on track channel; B: CV for tracks 1 and 5 (drums: map). */
+int song_get_midi_port_map(int t,int m) { return m ? (t==0||t==4 ? MIDI_PORT_CV_OUT : -1) : 0; }
 int song_get_midi_program(int t,int m) { return -1; }
 int song_get_midi_remote_ctrl(void) { return 1; }
 int song_get_motion_dir(int s,int t) { return 0; }

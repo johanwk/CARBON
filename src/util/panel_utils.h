@@ -46,6 +46,12 @@ void panel_utils_drum_name(char *tempstr, int note);
 void panel_utils_note_to_name(char *tempstr, int note, 
     int octdisp, int padding);
 
+// Track output as heard (max 10 chars): "DIN1 12", "USBHOST 3", "CV A",
+// "CV AB" (poly group), "CV ABCD" (AAAA or DRUM drum map), "CV -" (pair
+// unused by the pairing), "-" (disabled). pairs: SONG_CVGATE_PAIR_*.
+// Returns 1 when the DRUM CV drum map applies.
+int panel_utils_output_str(char *tempstr, int port, int channel, int pairs, int drum);
+
 // convert a key split setting to a string
 void panel_utils_key_split_str(char *tempstr, int key_split);
 

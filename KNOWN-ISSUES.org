@@ -1,0 +1,17 @@
+#+title: Known issues (to pick up later)
+
+* CV pairing AABB: pair offsets not set (suspected, unverified)
+
+- Where: =cvproc_set_pairs()= in =src/cvproc.c=.
+- What: the =CVPROC_PAIRS_AABB= case sets =poly_num_voices[0..1] = 2=
+  but never sets =out_offset[]=. The offsets keep whatever the previous
+  pairing left. After ABCD, pair B starts at jack B (offset 1) and
+  overlaps pair A's second voice, instead of driving C+D (offset 2).
+- Expected: =out_offset[0] = 0=, =out_offset[1] = 2=.
+- Also: the =CVPROC_PAIRS_AABC= case assigns =out_offset[0]= and
+  =out_offset[1]= twice (harmless, but untidy).
+- Check on hardware: set SYS CV pairing ABCD, then AABB; play two-note
+  chords on CV channel B and see whether jacks C+D (not B+C) respond.
+- Display: since =jwk-trk5=, the tracker and lane output line shows the
+  intended mapping (=CV AB=, =CV CD=), not this behaviour.
+- Found: 2026-11-23, while designing the output line (=work/tracker=).

@@ -17,7 +17,8 @@ int song_get_midi_remote_ctrl(void) {return 1;}
 int song_get_midi_program(int track,int map) {return 42;}
 int song_get_scene_midi_program(int scene,int track,int map) {return scene+map;}
 int song_get_midi_channel_map(int track,int map) {return map;}
-int song_get_midi_port_map(int track,int map) {return 0;}
+static int menu_port_ui;
+int song_get_midi_port_map(int track,int map) {return menu_port_ui;}
 int song_get_metronome_mode(void) {return SONG_METRONOME_OFF;}
 int song_get_metronome_sound_len(void) {return 10;}
 int song_get_midi_clock_source(void) {return -1;}
@@ -443,6 +444,7 @@ static void test_drum_lanes(void) {
         assert(count==10 && lanes[0]==36 && hidden>0);              /* kick kept, bottom */
         assert(!strcmp(gstate.clock_help_rows[2+9],"BD"));           /* bottom row label */
         assert(strstr(gstate.clock_help_rows[0],"17-32") && strstr(gstate.clock_help_rows[0],"other"));
+        assert(!strcmp(gstate.clock_help_rows[12],"A: DIN1 1  B: DIN1 2"));
         /* cell codes */
         assert((gui_lane_cell(0,0,36,1)&7)==4 && !(gui_lane_cell(0,0,36,1)&0x08));
         assert(gui_lane_cell(0,2,42,1)&0x20);                        /* own delay */
@@ -504,6 +506,8 @@ static void test_drum_lanes(void) {
         assert(gui_overview_mode()==GUI_OVERVIEW_TRACKER && gstate.lane_page==1);
         assert(gui_draw_clock_help());
         assert(!strncmp(gstate.trk_rows[0],"T1 17-32 p2/4",13));
+        assert(!strcmp(gstate.trk_rows[19],"T1 Rgn 17-32"));
+        assert(!strcmp(gstate.trk_rows[20],"A: DIN1 1  B: DIN1 2"));
         assert(!strncmp(gstate.trk_rows[1]," #  s1  s2",10));
         assert(!gui_draw_clock_help());                             /* cached */
         gui_overview_page(-1);assert(gstate.lane_page==0);
@@ -536,7 +540,35 @@ static void test_drum_lanes(void) {
     }
     track_type_ui=0;motion_start_ui=0;motion_length_ui=0;
 }
+static void test_output_str(void) {
+    char t[16];
+    assert(!panel_utils_output_str(t,MIDI_PORT_DIN1_OUT,11,0,0) && !strcmp(t,"DIN1 12"));
+    panel_utils_output_str(t,MIDI_PORT_DIN2_OUT,0,0,0);assert(!strcmp(t,"DIN2 1"));
+    panel_utils_output_str(t,MIDI_PORT_USB_HOST_OUT,15,0,0);assert(!strcmp(t,"USBHOST 16"));
+    panel_utils_output_str(t,MIDI_PORT_USB_DEV_OUT1,2,0,0);assert(!strcmp(t,"USBDEV 3"));
+    panel_utils_output_str(t,SONG_PORT_DISABLE,0,0,0);assert(!strcmp(t,"-"));
+    static const char *cv[4][4]={{"CV A","CV B","CV C","CV D"},{"CV AB","CV C","CV D","CV -"},
+        {"CV AB","CV CD","CV -","CV -"},{"CV ABCD","CV -","CV -","CV -"}};
+    for(int p=0;p<4;p++) for(int c=0;c<4;c++) {
+        assert(!panel_utils_output_str(t,MIDI_PORT_CV_OUT,c,p,0) && !strcmp(t,cv[p][c]));
+        int map=panel_utils_output_str(t,MIDI_PORT_CV_OUT,c,p,1);   /* DRUM */
+        assert(map==(p==SONG_CVGATE_PAIR_ABCD));
+        assert(!strcmp(t,map ? "CV ABCD" : cv[p][c]));
+    }
+}
+static void test_drum_map_menu(void) {
+    struct clock_menu_row row;
+    track_type_ui=SONG_TRACK_TYPE_DRUM;menu_port_ui=MIDI_PORT_CV_OUT;
+    panel_menu_midi_row(PANEL_MENU_MIDI_TRACK_OUTA_CHAN,&row);
+    assert(!strcmp(row.value,"CV ABCD") && strstr(row.subtitle,"CV drum map"));
+    track_type_ui=SONG_TRACK_TYPE_VOICE;
+    panel_menu_midi_row(PANEL_MENU_MIDI_TRACK_OUTB_CHAN,&row);
+    assert(!strcmp(row.value,"CV B") && !strstr(row.subtitle,"drum"));
+    menu_port_ui=0;
+}
 int main(void) {
+    test_output_str();
+    test_drum_map_menu();
     test_drum_lanes();
     test_sys_edit_dispatch();
     test_scene_overview();

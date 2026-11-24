@@ -111,6 +111,28 @@ void panel_utils_channel_str(char *tempstr, int port, int channel) {
     }
 }
 
+int panel_utils_output_str(char *tempstr, int port, int channel, int pairs, int drum) {
+    // Jacks driven by each CV channel, per pairing (see cvproc_set_pairs).
+    static const char *const jacks[4][4] = {
+        {"A", "B", "C", "D"},          // ABCD
+        {"AB", "C", "D", "-"},         // AABC
+        {"AB", "CD", "-", "-"},        // AABB
+        {"ABCD", "-", "-", "-"},       // AAAA
+    };
+    switch(port) {
+        case MIDI_PORT_DIN1_OUT: sprintf(tempstr, "DIN1 %d", channel + 1); return 0;
+        case MIDI_PORT_DIN2_OUT: sprintf(tempstr, "DIN2 %d", channel + 1); return 0;
+        case MIDI_PORT_USB_HOST_OUT: sprintf(tempstr, "USBHOST %d", channel + 1); return 0;
+        case MIDI_PORT_USB_DEV_OUT1: sprintf(tempstr, "USBDEV %d", channel + 1); return 0;
+        case MIDI_PORT_CV_OUT:
+            if(drum && pairs == SONG_CVGATE_PAIR_ABCD) {strcpy(tempstr, "CV ABCD"); return 1;}
+            sprintf(tempstr, "CV %s", pairs >= 0 && pairs < 4 && channel >= 0 && channel < 4 ?
+                jacks[pairs][channel] : "-");
+            return 0;
+        default: strcpy(tempstr, "-"); return 0;
+    }
+}
+
 // make a clock source name
 void panel_utils_clock_source_str(char *tempstr, int source) {
         switch(source) {
