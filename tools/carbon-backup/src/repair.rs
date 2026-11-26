@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Lenient reading of saved songs: invalid stored values are repaired, with
-//! one message per change. Songs without a 1.34..1.38 header are not guessed.
+//! one message per change. Songs without a 1.34..1.39 header are not guessed.
 use crate::{restore,song,SONG_SIZE};
 
 /// Firmware song_clear() image, written by tests/sanitize_test.c.in. The
 /// firmware load-time repair uses the same defaults, so both repair alike.
-const SONG_CLEAR:&[u8]=include_bytes!("../../../tests/fixtures/song-clear-1.38.bin");
+const SONG_CLEAR:&[u8]=include_bytes!("../../../tests/fixtures/song-clear-1.39.bin");
 const EMPTY:[u8;6]=[0,0,0,255,0,0];
 
 fn defaults()->Result<Vec<u8>,String>{Ok(SONG_CLEAR.to_vec())}
@@ -14,7 +14,7 @@ fn kind_name(code:u8)->String{
 }
 /// Return the repaired image and the list of repairs (empty if none were needed).
 pub fn repair(data:&[u8])->Result<(Vec<u8>,Vec<String>),String>{
- if !restore::header_valid(data){return Err("Source must be complete 1.34..1.38 SONG image (older songs: LOAD and SAVE on CARBON first)".into());}
+ if !restore::header_valid(data){return Err("Source must be complete 1.34..1.39 SONG image (older songs: LOAD and SAVE on CARBON first)".into());}
  let defaults=defaults()?;if defaults.len()!=SONG_SIZE{return Err("Default template has wrong size".into());}
  let mut d=data.to_vec();let mut out=vec![];
  for i in 0..2304{let o=1824+i*6;
@@ -54,8 +54,8 @@ pub fn check(data:&[u8])->Vec<String>{
  }
  /// Same input, same bytes and count as the firmware (tests/sanitize_test.c.in).
  #[test]fn matches_firmware_fixtures(){
-  let bad=include_bytes!("../../../tests/fixtures/invalid-song-1.38.bin");
-  let want=include_bytes!("../../../tests/fixtures/invalid-song-1.38-repaired.bin");
+  let bad=include_bytes!("../../../tests/fixtures/invalid-song-1.39.bin");
+  let want=include_bytes!("../../../tests/fixtures/invalid-song-1.39-repaired.bin");
   let(r,msgs)=repair(bad).unwrap();assert_eq!(msgs.len(),9,"{msgs:?}");assert!(r==want.to_vec());
   assert!(repair(SONG_CLEAR).unwrap().1.is_empty());
  }

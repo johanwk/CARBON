@@ -12,9 +12,9 @@ pub fn validate_hardware_target(slot:usize,backup:&Value)->Result<(),String>{
 
 /// User assertion, not a device capability query. Checked before opening MIDI.
 pub fn validate_hardware_source(data:&[u8],firmware:&str)->Result<(),String>{
-    if !["--firmware-9c91ab0","--firmware-1.36-gli3","--firmware-community-1.36","--firmware-community-1.37","--firmware-community-1.38"].contains(&firmware){return Err("Require --firmware-community-1.36, 1.37 or 1.38 (see README)".into());}
+    if !["--firmware-9c91ab0","--firmware-1.36-gli3","--firmware-community-1.36","--firmware-community-1.37","--firmware-community-1.38","--firmware-community-1.39"].contains(&firmware){return Err("Require --firmware-community-1.36, 1.37, 1.38 or 1.39 (see README)".into());}
     validate_source(data)?;
-    let version=if firmware=="--firmware-9c91ab0"{35}else if firmware=="--firmware-community-1.38"{38}else if firmware=="--firmware-community-1.37"{37}else{36};
+    let version=if firmware=="--firmware-9c91ab0"{35}else if firmware=="--firmware-community-1.39"{39}else if firmware=="--firmware-community-1.38"{38}else if firmware=="--firmware-community-1.37"{37}else{36};
     if data[..4]!=[version,0,1,0]{return Err("Source version must match asserted firmware; no implicit migration".into());}
     crate::song::validate(data)
 }
@@ -57,13 +57,13 @@ pub fn event_valid(version:u8,e:&[u8])->bool{
         0xb0=>e[1]<=127 && e[2]<=127,0xc0=>e[1]<=127,_=>false
     }
 }
-/// Complete 1.34..1.38 SONG image header and trailer.
+/// Complete 1.34..1.39 SONG image header and trailer (1.39 = 1.38 format).
 pub fn header_valid(data:&[u8])->bool{
-    data.len()==SONG_SIZE && [34,35,36,37,38].contains(&data[0]) && data[1..4]==[0,1,0] && data[SONG_SIZE-4..]==[0x47,0x4e,0x4f,0x53]
+    data.len()==SONG_SIZE && [34,35,36,37,38,39].contains(&data[0]) && data[1..4]==[0,1,0] && data[SONG_SIZE-4..]==[0x47,0x4e,0x4f,0x53]
 }
 /// Validate implemented event encodings. Unused bytes remain opaque.
 pub fn validate_source(data:&[u8])->Result<(),String>{
-    if !header_valid(data){return Err("Source must be complete 1.34..1.38 SONG image".into());}
+    if !header_valid(data){return Err("Source must be complete 1.34..1.39 SONG image".into());}
     for (i,e) in data[1824..15648].chunks_exact(6).enumerate(){
         if !event_valid(data[0],e){return Err(format!("Invalid event: track{} step{} slot{}",i/384+1,(i/6)%64+1,i%6+1));}
     }

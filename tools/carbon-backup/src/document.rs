@@ -38,7 +38,7 @@ pub fn export(data:&[u8],slot:usize)->Result<Value,String>{
  let o=1056+2*(t*64+s);let mut step=json!({"step":s+1,"delay_ticks":data[o],"ratchet":data[o+1],"events":events});if data[0]>=35{step.as_object_mut().unwrap().remove("delay_ticks");step["delay"]=delay_json(data[o]);}steps.push(step);}
  tracks.push(json!({"track":t+1,"steps":steps}));}
  let list=(0..64).map(|i|{let o=48+6*i;json!({"entry":i+1,"scene_code":data[o] as i8,"length_beats":i16::from_le_bytes([data[o+2],data[o+3]]),"transpose":data[o+4] as i8})}).collect::<Vec<_>>();
- Ok(json!({"format":"carbon-song","schema_version":if data[0]==38{5}else if data[0]==37{4}else if data[0]==36{3}else if data[0]>=35{2}else{1},"firmware_profile":if data[0]==38{"carbon-1.38-arp-chord"}else if data[0]==37{"carbon-1.37-scene-gates"}else if data[0]==36{"carbon-1.36-glide"}else if data[0]>=35{"carbon-1.35-note-delay"}else{"carbon-1.34-shared-events"},
+ Ok(json!({"format":"carbon-song","schema_version":if data[0]==38||data[0]==39{5}else if data[0]==37{4}else if data[0]==36{3}else if data[0]>=35{2}else{1},"firmware_profile":if data[0]==38||data[0]==39{"carbon-1.38-arp-chord"}else if data[0]==37{"carbon-1.37-scene-gates"}else if data[0]==36{"carbon-1.36-glide"}else if data[0]>=35{"carbon-1.35-note-delay"}else{"carbon-1.34-shared-events"},
  "metadata":{"title":"","description":"","extensions":{}},"dependencies":[],
  "provenance":{"capture_slot":slot,"raw_sha256":hash(data),"raw_hex":data.iter().map(|v|format!("{v:02x}")).collect::<String>()},
  "settings":song::export_fields(data)?,"song_list":list,"shared_tracks":tracks}))
@@ -66,7 +66,9 @@ pub fn import(doc:&Value)->Result<(usize,Vec<u8>),String>{
  if text.len()!=SONG_SIZE*2 || !text.bytes().all(|b|b.is_ascii_hexdigit()){return Err("Invalid raw hex".into());}
  let mut data=(0..text.len()).step_by(2).map(|i|u8::from_str_radix(&text[i..i+2],16).unwrap()).collect::<Vec<_>>();
  if prov["raw_sha256"]!=hash(&data){return Err("Provenance hash mismatch".into());}
- if data[0] != (if arp_chord{38}else if scene_gates{37}else if glide{36}else if modern{35}else{34}){return Err("Profile must match provenance version; migrate explicitly".into());}
+ // 1.39 songs share the 1.38 format (schema5): song version 39 is an alias.
+ let want=if arp_chord{38}else if scene_gates{37}else if glide{36}else if modern{35}else{34};
+ if data[0]!=want && !(want==38 && data[0]==39){return Err("Profile must match provenance version; migrate explicitly".into());}
  restore::validate_source(&data)?;song::validate(&data)?;song::apply_fields(&mut data,&doc["settings"])?;
  let list=doc["song_list"].as_array().ok_or("Missing song list")?;if list.len()!=64{return Err("Exactly64 list entries required".into());}
  for(i,e)in list.iter().enumerate(){keys(e,&["entry","scene_code","length_beats","transpose"])?;if num(&e["entry"],64)?!=i as u64+1{return Err("List positions duplicate/out of order".into());}
@@ -153,9 +155,15 @@ pub fn import(doc:&Value)->Result<(usize,Vec<u8>),String>{
   // Profile must match the image version in both directions.
   let mut d=doc.clone();d["schema_version"]=json!(4);d["firmware_profile"]=json!("carbon-1.37-scene-gates");assert!(import(&d).is_err());
   let mut d=d37;d["schema_version"]=json!(5);d["firmware_profile"]=json!("carbon-1.38-arp-chord");assert!(import(&d).is_err());
-  let mut bad=raw.clone();bad[0]=39;assert!(export(&bad,19).is_err());
+  let mut bad=raw.clone();bad[0]=40;assert!(export(&bad,19).is_err());  // 39 = 1.38 alias; 40 unknown
   let t=crate::json::parse(include_str!("../templates/default-1.38.json")).unwrap();
   let (_,blank)=import(&t).unwrap();assert_eq!(&blank[..4],&[38,0,1,0]);
+  // 1.39 alias: a song saved by 1.39 exports as schema5 and round-trips.
+  { let mut r=blank.clone();r[0]=39;let d=export(&r,1).unwrap();
+    assert_eq!(d["schema_version"],5);let (_,back)=import(&d).unwrap();assert_eq!(back,r);
+    restore::validate_hardware_source(&r,"--firmware-community-1.39").unwrap();
+    assert!(restore::validate_hardware_source(&r,"--firmware-community-1.38").is_err());
+    assert_eq!(crate::song_transfer::firmware_assertion(&r).unwrap(),"--firmware-community-1.39"); }
   assert!(blank[1824..15648].chunks_exact(6).all(|e|e[0]==0));
   restore::validate_hardware_source(&blank,"--firmware-community-1.38").unwrap();
  }

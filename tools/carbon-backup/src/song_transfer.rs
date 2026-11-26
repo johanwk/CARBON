@@ -24,10 +24,10 @@ pub fn arguments(args:&[String])->Result<(bool,usize,String),String>{
 
 
 pub fn firmware_assertion(raw:&[u8])->Result<&'static str,String>{
- match raw.first(){Some(36)=>Ok("--firmware-community-1.36"),Some(37)=>Ok("--firmware-community-1.37"),Some(38)=>Ok("--firmware-community-1.38"),_=>Err("Simple upload requires a 1.36, 1.37 or 1.38 source".into())}
+ match raw.first(){Some(36)=>Ok("--firmware-community-1.36"),Some(37)=>Ok("--firmware-community-1.37"),Some(38)=>Ok("--firmware-community-1.38"),Some(39)=>Ok("--firmware-community-1.39"),_=>Err("Simple upload requires a 1.36, 1.37, 1.38 or 1.39 source".into())}
 }
 pub fn firmware_description(raw:&[u8])->Result<&'static str,String>{
- match firmware_assertion(raw)? {"--firmware-community-1.38"=>Ok("1.38-jwk-rc1 (arp Chord)"),"--firmware-community-1.37"=>Ok("1.37-jwk-rc1 (or compatible 1.37-jwk-scn1; scene gates)"),_=>Ok("1.36-jwk-rc1 (or compatible 1.36-jwk-snp3)")}
+ match firmware_assertion(raw)? {"--firmware-community-1.39"=>Ok("1.39-jwk-rc1 (tracker, Rec Timing; 1.38 format)"),"--firmware-community-1.38"=>Ok("1.38-jwk-rc2 or 1.39-jwk-rc1 (arp Chord)"),"--firmware-community-1.37"=>Ok("1.37-jwk-rc1 (or compatible 1.37-jwk-scn1; scene gates)"),_=>Ok("1.36-jwk-rc1 (or compatible 1.36-jwk-snp3)")}
 }
 pub fn validate_upload(text:&str)->Result<Vec<u8>,String>{
     let doc=crate::json::parse(text)?;
@@ -153,7 +153,7 @@ pub fn upload<D:Device,F:FnMut(&[u8])->Result<(),String>>(device:&mut D,slot:usi
   let t=crate::json::parse(include_str!("../templates/default-1.38.json")).unwrap();
   let raw=document::import(&t).unwrap().1;
   assert_eq!(firmware_assertion(&raw).unwrap(),"--firmware-community-1.38");
-  assert!(firmware_description(&raw).unwrap().contains("1.38-jwk-rc1"));
+  assert!(firmware_description(&raw).unwrap().contains("1.38-jwk-rc2"));
   assert_eq!(validate_upload(include_str!("../templates/default-1.38.json")).unwrap(),raw);
   let mut d=device();let backed=d.backed.clone();
   upload(&mut d,37,raw.clone(),true,|_|{backed.set(true);Ok(())}).unwrap();assert_eq!(d.data,raw);

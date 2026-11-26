@@ -1,8 +1,8 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 /* Load-time repair. Shared fixtures (also used by tools/carbon-backup):
- *   song-clear-1.38.bin        song_clear() image = the repair defaults
- *   invalid-song-1.38.bin      known invalid values (see make_invalid)
- *   invalid-song-1.38-repaired.bin  expected result; INVALID_SONG_REPAIRS repairs
+ *   song-clear-1.39.bin        song_clear() image = the repair defaults
+ *   invalid-song-1.39.bin      known invalid values (see make_invalid)
+ *   invalid-song-1.39-repaired.bin  expected result; INVALID_SONG_REPAIRS repairs
  * CARBON_WRITE_FIXTURES=1 regenerates them; otherwise they are compared. */
 #include <assert.h>
 #include <stdio.h>
@@ -45,13 +45,13 @@ int main(void) {
     write_mode = getenv("CARBON_WRITE_FIXTURES") != NULL;
     memset(&song, 0, sizeof(song)); song_clear();
     assert(song_sanitize() == 0);                       // defaults are valid
-    fixture("song-clear-1.38.bin", &song);
+    fixture("song-clear-1.39.bin", &song);
     struct song_data clean = song;
     make_invalid();
-    fixture("invalid-song-1.38.bin", &song);
+    fixture("invalid-song-1.39.bin", &song);
     assert(song_sanitize() == INVALID_SONG_REPAIRS);
     assert(song_get_last_repair_count() == INVALID_SONG_REPAIRS);
-    fixture("invalid-song-1.38-repaired.bin", &song);
+    fixture("invalid-song-1.39-repaired.bin", &song);
     assert(song.trkevents[0][4][0].type == SONG_EVENT_NULL && song.scene_sync == 0);
     assert(song.magic_range == 12 && song.magic_chance == 100 && song.trkscene[2][1].motion_len == 64);
     assert(song.snglist[0].scene == SONG_LIST_SCENE_NULL && song.trkparam[4].track_type == 0);

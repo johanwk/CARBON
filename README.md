@@ -9,12 +9,12 @@ harmony. Screens are rendered from example data by CARBON's display code.
 Unofficial firmware for the Kilpatrick Audio CARBON hardware sequencer.
 Not an official Kilpatrick Audio release. Installation is at your own risk.
 
-**Community release candidate:** `community-1.38-rc2`, System identity
-`1.38-jwk-rc2`. See the [fork releases page](https://github.com/johanwk/CARBON/releases)
+**Community release candidate:** `community-1.39-rc1`, System identity
+`1.39-jwk-rc1`. See the [fork releases page](https://github.com/johanwk/CARBON/releases)
 for the binary, checksum and build record. This prerelease invites wider
 real-world testing; it is not a claim of exhaustive production validation.
 Official updater binaries do not contain these community additions.
-What changed since 1.38 RC1 (drum tracks, region editing): [release notes](RELEASE-NOTES.org).
+What changed since 1.38 RC2 (tracker views, editable tracker, Rec Timing): [release notes](RELEASE-NOTES.org).
 
 ## What it adds
 
@@ -99,7 +99,7 @@ application at 0x08020000. Do not erase or replace the bootloader as a shortcut.
 A firmware reflash does not repair a partially replaced saved song. Retain
 recovery archives and inspect/plan a supported song restore before retrying.
 Returning to older firmware requires its matching application and pre-upgrade
-songs; faithful downgrade of 1.38 songs is not supported.
+songs; faithful downgrade of 1.38/1.39 songs is not supported.
 
 ## Everyday starting points
 
@@ -119,6 +119,11 @@ songs; faithful downgrade of 1.38 songs is not supported.
 - Step Edit: select a slot with Shift+Motion Start; Shift+Transpose selects its
   event type. Hold Step Edit for the expanded view. See the guide for Hrm,
   Inv, Gli, CCi and note-delay examples.
+- Tracker: hold Scene, then a number, for all six tracks of a scene; hold a
+  VOICE track button for one track with its six slots. In Step Edit, hold
+  Step Edit until the tracker appears to edit there.
+- Live recording: SYS > Rec Timing = Fine keeps note timing within the step
+  (1/8 to 7/8 of a step); Step snaps to the grid as before.
 - Drums: set a track to DRUM (Tonality menu). Hold its track button for the
   drum lanes; in Step Edit, hold Step Edit until the lane view appears to
   add hits, move lanes and use Fill/Rotate. For drum CV, route the track to
@@ -134,8 +139,10 @@ songs; faithful downgrade of 1.38 songs is not supported.
   transient Bias-target overrides, including generated arp output. MIDI glide
   depends on the receiving synth; CV glide requires mono pitch groups.
 - Grid strokes preview current state, not future probability or automation.
-- Songs using Arp Speed Chord need 1.38. Host tools support 1.38 (schema5).
-  RC2 does not change the song format.
+- Songs using Arp Speed Chord need 1.38 or later. Host tools support 1.38
+  and 1.39 (schema5). 1.39 does not change the song format.
+- Known issue: CV pairing AABB may drive the wrong jacks for pair B (see
+  KNOWN-ISSUES.org).
 - Drum names and the drum CV map follow General MIDI, a weak default that
   often will not match your drum machine or modules. Own names are not yet
   possible.
@@ -145,7 +152,7 @@ songs; faithful downgrade of 1.38 songs is not supported.
   lossless. Worst-case interrupt time and stack headroom are unmeasured.
 - The maintainer reports no failures in current practical testing. Coverage
   is not exhaustive: busy-load measurements and a hardware round-trip of the
-  1.38 simple-upload workflow remain useful community test targets.
+  1.39 simple-upload workflow remain useful community test targets.
 
 ## Build and contribute
 

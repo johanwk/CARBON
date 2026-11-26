@@ -1,11 +1,57 @@
-#+title: CARBON community-1.38-rc2 prerelease
+#+title: CARBON community-1.39-rc1 prerelease
 #+options: ^:nil -:nil
 
 Unofficial CARBON firmware, not a Kilpatrick Audio release. System identity:
-=1.38-jwk-rc2=; numeric song version: 1.38 (unchanged since rc1). Use the
-accompanying build record for exact source, checksum and toolchain.
+=1.39-jwk-rc1=; numeric song version: 1.39 (same song format as 1.38). Use
+the accompanying build record for exact source, checksum and toolchain.
 
-* New since community 1.38 RC1
+* New since community 1.38 RC2
+
+** Tracker views
+- Whole-scene tracker: hold Scene, then a number. All six tracks of that
+  scene, 16 steps per page: note names (GM names on DRUM tracks), velocity
+  as brightness, flags (+ more notes, " ratchet, ? condition, ~ glide,
+  h Hrm/Inv, c CC/PC, ' own delay), * where Hrm changes, held notes, a
+  playhead per track and enabled (grey) / disabled (black) steps.
+- Track tracker: hold a VOICE track button for one track with its six event
+  slots (DRUM tracks still open the drum lanes). Motion Start pages 1-4,
+  then the Settings page; the view follows the playhead until you turn.
+- Editable tracker in Step Edit: holding Step Edit cycles compact, expanded,
+  then tracker (VOICE) or lanes (DRUM). Start moves the step, Shift+Start
+  the slot; all usual dials edit, including adding notes on empty slots.
+- Output line under tracker and lanes: e.g. =A: DIN1 1  B: CV C=, showing
+  the CV jacks that actually sound for the pairing (=CV ABCD= for the DRUM
+  drum map, =CV -= when a channel is unused).
+
+** Recording and editing
+- SYS > Rec Timing (device setting): Step (classic) or Fine. Fine keeps the
+  timing of live-recorded notes within the step as a note delay of 1/8 to
+  7/8 of a step; notes within 1/16 of a step snap onto it. Live recording
+  only.
+- Shift+Pattern in Step Edit sets Euclidean density of the edited track and
+  scene (no undo point). Rotation stays outside Step Edit.
+- Track buttons (and Shift+track mute) keep overviews open; track views
+  follow the selected track. In Step Edit the tracker/lanes view is kept.
+- MIDI menu: a DRUM track on CV with ABCD pairing shows =CV ABCD= and the
+  reminder "CV drum map".
+
+** Fixes
+- Holding Step Edit in Region now opens the lanes/tracker view directly.
+- Switching between lanes and tracker in Step Edit could leave a blank page
+  or redraw twice (flicker).
+
+** Tools and documentation
+- carbon-backup accepts 1.39 songs (same format as 1.38; upload asserts
+  =--firmware-community-1.39=). A blank song template (=blank-tpl.json=):
+  drums, two bias tracks, bass, chords and lead, outputs on USB device and
+  DIN1, four-on-the-floor kick only.
+- Screenshots and callout cards for drum lanes and tracker views.
+
+** Known issue
+- CV pairing AABB: pair B may drive jacks B+C instead of C+D after switching
+  from another pairing (suspected, unconfirmed; see KNOWN-ISSUES.org).
+
+* Earlier in community 1.38 RC2
 
 ** Drum tracks
 Tracks set to DRUM become a real drum editor:
@@ -84,15 +130,15 @@ All earlier community features remain included.
 :PROPERTIES:
 :CUSTOM_ID: compatibility
 :END:
-Songs keep their 20480-byte size and the 1.37 layout. rc2 does not change
-the song format: rc1 and rc2 songs are interchangeable, and the host tools
-need no update. Songs saved with 1.38
-are marked 1.38. A song using Arp Speed Chord cannot be played as intended on
-1.37 or earlier firmware; keep pre-upgrade originals for older firmware.
-Faithful downgrade is not supported.
+Songs keep their 20480-byte size and the 1.37 layout. 1.39 does not change
+the song format: songs saved with 1.39 are marked 1.39 but use exactly the
+1.38 format, and carbon-backup treats them as an alias of 1.38 (schema5).
+1.38 songs load unchanged. A song using Arp Speed Chord cannot be played as
+intended on 1.37 or earlier firmware; keep pre-upgrade originals for older
+firmware. Faithful downgrade is not supported.
 
-The host tools refuse to relabel a 1.38 song as 1.37 or the reverse; there is
-no automatic migration. 1.37 and 1.36 JSON remain supported.
+The host tools refuse to relabel songs between versions; there is no
+automatic migration. 1.37 and 1.36 JSON remain supported.
 
 Back up before installing or saving migrated songs. Host song replacement is
 non-atomic across sectors and requires panel LOAD afterward, not saving stale
@@ -103,19 +149,19 @@ bootloader. Never use stock dfu.sh, 0x08000000 or mass erase for this image.
 
 * Evidence and limitations
 
-The maintainer ran each development candidate leading to rc2 on hardware
-and confirmed: DRUM pitch lock, drum names, Region filter (including
-per-note delay and lane moves), Undo staying in Region, the lane overview
-(also while recording), the lane view with add/remove/velocity/gate/delay,
-lane move, Fill/Rotate, masked steps, and the drum CV map (CV on one port
-while MIDI continues on the other). Testing is not exhaustive; Fill's
-musical rules may be refined after wider use. The rc2 build differs from
-the last tested candidate (=jwk-drm7=) only in its identity string.
+The maintainer ran the development candidates leading to 1.39-rc1 on
+hardware and confirmed: both tracker views, the editable tracker, track
+switching in views and Step Edit, the output line, Rec Timing Fine, the
+Region long-press fix and the lanes/tracker switch fixes (one minor
+redraw flicker remains). Not yet recorded on hardware: Rec Timing Fine with
+swing; the editable tracker over long sessions; the blank template after
+upload. The rc1 build differs from the last tested candidate (=jwk-rt2=) in
+its identity and song version stamp.
 
 Host tests cover gestures, display layouts for both LCD types, editor
-behaviour, playback, CV output and JSON/transfer paths. Not yet recorded on
-hardware: busy-load CPU and stack high-water; every synth, route and option
-combination. See RELEASE-CHECKLIST.org.
+behaviour, recording placement, playback, CV output and JSON/transfer
+paths. Not yet recorded on hardware: busy-load CPU and stack high-water;
+every synth, route and option combination. See RELEASE-CHECKLIST.org.
 
 * Contributing and previous releases
 :PROPERTIES:

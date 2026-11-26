@@ -1,4 +1,4 @@
-#+title: Community 1.38-rc2 verification checklist
+#+title: Community 1.39-rc1 verification checklist
 #+options: ^:nil -:nil
 
 Community release-candidate test targets. The maintainer has approved limited
@@ -27,7 +27,23 @@ for an assistant to flash hardware or write songs.
 - [ ] Busy-pattern responsiveness checked; no measured interrupt/stack claim
   until instrumentation provides actual values.
 
-* rc2 additions
+* 1.39-rc1 additions
+
+- [X] Whole-scene and track tracker views; editable tracker (hardware).
+- [X] Track switching keeps overviews / Step Edit views (hardware).
+- [X] Output line; MIDI menu CV drum map reminder (hardware).
+- [X] Rec Timing Fine records in-step delays (hardware).
+- [X] Region long-press and lanes/tracker switch fixes (hardware).
+- [X] Song format unchanged; carbon-backup accepts 1.39 as 1.38 alias; Rust
+  tests pass.
+- [ ] Boot shows =1.39-jwk-rc1= under SYS; a 1.38 song loads, saves as 1.39
+  and round-trips through carbon-backup backup/upload.
+- [ ] Rec Timing Fine with swing.
+- [ ] Blank template upload and LOAD.
+- [ ] Known issue AABB pairing listed, not fixed.
+- [ ] Pop-sketch template is not in the published tree.
+
+* 1.38-rc2 additions
 
 - [X] DRUM pitch lock, GM names, Region filter, Undo in Region (hardware).
 - [X] Lane overview incl. live take while recording (hardware).
