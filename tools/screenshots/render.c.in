@@ -212,6 +212,7 @@ int song_get_cvcal(int o) { return 0; } int song_get_cvoffset(int o) { return 0;
 int song_get_cvgate_pair_mode(int p) { return 0; } int song_get_cvgate_pairs(void) { return SONG_CVGATE_PAIR_ABCD; }
 int song_get_euclidean_density(int s,int t) { return fx_euc && !t ? fx_density : 100; }
 void song_set_euclidean_density(int s,int t,int d) {}
+int seq_engine_get_rec_timing(void) { return 0; } void seq_engine_set_rec_timing(int m) {}
 int song_get_euclidean_rotation(int s,int t) { return fx_euc && !t ? fx_rotation : 0; }
 int song_get_gate_time(int s,int t) { return 0x80; }
 int song_get_key_split(int t) { return 0; } int song_get_key_velocity_scale(void) { return 0; }

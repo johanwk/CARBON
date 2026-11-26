@@ -97,7 +97,11 @@ int song_get_cvgate_pair_mode(int pair) {return 0;}
 int song_get_cv_output_scaling(int pair) {return 0;}
 int song_get_cvcal(int pair) {return 100+pair;}
 int song_get_cvoffset(int pair) {return pair;}
-void config_store_set_val(int32_t addr,int32_t val) {}
+static int cfg_rec_timing=-1;
+void config_store_set_val(int32_t addr,int32_t val) {if(addr==CONFIG_STORE_REC_TIMING) cfg_rec_timing=val;}
+static int rec_timing_ui;
+int seq_engine_get_rec_timing(void) {return rec_timing_ui;}
+void seq_engine_set_rec_timing(int m) {rec_timing_ui=m;}
 EDIT_STUB(seq_ctrl_adjust_cv_bend_range,18)
 EDIT_STUB(seq_ctrl_adjust_cvgate_pairs,19)
 #define CV_EDIT(name,kind) void name(int pair,int change) {edit_calls++;edit_kind=kind;edit_item=pair;edit_change=change;}
@@ -376,7 +380,7 @@ static void test_scene_overview(void) {
 static void test_sys_edit_dispatch(void) {
     for(int lcd=0;lcd<2;lcd++) {
         gstate.screen_type=lcd;
-        for(int item=0;item<20;item++) {
+        for(int item=0;item<20;item++) {  /* item 20 (Rec Timing): test_rec_timing_menu */
             struct clock_menu_row row;panel_menu_sys_row(item,&row);
             pmstate.menu_submode=item;panel_menu_display_sys();
             assert(!strncmp(gstate.status_lines[3]+14,row.value,strlen(row.value)));
@@ -391,6 +395,19 @@ static void test_sys_edit_dispatch(void) {
             }
         }
     }
+}
+static void test_rec_timing_menu(void) {
+    static const char *names[2]={"Step","Fine"};
+    struct clock_menu_row row;rec_timing_ui=0;
+    for(int m=0;m<2;m++) {
+        panel_menu_sys_row(PANEL_MENU_SYS_REC_TIMING,&row);
+        assert(!strcmp(row.value,names[m]) && !strcmp(row.name,"Rec Timing"));
+        for(int l=0;l<2;l++) assert(strlen(panel_menu_overview_help(PANEL_MENU_SYS,PANEL_MENU_SYS_REC_TIMING,l))<=29);
+        panel_menu_overview_edit(PANEL_MENU_SYS,PANEL_MENU_SYS_REC_TIMING,1);
+        assert(cfg_rec_timing==rec_timing_ui);
+    }
+    assert(rec_timing_ui==1);                 /* clamps at Fine */
+    panel_menu_overview_edit(PANEL_MENU_SYS,PANEL_MENU_SYS_REC_TIMING,-9);assert(rec_timing_ui==0);
 }
 static void gui_refresh_task_lane_test(void) {
     int rows[10]={36,42,-1,-1,-1,-1,-1,-1,-1,-1};
@@ -583,6 +600,7 @@ int main(void) {
     test_drum_map_menu();
     test_drum_lanes();
     test_sys_edit_dispatch();
+    test_rec_timing_menu();
     test_scene_overview();
     test_track_overview();
     test_clock_help();

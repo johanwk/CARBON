@@ -536,9 +536,11 @@ void panel_menu_handle_state_change(int event_type, int *data, int data_len) {
             break;
         case SCE_CONFIG_LOADED:
             panel_menu_set_timeout(config_store_get_val(CONFIG_STORE_MENU_TIMEOUT));
+            seq_engine_set_rec_timing(config_store_get_val(CONFIG_STORE_REC_TIMING));
             break;
         case SCE_CONFIG_CLEARED:
             panel_menu_set_timeout(PANEL_MENU_TIMEOUT_DEFAULT);
+            seq_engine_set_rec_timing(SEQ_REC_TIMING_STEP);
             break;
         default:
             break;
@@ -1163,6 +1165,14 @@ static void panel_menu_sys_row(int item, struct clock_menu_row *row) {
             }
             snprintf(row->value,sizeof(row->value),"%s",tempstr);
             break;
+        case PANEL_MENU_SYS_REC_TIMING: {
+            static const char *const names[] = {"Step", "Fine"};
+            snprintf(row->subtitle,sizeof(row->subtitle),"%s","Live Recording");
+            snprintf(row->name,sizeof(row->name),"%s","Rec Timing");
+            snprintf(row->value,sizeof(row->value),"%s",
+                names[seq_utils_clamp(seq_engine_get_rec_timing(),0,SEQ_REC_TIMING_MAX)]);
+            break;
+        }
     }
 }
 
@@ -1574,6 +1584,11 @@ static void panel_menu_edit_sys_item(int item,int change) {
                 (change * 1000),
                 PANEL_MENU_TIMEOUT_MIN, PANEL_MENU_TIMEOUT_MAX));
             break;
+        case PANEL_MENU_SYS_REC_TIMING:
+            seq_engine_set_rec_timing(seq_utils_clamp(seq_engine_get_rec_timing() + change,
+                SEQ_REC_TIMING_STEP, SEQ_REC_TIMING_MAX));
+            config_store_set_val(CONFIG_STORE_REC_TIMING, seq_engine_get_rec_timing());
+            break;
     }
 }
 
@@ -1709,6 +1724,7 @@ const char *panel_menu_overview_help(int mode,int item,int line) {
         if(item<=PANEL_MENU_SYS_CV_SCALING4) return line?"Match the connected synth.":"Song CV voltage scaling.";
         if(item<=PANEL_MENU_SYS_CVCAL4) return line?"Use a meter; changes pitch.":"Song CV span calibration.";
         if(item<=PANEL_MENU_SYS_CVOFFSET4) return line?"Use a meter; changes pitch.":"Song CV output offset.";
+        if(item==PANEL_MENU_SYS_REC_TIMING) return line?"Fine: in-step delay 1/8-7/8.":"Live rec: Step snaps to grid.";
         return line?"Global preference, not song.":"Menu/editor inactivity limit.";
     }
     if(mode==PANEL_MENU_ARP) {

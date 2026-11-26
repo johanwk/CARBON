@@ -70,6 +70,18 @@ void seq_engine_reset_track(int track);
 
 // get the current scene
 int seq_engine_get_current_scene(void);
+// Live recording timing (device preference, not stored in the song):
+// STEP = nearest step, no delay (classic); FINE = step played in plus a
+// step-relative delay (1/8..7/8).
+#define SEQ_REC_TIMING_STEP 0
+#define SEQ_REC_TIMING_FINE 1
+#define SEQ_REC_TIMING_MAX 1
+void seq_engine_set_rec_timing(int mode);
+int seq_engine_get_rec_timing(void);
+// Place a recorded attack: rel = ticks from the first region step's start
+// (may be negative, down to -size/2). Returns the region index 0..len-1
+// and the note delay (SEQ_START_DELAY_INHERIT = on the step).
+int seq_engine_record_place(int mode, int rel, int size, int len, int *delay);
 // Pending realtime take on a DRUM track (display only): fills up to max
 // hits (pitch, step, velocity) that the end-of-pass write would place.
 // Returns 0 unless track is the recorded track and RT recording is active.

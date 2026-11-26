@@ -2359,6 +2359,46 @@ void seq_engine_step_sequence_shuttle(int change) {
     seq_engine_highlight_step_record_pos();
 }
 
+// ---- live recording timing ----
+static int rec_timing = SEQ_REC_TIMING_STEP;
+void seq_engine_set_rec_timing(int mode) {
+    rec_timing = mode >= 0 && mode <= SEQ_REC_TIMING_MAX ? mode : SEQ_REC_TIMING_STEP;
+}
+int seq_engine_get_rec_timing(void) { return rec_timing; }
+
+int seq_engine_record_place(int mode, int rel, int size, int len, int *delay) {
+    // step fractions in the order of the relative delay codes (1/8..7/8),
+    // as 24ths of a step (24 = lcm of 8, 4, 3, 2)
+    static const int frac24[7] = {3, 6, 8, 12, 16, 18, 21};
+    int idx, offset;
+    *delay = SEQ_START_DELAY_INHERIT;
+    if(size < 1 || len < 1) return 0;
+    if(rel < -size) rel = -size;
+    if(mode == SEQ_REC_TIMING_STEP) {
+        // nearest step (classic): the half-step lead-in keeps this >= 0
+        idx = (rel + size + (size >> 1)) / size - 1;
+        return ((idx % len) + len) % len;
+    }
+    // step the attack was played in, and its offset within that step
+    idx = (rel + size) / size - 1;
+    offset = rel - idx * size;
+    // loose playing: within 1/16 of a step snaps onto the step
+    if(offset * 16 < size) offset = 0;
+    else if((size - offset) * 16 <= size) {idx++; offset = 0;}
+    if(offset) {
+        // nearest fraction, or the next step if that is nearer (24ths of ticks)
+        int best = -1, err = (size - offset) * 24;
+        for(int i = 0; i < 7; i++) {
+            int e = offset * 24 - size * frac24[i];
+            if(e < 0) e = -e;
+            if(e < err) {err = e; best = i;}
+        }
+        if(best < 0) idx++;
+        else *delay = SEQ_START_DELAY_REL_FIRST + best;
+    }
+    return ((idx % len) + len) % len;
+}
+
 // Display-only view of the pending take. Runs in the GUI loop while the 1 ms
 // timer appends: a hit is complete before the count is raised, so reading up
 // to a snapshot of the count is safe; a write/reset mid-read only shows one
@@ -2379,8 +2419,10 @@ int seq_engine_record_preview(int track, uint8_t *pitch, uint8_t *step,
         struct midi_event *e = &sestate.record_events[i];
         if(e->msg.status != MIDI_NOTE_ON || e->tick_pos < pos ||
                 e->tick_pos >= pos + (uint32_t)(len * size)) continue;
-        // same step rule as seq_engine_record_write_tracks
-        step[found] = (((e->tick_pos - pos) / size) + start) & (SEQ_NUM_STEPS - 1);
+        // same placement as seq_engine_record_write_tracks
+        int delay;
+        step[found] = (seq_engine_record_place(rec_timing,
+            (int)(e->tick_pos - pos) - (size >> 1), size, len, &delay) + start) & (SEQ_NUM_STEPS - 1);
         pitch[found] = e->msg.data0 & 0x7f;
         velocity[found] = e->msg.data1 & 0x7f;
         found++;
@@ -2456,10 +2498,14 @@ void seq_engine_record_write_tracks(void) {
                 sestate.step_size[sestate.first_track]))) {
             continue;
         }
-        // calculate actual step on track
-        step = (((sestate.record_events[rn].tick_pos - sestate.record_pos) /
-            sestate.step_size[sestate.first_track]) +
-            sestate.motion_start[sestate.first_track]) & (SEQ_NUM_STEPS - 1);
+        // calculate actual step on track (and, off the grid, the note delay);
+        // record_pos is half a step before the region start
+        int rec_delay;
+        step = (seq_engine_record_place(rec_timing,
+            (int)(sestate.record_events[rn].tick_pos - sestate.record_pos) -
+            (sestate.step_size[sestate.first_track] >> 1),
+            sestate.step_size[sestate.first_track], sestate.motion_len[sestate.first_track],
+            &rec_delay) + sestate.motion_start[sestate.first_track]) & (SEQ_NUM_STEPS - 1);
         // insert event
         switch(sestate.record_events[rn].msg.status) {
             case MIDI_NOTE_ON:
@@ -2470,7 +2516,7 @@ void seq_engine_record_write_tracks(void) {
                     break;
                 }
                 trkevent.type = SONG_EVENT_NOTE;
-                trkevent.delay = SEQ_START_DELAY_INHERIT;
+                trkevent.delay = rec_delay;
                 trkevent.data0 = sestate.record_events[rn].msg.data0;
                 trkevent.data1 = sestate.record_events[rn].msg.data1;
                 // note was held down past loop end (tick_len is 0)

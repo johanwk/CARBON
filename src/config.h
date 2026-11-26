@@ -28,7 +28,7 @@
 #define CARBON_VERSION_MINOR 38
 #define CARBON_VERSION_MAJMIN ((CARBON_VERSION_MAJOR << 16) | CARBON_VERSION_MINOR)
 // Display-only community identity; numeric versions remain authoritative for storage.
-#define CARBON_VERSION_VARIANT "jwk-tr10"
+#define CARBON_VERSION_VARIANT "jwk-rt2"
 
 // memory mapping
 // - while not actual config data this is a nice place to mention it
@@ -87,6 +87,7 @@
 #define CONFIG_STORE_IFACE_ANALOG_CLOCK_DIV 3
 #define CONFIG_STORE_MENU_TIMEOUT 4
 #define CONFIG_STORE_GUI_DISP_TYPE 5
+#define CONFIG_STORE_REC_TIMING 6  // live recording timing (Step/Fine)
 #define CONFIG_STORE_PATTERN_BANK 62  // start of the pattern bank
 // offset: 62-125 = patterns 0-63 (2 words = 8 bytes per pattern)
 // offset: 126 = pattern valid token

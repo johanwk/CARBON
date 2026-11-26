@@ -92,7 +92,7 @@
 #define PANEL_MENU_MIDI_PROGRAM_B_SCENE1 16  // per scene / track
 #define PANEL_MENU_MIDI_PROGRAM_B_SCENE6 21  // per scene / track
 // sys
-#define PANEL_MENU_SYS_NUM_SUBMODES 20
+#define PANEL_MENU_SYS_NUM_SUBMODES 21
 #define PANEL_MENU_SYS_VERSION 0  // global
 #define PANEL_MENU_SYS_CVGATE_PAIRS 1  // per song
 #define PANEL_MENU_SYS_CV_BEND_RANGE 2  // per song
@@ -113,6 +113,7 @@
 #define PANEL_MENU_SYS_CVOFFSET3 17  // per song
 #define PANEL_MENU_SYS_CVOFFSET4 18  // per song
 #define PANEL_MENU_SYS_MENU_TIMEOUT 19 // global
+#define PANEL_MENU_SYS_REC_TIMING 20  // global (live recording timing)
 // clock
 #define PANEL_MENU_CLOCK_NUM_SUBMODES 21
 #define PANEL_MENU_CLOCK_HUMANIZE 14  // seven per-track session controls

@@ -109,7 +109,8 @@ int song_get_scene_midi_program(int scene, int track, int map) { return SONG_MID
 int song_get_song_list_scene(int entry) { return SONG_LIST_SCENE_NULL; }
 int song_get_song_list_length(int entry) { return 0; }
 int song_get_song_list_kbtrans(int entry) { return 0; }
-int song_add_step_event(int scene, int track, int step, struct track_event *e) { return 0; }
+static struct track_event added_event; static int added_step=-1;
+int song_add_step_event(int scene, int track, int step, struct track_event *e) {added_event=*e;added_step=step;return 0;}
 void song_clear_step_event(int scene, int track, int step, int slot) {}
 void song_clear_step(int scene,int track,int step) {}
 int song_set_step_event(int scene, int track, int step, int slot, struct track_event *e) { return 0; }
@@ -828,6 +829,46 @@ static void test_record_preview(void) {
     assert(!seq_engine_record_preview(1,p,st,v,4));
     test_record_mode=SEQ_CTRL_RECORD_IDLE;sestate.track_type[1]=0;
 }
+/* Live recording timing: placement rule for Step / Fine. */
+static void test_record_place(void) {
+    int d, size=24, len=16;
+    #define P(m,rel) seq_engine_record_place(m,rel,size,len,&d)
+    /* Step: nearest step, never a delay */
+    assert(P(SEQ_REC_TIMING_STEP,0)==0 && d==SEQ_START_DELAY_INHERIT);
+    assert(P(SEQ_REC_TIMING_STEP,11)==0 && P(SEQ_REC_TIMING_STEP,12)==1);
+    assert(P(SEQ_REC_TIMING_STEP,-12)==0 && P(SEQ_REC_TIMING_STEP,24*15+12)==0); /* wraps */
+    /* Fine: step played in + fraction; 1/16 snap either side */
+    assert(P(SEQ_REC_TIMING_FINE,24*3+1)==3 && d==SEQ_START_DELAY_INHERIT);   /* +1 tick snaps */
+    assert(P(SEQ_REC_TIMING_FINE,24*3+23)==4 && d==SEQ_START_DELAY_INHERIT);  /* -1 tick: next */
+    assert(P(SEQ_REC_TIMING_FINE,24*3+8)==3 && d==SEQ_START_DELAY_REL_FIRST+2);   /* 1/3 */
+    assert(P(SEQ_REC_TIMING_FINE,24*3+12)==3 && d==SEQ_START_DELAY_REL_FIRST+3);  /* 1/2 */
+    assert(P(SEQ_REC_TIMING_FINE,24*3+21)==3 && d==SEQ_START_DELAY_REL_FIRST+6);  /* 7/8 */
+    assert(P(SEQ_REC_TIMING_FINE,24*3+9)==3 && d==SEQ_START_DELAY_REL_FIRST+2);   /* ~1/3 */
+    assert(P(SEQ_REC_TIMING_FINE,-6)==15 && d==SEQ_START_DELAY_REL_FIRST+5);      /* early: last step, 3/4 */
+    size=192;   /* long step: fractions scale */
+    assert(P(SEQ_REC_TIMING_FINE,192*2+128)==2 && d==SEQ_START_DELAY_REL_FIRST+4); /* 2/3 */
+    #undef P
+    /* every step size and offset: result in range, delay within the step */
+    for(size=2;size<=384;size++) for(int m=0;m<2;m++) for(int rel=-size/2;rel<size*4;rel++) {
+        int i=seq_engine_record_place(m,rel,size,4,&d);
+        assert(i>=0 && i<4);
+        assert(d==SEQ_START_DELAY_INHERIT || (d>=1 && d<=SEQ_START_DELAY_MAX));
+        if(d!=SEQ_START_DELAY_INHERIT) assert(seq_utils_delay_ticks(d,size)<size);
+    }
+    /* write: a Fine take stores the fraction on the note */
+    setup();test_record_mode=SEQ_CTRL_RECORD_RT;seq_engine_set_rec_timing(SEQ_REC_TIMING_FINE);
+    sestate.first_track=0;sestate.step_size[0]=24;sestate.motion_len[0]=16;sestate.motion_start[0]=0;
+    sestate.record_pos=1000-12;sestate.record_event_count=1;
+    sestate.record_events[0]=(struct midi_event){.tick_pos=1000+24*2+12,.tick_len=10,
+        .msg={.status=MIDI_NOTE_ON,.data0=60,.data1=100}};
+    added_step=-1;seq_engine_record_write_tracks();
+    assert(added_step==2 && added_event.type==SONG_EVENT_NOTE && added_event.delay==SEQ_START_DELAY_REL_FIRST+3);
+    /* Step mode: same take on the nearest step, no delay */
+    seq_engine_set_rec_timing(SEQ_REC_TIMING_STEP);added_step=-1;seq_engine_record_write_tracks();
+    assert(added_step==3 && added_event.delay==SEQ_START_DELAY_INHERIT);
+    seq_engine_set_rec_timing(SEQ_REC_TIMING_STEP);test_record_mode=SEQ_CTRL_RECORD_IDLE;
+    seq_engine_set_rec_timing(9);assert(seq_engine_get_rec_timing()==SEQ_REC_TIMING_STEP);
+}
 static void test_recording_undo_boundary(void) {
     setup();
     seq_engine_record_write_tracks();assert(!undo_captures); // empty take
@@ -854,6 +895,7 @@ static void test_recording_undo_boundary(void) {
 }
 int main(void) {
     test_record_preview();
+    test_record_place();
     test_recording_undo_boundary();
     test_scene_gates();
     test_straight_timing();

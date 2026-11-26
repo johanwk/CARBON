@@ -2,7 +2,7 @@
 #+options: ^:nil -:nil
 
 Priority: Humanize v1 is the NEXT IMPLEMENTATION TASK (see final section).
-Wheel and track magnetism remain DEFERRED.
+Wheel, track magnetism and early notes (negative micro-timing) remain DEFERRED.
 
 * Wheel mode - deferred design proposal
 :PROPERTIES:
@@ -186,6 +186,64 @@ cadence; source pitch reference and rests/polyphony; equal-pitch escape rules;
 scale/root/transpose ordering; exact home-return rule; scene/edit/persistence
 and snapshot/undo semantics. These are discussion proposals, not a settled
 specification. Resume only on explicit user request.
+
+* Separate future idea: early notes / negative micro-timing (DEFERRED)
+:PROPERTIES:
+:CUSTOM_ID: separate-future-idea-early-notes-deferred
+:END:
+Status: DEFERRED (2026-11-23). Record only; do not implement until the user
+explicitly resumes it. Reason: first confirm stability of the existing
+feature set; Rec Timing Fine (=jwk-rt2=) already gives sub-step
+recording resolution, which covers most of the need. Role model: Elektron
+micro-timing. Rule kept: no note ever starts before the step that holds it.
+
+** Concept
+- Storage: a note that belongs to home step /h/ and plays /E/ ticks early is
+  stored in a free slot of step /h-1/ with an "early" delay code. Delay codes
+  0-103 and 255 are in use; 104-254 are free. No layout change (20480 bytes).
+- Playback: on /h-1/ the early note starts at step length minus /E/, i.e. an
+  ordinary positive delay. Engine change is small.
+- Display and editing: Step Edit, tracker and lanes show the note on its home
+  step /h/ with a negative offset (=-1/8=, =-6t=); /h-1/ hides it. In Step
+  Edit, Dly below 0 on /h/ moves the note to a free slot of /h-1/; turning
+  back past 0 moves it home.
+- Recording: with Rec Timing Fine, an attack in the last half of step
+  /h-1/ is stored as /h/ early, not as /h-1/ with a large delay.
+
+** Decisions taken (user, 2026-11-23)
+1. Range: up to half a step early - fractions -1/8, -1/4, -1/3, -1/2, or
+   ticks -1..-48.
+2. Conditions (Prb/Euc/Pre/!Pr/Scn) and Pattern/Euclid masks: the early note
+   follows the step that stores it (/h-1/); Step Edit warns when the home
+   step has a condition. Documented as a limitation.
+3. Forward direction only: early notes play only when the track runs forward
+   (not reverse/pendulum/random).
+4. Delivery in three candidates: (1) engine, format and recording;
+   (2) display; (3) Step Edit editing. After (1) early notes are usable via
+   recording and carbon-backup.
+
+** Points to handle
+- Exclude early notes from voicing (Inv), bias note choice, ratchet and Gli
+  on the storing step /h-1/.
+- Region start: events are shared across scenes, regions are not; "previous"
+  means previous step number. If /h/ is the region's first step, /h-1/ is
+  outside the region: refuse in Step Edit ("no room"); recording falls back
+  to the current Fine behaviour (region end).
+- No free slot on /h-1/ (six events): refuse in Step Edit; recording keeps
+  the note on /h/.
+- Compatibility: older firmware rejects the new delay codes, so a song
+  version bump (as for Scn in 1.37); carbon-backup needs a JSON delay kind,
+  e.g. ={"kind":"early","ticks":6}=.
+
+** Effort estimate
+| Part                                         | Size         |
+|----------------------------------------------+--------------|
+| Engine: early codes, exclusions              | small-medium |
+| Song check, version bump, carbon-backup JSON | small-medium |
+| Recording (Fine produces early notes)         | small        |
+| Display: tracker, lanes, compact/expanded    | medium       |
+| Step Edit: negative Dly that moves notes     | medium-large |
+| Tests                                        | medium       |
 
 * Humanize v1 - NEXT IMPLEMENTATION TASK
 :PROPERTIES:
