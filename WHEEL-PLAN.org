@@ -2,7 +2,8 @@
 #+options: ^:nil -:nil
 
 Priority: Humanize v1 is the NEXT IMPLEMENTATION TASK (see final section).
-Wheel, track magnetism and early notes (negative micro-timing) remain DEFERRED.
+Wheel, track magnetism, early notes (negative micro-timing) and the remote
+editing / LLM / WoT idea remain DEFERRED.
 
 * Wheel mode - deferred design proposal
 :PROPERTIES:
@@ -244,6 +245,88 @@ micro-timing. Rule kept: no note ever starts before the step that holds it.
 | Display: tracker, lanes, compact/expanded    | medium       |
 | Step Edit: negative Dly that moves notes     | medium-large |
 | Tests                                        | medium       |
+
+* Separate future idea: remote song editing, LLM "live coding", WoT (DEFERRED)
+
+Status: DEFERRED (2026-11-23). Record only; exploratory. Do not implement
+until the user explicitly resumes it.
+
+** Goal
+- A computer edits individual parts of the song in RAM while CARBON plays:
+  no special mode, no stopped transport (unlike the flash transfer).
+- Use 1: an LLM with a CARBON tool for natural-language "live coding",
+  possibly by voice: CARBON as a backing track that takes spoken commands.
+- Use 2: a test of the W3C Web of Things standard: a CARBON Thing
+  Description with commands as WoT affordances.
+
+** Current state (assessed)
+- carbon-backup SysEx (0x70-0x73) reads/writes flash sectors: stopped
+  transport, five non-atomic 4 KB commits per song, then LOAD on the panel.
+- MIDI remote control (midi_ctrl.c) triggers scenes and live CCi parameters
+  while playing; no song edits, no readback.
+- The playing song is a RAM structure; Step Edit already changes it while
+  playing via song_set_*(); the engine reads it every step. New SysEx
+  commands run in the panel task could call the same setters.
+
+** Proposed architecture
+LLM / voice -> host gateway (HTTP, WoT TD, optional MCP) -> SysEx over USB
+MIDI -> CARBON. Firmware stays small and general; musical logic lives in the
+gateway (which can grow out of carbon-backup: song model, JSON, SysEx).
+
+Firmware primitives:
+- Read: step events, track/scene/song settings, whole song RAM in chunks.
+- Write: set event, clear step, set parameter; same validation as the loader.
+- Batches applied at the next bar line (no half-applied loop); one undo point
+  per batch.
+- Notifications: stepEdited, sceneChanged, transport, playhead (rate-limited).
+- Save via command or panel.
+Rules: refuse writes while loading/saving (BUSY); recording: refuse or allow
+only non-recorded tracks; Step Edit on the same step refreshes; last write
+wins.
+
+** LLM points
+- The model must see the song as text (tracker-style summaries, as in
+  carbon-backup view) and act on the real state.
+- High-level musical actions ("chorus chords step-wise", "fill in bar 4",
+  "thin hats in the verse") are gateway actions on firmware primitives.
+- Dry run as tracker text for large changes; "undo that" = Undo.
+- Latency dominated by the LLM; bar-quantised application hides it.
+
+** WoT points
+- Properties: tempo, scene, track settings, Rec Timing. Actions:
+  setStepEvent, clearStep, applyBatch, loadSong, saveSong, undo. Events:
+  stepEdited, sceneChanged, playheadMoved, transport.
+- No MIDI protocol binding exists: gateway exposes HTTP and maps to SysEx,
+  or define an experimental SysEx binding (own URI scheme).
+- carbon-backup event JSON can serve as the setStepEvent data schema.
+- LLM tool definitions can be generated from the TD: one description for
+  people, WoT clients and the LLM.
+- The TD describes the gateway interface; the firmware has no network stack.
+
+** Suggested order
+1. Firmware read commands + notifications (safe while playing).
+2. Gateway: live song mirror, text summaries, TD over HTTP.
+3. Firmware writes: bar-quantised batches, undo.
+4. Gateway: LLM tools from the TD, a few high-level musical actions; voice.
+Steps 1-2 are useful without an LLM (live mirror on a big screen).
+
+** Why CARBON and not generated audio (assessment, 2026-11-23)
+- Output is symbolic and editable: notes, steps, scenes - not a rendered
+  audio file. Every AI change can be inspected, undone, tweaked by hand.
+- The human stays the performer: the LLM edits the backbone; the player
+  keeps mutes, scenes, CCi, Eurorack spice. Matches the project direction.
+- Real-time, tight timing comes from dedicated hardware; the LLM is never
+  in the timing path, so its latency and failures cannot stop the music.
+- It drives real instruments (MIDI, CV/gate, Eurorack): the sound stays the
+  user's own, not a model's timbre.
+- The constraints help: 6 tracks x 64 steps x 6 slots, scenes and bias give
+  a small, well-defined action space - easier for an LLM to use reliably
+  than open-ended composition, and easy to describe as a WoT TD.
+- Novel and testable: voice-to-sequencer with bar-quantised, undoable edits
+  is unusual; a WoT TD for a music device is a concrete standards test.
+- Limits: the LLM's musical judgment is uneven; useful prompts need musical
+  vocabulary; firmware SysEx work and the gateway are real effort; a
+  conversational loop is slower than turning a knob for small changes.
 
 * Humanize v1 - NEXT IMPLEMENTATION TASK
 :PROPERTIES:
